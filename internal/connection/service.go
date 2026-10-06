@@ -19,6 +19,8 @@ const (
 	CodeUnreachable = "unreachable"
 	CodeConflict    = "conflict"
 	CodeInternal    = "internal"
+	// CodeReconnectRequired means the stored credentials no longer work (U2).
+	CodeReconnectRequired = "reconnect_required"
 	// CodeIntegrationDisabled is returned while Backlog is off for the workspace (BR7.3).
 	CodeIntegrationDisabled = "integration_disabled"
 )
@@ -28,6 +30,7 @@ const (
 	FieldSpaceURL = "spaceUrl"
 	FieldAPIKey   = "apiKey"
 	FieldEnabled  = "enabled"
+	FieldOAuth    = "oauth"
 )
 
 // ErrConflict is returned when a Connect is already running in the workspace (BR2.6).
@@ -35,6 +38,10 @@ var ErrConflict = errors.New("another connect is running in this workspace")
 
 // ErrIntegrationDisabled is returned while Backlog is off for the workspace (BR7.3).
 var ErrIntegrationDisabled = errors.New("backlog is turned off for this workspace")
+
+// ErrReconnectRequired is returned when Backlog refused the stored
+// credentials, or the OAuth sign-in must be done again.
+var ErrReconnectRequired = errors.New("the Backlog credentials no longer work; connect again")
 
 // FieldError is a validation failure on one input field.
 type FieldError struct {
@@ -45,10 +52,21 @@ type FieldError struct {
 func (e *FieldError) Error() string { return fmt.Sprintf("invalid %s: %v", e.Field, e.Err) }
 func (e *FieldError) Unwrap() error { return e.Err }
 
-// Gateway is the Backlog call Connect needs. backlog.Client implements it;
-// tests swap in a fake.
+// Gateway is the Backlog calls the connection needs. backlog.Client
+// implements it; tests swap in a fake.
 type Gateway interface {
 	Myself(ctx context.Context, creds backlog.Credentials) (backlog.User, error)
+	Projects(ctx context.Context, creds backlog.Credentials) ([]backlog.Project, error)
+	ExchangeOAuthCode(ctx context.Context, spaceHost string, client backlog.OAuthClient, code, redirectURI string) (backlog.TokenSet, error)
+	RefreshToken(ctx context.Context, spaceHost string, client backlog.OAuthClient, refreshToken string) (backlog.TokenSet, error)
+	// U4: the Git access check of connection.test (AC5.5.2).
+	Repositories(ctx context.Context, creds backlog.Credentials, projectKey string) ([]backlog.Repository, error)
+	CheckGitAccess(ctx context.Context, spaceHost, username, password, projectKey, repo string) error
+}
+
+// ConfigReader reads the plugin's operator config. pluginsdk.Host satisfies it.
+type ConfigReader interface {
+	GetConfig(ctx context.Context) (map[string]any, error)
 }
 
 // ConnectInput is the connection.connect_api_key request body.
@@ -57,10 +75,12 @@ type ConnectInput struct {
 	APIKey   string `json:"apiKey"`
 }
 
-// Service runs the U1 connection workflows (WF2, WF3, WF6).
+// Service runs the connection workflows (U1 WF2, WF3, WF6 and U2).
 type Service struct {
 	gateway Gateway
 	store   *Store
+	// Config holds the OAuth app; nil means OAuth is not set up.
+	Config ConfigReader
 
 	// Connect budget (performance-design, NFR1.4). The rollback has its own
 	// Store.RollbackTimeout on a fresh context, so the worst case is
@@ -71,7 +91,9 @@ type Service struct {
 	StoreTimeout   time.Duration // second switch read and the writes together (2 s)
 
 	mu       sync.Mutex
-	inflight map[string]struct{} // ConnectAttempt per workspace
+	inflight map[string]struct{}      // ConnectAttempt per workspace
+	locks    map[string]chan struct{} // one write lock per workspace
+	hub      hub
 }
 
 // NewService returns a Service with the design time budget.
@@ -80,7 +102,7 @@ func NewService(gateway Gateway, store *Store) *Service {
 		gateway: gateway, store: store,
 		Deadline: 12 * time.Second, PreCallTimeout: time.Second,
 		BacklogTimeout: 10 * time.Second, StoreTimeout: 2 * time.Second,
-		inflight: map[string]struct{}{},
+		inflight: map[string]struct{}{}, locks: map[string]chan struct{}{},
 	}
 }
 
@@ -152,9 +174,35 @@ func (s *Service) connect(ctx context.Context, workspaceID string, in ConnectInp
 	if err := s.RequireEnabled(storeCtx, workspaceID); err != nil {
 		return View{}, err // turned off while Myself ran: write nothing (BR7.3)
 	}
-	view, err := s.store.Save(storeCtx, workspaceID, addr.Host, key, user)
-	view.Enabled = err == nil
-	return view, err
+	unlock, err := s.lockWS(storeCtx, workspaceID)
+	if err != nil {
+		return View{}, err
+	}
+	defer unlock()
+	prev, next, view, err := s.store.saveConnection(storeCtx, workspaceID, addr.Host, secret{APIKey: key}, user)
+	if err != nil {
+		return View{}, err
+	}
+	view.Enabled, view.Restored = true, s.emit(ctx, workspaceID, prev, next)
+	return view, nil
+}
+
+// lockWS takes the workspace's write lock, so writes and the events they send
+// keep their order. The returned func releases it.
+func (s *Service) lockWS(ctx context.Context, workspaceID string) (func(), error) {
+	s.mu.Lock()
+	l, ok := s.locks[workspaceID]
+	if !ok {
+		l = make(chan struct{}, 1)
+		s.locks[workspaceID] = l
+	}
+	s.mu.Unlock()
+	select {
+	case l <- struct{}{}:
+		return func() { <-l }, nil
+	case <-ctx.Done():
+		return nil, s.store.storeErr(ctx, "wait for the workspace lock", ctx.Err())
+	}
 }
 
 // preCall runs the steps before the Backlog call under PreCallTimeout: the
@@ -259,15 +307,25 @@ func Classify(err error) Outcome {
 		return Outcome{}
 	case errors.As(err, &fe):
 		return Outcome{Code: CodeValidation, Field: fe.Field}
+	case errors.Is(err, ErrInvalidProjects):
+		return Outcome{Code: CodeValidation, Field: FieldProjectKeys}
+	case errors.Is(err, ErrOAuthNotConfigured):
+		return Outcome{Code: CodeValidation, Field: FieldOAuth}
+	case errors.Is(err, ErrNoGitCredential):
+		return Outcome{Code: CodeValidation, Field: FieldGitCredential}
 	case errors.Is(err, ErrConflict):
 		return Outcome{Code: CodeConflict}
 	case errors.Is(err, ErrIntegrationDisabled):
 		return Outcome{Code: CodeIntegrationDisabled}
+	case errors.Is(err, ErrReconnectRequired), errors.Is(err, ErrNotConnected):
+		return Outcome{Code: CodeReconnectRequired}
 	case errors.Is(err, ErrStore):
 		return Outcome{Code: CodeInternal} // a store step that ran out of time is internal, not unreachable
 	case errors.As(err, &be) && be.Kind == backlog.KindRateLimited:
 		secs := int(math.Ceil(be.RetryAfter.Seconds()))
 		return Outcome{Code: CodeRateLimited, RetryAfterSeconds: max(secs, 1)}
+	case errors.As(err, &be) && (be.Kind == backlog.KindUnauthorized || be.Kind == backlog.KindForbidden):
+		return Outcome{Code: CodeReconnectRequired} // a non-Connect call (R-06)
 	case errors.As(err, &be), errors.Is(err, context.DeadlineExceeded):
 		return Outcome{Code: CodeUnreachable}
 	default:

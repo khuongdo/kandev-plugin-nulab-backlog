@@ -1,0 +1,67 @@
+{
+  "stage": "code-generation",
+  "unit": "ci-release",
+  "version": 1,
+  "writes": [
+    {
+      "path": ".github/workflows/ci.yml"
+    },
+    {
+      "path": ".github/workflows/release.yml"
+    },
+    {
+      "path": "Makefile"
+    },
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "cmd/ci/main.go"
+    },
+    {
+      "path": "internal/ci/contract.go"
+    },
+    {
+      "path": "internal/ci/contract_test.go"
+    },
+    {
+      "path": "internal/ci/doc.go"
+    },
+    {
+      "path": "internal/ci/manifest.go"
+    },
+    {
+      "path": "internal/ci/manifest_test.go"
+    },
+    {
+      "path": "internal/ci/marketplace.go"
+    },
+    {
+      "path": "internal/ci/marketplace_test.go"
+    },
+    {
+      "path": "internal/ci/release.go"
+    },
+    {
+      "path": "internal/ci/release_test.go"
+    },
+    {
+      "path": "internal/ci/run.go"
+    },
+    {
+      "path": "internal/ci/run_test.go"
+    },
+    {
+      "path": "internal/ci/secrets.go"
+    },
+    {
+      "path": "internal/ci/secrets_test.go"
+    },
+    {
+      "path": "internal/ci/workflows.go"
+    },
+    {
+      "path": "internal/ci/workflows_test.go"
+    }
+  ]
+}

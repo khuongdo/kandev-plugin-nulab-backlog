@@ -1,6 +1,11 @@
 import type { KandevPlugin, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { PLUGIN_ICON } from "./brand/backlog-logo";
+import { createDashboardPage } from "./git/dashboard-page";
+import { createPRLinkAction } from "./git/pr-link";
+import { createRepositoryProvider } from "./git/repository-provider";
+import { createReviewProvider } from "./git/review-provider";
+import { createWatchesPage } from "./git/watches-page";
 import { en } from "./messages/en";
 import { createBacklogPage } from "./page/BacklogPage";
 import { createSettingsScreen } from "./settings/SettingsScreen";
@@ -52,6 +57,17 @@ const plugin: KandevPlugin = {
     registry.registerRoute("/backlog", createBacklogPage(host), {
       topbar: { title: en.integrationLabel, icon },
     });
+    // U4: Backlog Git repositories, PR links, the PR badge, PR watches and the dashboard.
+    registry.registerRepositoryProvider(createRepositoryProvider(host));
+    registry.registerTaskAction(createPRLinkAction(host));
+    registry.registerReviewProvider(createReviewProvider(host));
+    for (const [id, path, label, page] of [
+      ["backlog-watches", "/backlog/watches", en.watchesTitle, createWatchesPage(host)],
+      ["backlog-dashboard", "/backlog/dashboard", en.dashboardTitle, createDashboardPage(host)],
+    ] as const) {
+      registry.registerNavItem({ id, label, path, section: "integrations", icon });
+      registry.registerRoute(path, page, { topbar: { title: label, icon } });
+    }
 
     publishSwitches(host, host.context.getWorkspaceIds());
     unsubscribeWorkspaces = host.context.subscribeWorkspaces((ids) => publishSwitches(host, ids));

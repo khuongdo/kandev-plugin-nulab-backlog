@@ -181,7 +181,8 @@ describe("M1 settings screen", () => {
     const { host, calls } = scripted(notConnected);
     const c = await render(host);
     await fillAndConnect(c, HOST, "k-1");
-    expect(calls.at(-1)).toEqual({
+    // U2: once connected, the project picker loads, so find the connect call.
+    expect(calls.find((x) => x.key === "connection.connect_api_key")).toEqual({
       key: "connection.connect_api_key",
       body: { spaceUrl: HOST, apiKey: "k-1" },
     });
@@ -265,6 +266,8 @@ describe("M1 settings screen", () => {
     });
     const c = await render(host);
     await fillAndConnect(c);
+    // U2: replacing a connection asks first (US1.6).
+    await act(async () => byTestId(c, "backlog-replace-dialog-confirm")!.click());
     expect(byTestId(c, "backlog-status")!.textContent).toBe(`Connected as Test User @ ${HOST}`);
     expect(byTestId(c, "backlog-connect-form")).toBeNull();
   });
@@ -383,7 +386,8 @@ describe("M1 settings screen: switch and layout", () => {
     const form = byTestId(c, "backlog-connect-form")!;
     expect(screen.className).toBe(STACK);
     expect(form.className).toBe(STACK);
-    const fields = [...form.querySelectorAll("label")].map((l) => l.parentElement!);
+    // U2: the sign-in method radios wrap their inputs; the fields use label[for].
+    const fields = [...form.querySelectorAll("label[for]")].map((l) => l.parentElement!);
     expect(fields).toHaveLength(2);
     fields.forEach((f) => expect(f.className).toBe(FIELD));
     expect(c.querySelector("style, link, [style]")).toBeNull();

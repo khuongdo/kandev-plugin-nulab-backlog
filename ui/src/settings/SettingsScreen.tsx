@@ -1,10 +1,16 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { loadImpact, withImpact } from "../git/git-state";
 import { en, format, type Messages } from "../messages/en";
+import { createConfirmDialog } from "./confirm-dialog";
+import { createConnectedPanel } from "./connected-panel";
+import { normalizeHost, startOAuth, takeOAuthReturn } from "./oauth";
+import { createProjectPicker } from "./project-picker";
 import {
   connectedNotice,
   initialState,
   isOff,
+  isSignInAgain,
   reduce,
   type ConnectionView,
   type Field,
@@ -17,24 +23,32 @@ import { subscribeEnabled } from "../switch/enabled-events";
 type Props = { workspaceId?: string };
 type AnyProps = Record<string, unknown>;
 
-const FIELD_IDS: Record<Field, string> = { spaceUrl: "backlog-space-url", apiKey: "backlog-api-key" };
+type FormField = Exclude<Field, "projectKeys">;
+type Method = "api_key" | "oauth";
+
+const FIELD_IDS: Record<FormField, string> = { spaceUrl: "backlog-space-url", apiKey: "backlog-api-key" };
 
 // BR6.5: one vertical stack with one gap, and a smaller label-to-input gap,
 // using the host's utility classes only (the plugin ships no CSS).
 const STACK = "flex flex-col gap-4";
 const FIELD = "flex flex-col gap-2";
+const ROW = "flex gap-2";
 
 /**
  * Builds the M1 settings screen on the host's React and UI kit. The plugin
  * bundles no React; `h` is the host's element factory.
  */
 export function createSettingsScreen(host: PluginHostApi, messages: Messages = en): Component<Props> {
+  const hostApi = host; // onSubmit shadows `host` with the typed space host
   const h = host.jsx; // the JSX factory (tsconfig jsxFactory "h")
   const { useCallback, useEffect, useRef, useState } = host.React;
   const Button = host.ui.Button as Component<AnyProps>;
   const Input = host.ui.Input as Component<AnyProps>;
   const Label = host.ui.Label as Component<AnyProps>;
   const t = (notice: Notice) => format(messages[notice.key], notice.params);
+  const ConfirmDialog = createConfirmDialog(host, messages);
+  const ConnectedPanel = createConnectedPanel(host, messages);
+  const ProjectPicker = createProjectPicker(host, messages);
 
   return function BacklogSettings({ workspaceId: routedWorkspaceId }: Props) {
     const workspaceId = routedWorkspaceId ?? host.context.getActiveWorkspaceId();
@@ -43,7 +57,14 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
     const [apiKey, setApiKey] = useState("");
     const busy = useRef(false);
     const lastInput = useRef<{ spaceUrl: string; apiKey: string } | undefined>(undefined);
+    const [method, setMethod] = useState<Method>("api_key");
+    const [confirm, setConfirm] = useState<
+      { kind: "replace" | "changeSpace"; host: string; impact?: string } | undefined
+    >(undefined);
+    const oauthChecked = useRef(false);
     const dispatch = useCallback((e: ScreenEvent) => setState((s) => reduce(s, e)), []);
+    const announce = useCallback((notice: Notice) => dispatch({ type: "announce", notice }), []);
+    const onView = useCallback((view: ConnectionView) => dispatch({ type: "viewChanged", view }), []);
 
     const load = useCallback(async () => {
       dispatch({ type: "loadStarted" });
@@ -53,7 +74,12 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
         dispatch({ type: "loaded", view });
       } catch {
         dispatch({ type: "loadFailed" });
+        return;
       }
+      if (oauthChecked.current) return;
+      oauthChecked.current = true; // the ?oauth= result is shown once (US1.3)
+      const back = takeOAuthReturn();
+      if (back) dispatch({ type: "oauthReturned", ...back });
     }, [workspaceId]);
 
     useEffect(() => {
@@ -89,12 +115,47 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
       }
     };
 
-    const onSubmit = (e: { preventDefault(): void }) => {
-      e.preventDefault();
-      void connect({ spaceUrl, apiKey });
+    // Starts OAuth and leaves the page; only a failure comes back here.
+    const signIn = async (url: string) => {
+      if (busy.current || !workspaceId) return;
+      busy.current = true;
+      dispatch({ type: "connectStarted" });
+      try {
+        await startOAuth(host, workspaceId, url);
+      } catch (error) {
+        busy.current = false;
+        dispatch({ type: "connectFailed", error });
+      }
     };
 
-    const field = (name: Field, label: string, value: string, set: (v: string) => void, extra: AnyProps) => {
+    const run = () => (method === "oauth" ? signIn(spaceUrl) : connect({ spaceUrl, apiKey }));
+
+    const onSubmit = (e: { preventDefault(): void }) => {
+      e.preventDefault();
+      const view = state.view;
+      if (view && (view.state === "connected" || isSignInAgain(view))) {
+        // A replacement asks first; another host is a space change (US1.6, US1.8).
+        const host = normalizeHost(spaceUrl);
+        const kind = host === view.spaceHost ? "replace" : "changeSpace";
+        setConfirm({ kind, host });
+        // U4: a space change turns off the old space's PR links and watches (AC1.8.1).
+        if (kind === "changeSpace" && workspaceId) {
+          void loadImpact(hostApi, workspaceId, undefined, messages).then((impact) =>
+            setConfirm((c) => (c && c.host === host ? { ...c, impact } : c)),
+          );
+        }
+        return;
+      }
+      void run();
+    };
+
+    const field = (
+      name: FormField,
+      label: string,
+      value: string,
+      set: (v: string) => void,
+      extra: AnyProps,
+    ) => {
       const id = FIELD_IDS[name];
       const error = state.fieldError?.field === name ? state.fieldError : undefined;
       return (
@@ -147,6 +208,27 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
     const status = connectedNotice(state.view);
     const off = isOff(state.view);
     const showForm = !state.isMember && !off;
+    const signInAgain = isSignInAgain(state.view) && !off;
+    const replacing = Boolean(status) || signInAgain;
+
+    const methodChoice = (
+      <div role="radiogroup" aria-labelledby="backlog-method-label" className={FIELD}>
+        <span id="backlog-method-label">{messages.signInMethodLabel}</span>
+        {(["api_key", "oauth"] as const).map((m) => (
+          <label key={m} className={ROW}>
+            <input
+              type="radio"
+              name="backlog-method"
+              value={m}
+              data-testid={m === "oauth" ? "backlog-method-oauth" : "backlog-method-api-key"}
+              checked={method === m}
+              onChange={() => setMethod(m)}
+            />
+            {m === "oauth" ? messages.methodOAuth : messages.methodApiKey}
+          </label>
+        ))}
+      </div>
+    );
     return (
       <div data-testid="backlog-settings" className={STACK}>
         {status ? <p data-testid="backlog-status">{t(status)}</p> : null}
@@ -155,25 +237,83 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
         {state.isMember && !status && !off ? (
           <p data-testid="backlog-member">{messages.notConnectedMember}</p>
         ) : null}
+        {status && !off && !state.isMember && workspaceId ? (
+          <ConnectedPanel workspaceId={workspaceId} onView={onView} announce={announce} view={state.view} />
+        ) : null}
+        {status && !off && !state.isMember && workspaceId ? (
+          <ProjectPicker workspaceId={workspaceId} onView={onView} announce={announce} />
+        ) : null}
+        {signInAgain ? (
+          <div className={STACK}>
+            <p data-testid="backlog-sign-in-again-notice">{messages.signInAgainNotice}</p>
+            <Button
+              type="button"
+              data-testid="backlog-sign-in-again"
+              disabled={state.connecting}
+              onClick={() => void signIn(state.view?.spaceHost ?? "")}
+            >
+              {messages.signInAgain}
+            </Button>
+          </div>
+        ) : null}
         {showForm ? (
           <form data-testid="backlog-connect-form" className={STACK} onSubmit={onSubmit} noValidate>
             {status ? <h3>{messages.replaceHeading}</h3> : null}
+            {methodChoice}
             {field("spaceUrl", messages.spaceUrlLabel, spaceUrl, setSpaceUrl, {
               placeholder: messages.spaceUrlPlaceholder,
               autoComplete: "url",
             })}
-            {field("apiKey", messages.apiKeyLabel, apiKey, setApiKey, {
-              type: "password",
-              autoComplete: "off",
-            })}
-            <Button type="submit" data-testid="backlog-connect" disabled={state.connecting}>
-              {state.connecting ? messages.connecting : messages.connect}
-            </Button>
+            {method === "api_key"
+              ? field("apiKey", messages.apiKeyLabel, apiKey, setApiKey, {
+                  type: "password",
+                  autoComplete: "off",
+                })
+              : null}
+            {method === "api_key" ? (
+              <Button type="submit" data-testid="backlog-connect" disabled={state.connecting}>
+                {state.connecting
+                  ? messages.connecting
+                  : replacing
+                    ? messages.replaceCredentials
+                    : messages.connect}
+              </Button>
+            ) : (
+              <Button type="submit" data-testid="backlog-sign-in-nulab" disabled={state.connecting}>
+                {state.connecting ? messages.connecting : messages.signInWithNulab}
+              </Button>
+            )}
           </form>
+        ) : null}
+        {confirm ? (
+          <ConfirmDialog
+            testId={confirm.kind === "replace" ? "backlog-replace-dialog" : "backlog-change-space-dialog"}
+            title={confirm.kind === "replace" ? messages.replaceTitle : messages.changeSpaceTitle}
+            body={
+              confirm.kind === "replace"
+                ? messages.replaceBody
+                : withImpact(format(messages.changeSpaceBody, { host: confirm.host }), confirm.impact ?? "")
+            }
+            confirmLabel={messages.confirm}
+            onConfirm={run}
+            onClose={() => setConfirm(undefined)}
+          />
         ) : null}
         {state.notice ? (
           <div data-testid="backlog-notice" className={STACK}>
             <p>{t(state.notice)}</p>
+            {state.notice.key === "restoredNotice" ? (
+              <div className={STACK}>
+                <p>{messages.restoredWatches}</p>
+                <Button
+                  type="button"
+                  data-testid="backlog-review-watches"
+                  onClick={() => host.navigate("/backlog/watches")}
+                >
+                  {messages.reviewWatches}
+                </Button>
+              </div>
+            ) : null}
             {state.notice.retry && lastInput.current ? (
               <Button
                 type="button"

@@ -24,6 +24,10 @@ type fakeSecrets struct {
 	setCalls  int
 	getCalls  int
 	ctxErrSet []error // ctx.Err() seen by each SetSecret/DeleteSecret call
+	// U4: the order of successful writes ("set:<key>", "del:<key>") and a
+	// key whose DeleteSecret fails.
+	ops        []string
+	failDelKey string
 }
 
 func newFakeSecrets() *fakeSecrets { return &fakeSecrets{data: map[string]string{}} }
@@ -56,6 +60,7 @@ func (f *fakeSecrets) SetSecret(ctx context.Context, key, value string) error {
 		return errInjected
 	}
 	f.data[key] = value
+	f.ops = append(f.ops, "set:"+key)
 	return nil
 }
 
@@ -63,10 +68,11 @@ func (f *fakeSecrets) DeleteSecret(ctx context.Context, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ctxErrSet = append(f.ctxErrSet, ctx.Err())
-	if f.failDel || f.failAll {
+	if f.failDel || f.failAll || (f.failDelKey != "" && key == f.failDelKey) {
 		return errInjected
 	}
 	delete(f.data, key)
+	f.ops = append(f.ops, "del:"+key)
 	return nil
 }
 
@@ -86,6 +92,7 @@ type fakeState struct {
 	data      map[string]map[string]any
 	failGet   bool
 	failSet   bool
+	failDel   bool
 	cancelSet context.CancelFunc // cancels the action context during SetState
 	getDelay  time.Duration      // each GetState takes this long (virtual time under synctest)
 	blockGet  bool               // block GetState until the context ends
@@ -132,6 +139,16 @@ func (f *fakeState) SetState(ctx context.Context, scope, scopeID, key string, va
 		return errInjected
 	}
 	f.data[stateKey(scope, scopeID, key)] = value
+	return nil
+}
+
+func (f *fakeState) DeleteState(ctx context.Context, scope, scopeID, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failDel {
+		return errInjected
+	}
+	delete(f.data, stateKey(scope, scopeID, key))
 	return nil
 }
 

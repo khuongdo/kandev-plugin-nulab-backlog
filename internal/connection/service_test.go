@@ -31,6 +31,23 @@ type fakeGateway struct {
 	creds    backlog.Credentials
 	delay    time.Duration // answer after this long (virtual time under synctest)
 	onCall   func()        // runs inside the call, e.g. to turn the switch off
+
+	// U2 calls.
+	projects      []backlog.Project
+	projectsErr   error
+	projectsCalls int
+	tokens        backlog.TokenSet // returned by ExchangeOAuthCode
+	exchangeErr   error
+	exchangeCalls int
+	exchangeCode  string
+	exchangeURI   string
+	exchangeID    string
+	onExchange    func()
+	refreshed     backlog.TokenSet // returned by RefreshToken
+	refreshErr    error
+	refreshCalls  int
+	refreshDelay  time.Duration // virtual time under synctest
+	onRefresh     func()
 }
 
 func (g *fakeGateway) Myself(ctx context.Context, c backlog.Credentials) (backlog.User, error) {
@@ -73,6 +90,50 @@ func (g *fakeGateway) callCount() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.calls
+}
+
+func (g *fakeGateway) Projects(_ context.Context, c backlog.Credentials) ([]backlog.Project, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.projectsCalls++
+	g.creds = c
+	return g.projects, g.projectsErr
+}
+
+func (g *fakeGateway) ExchangeOAuthCode(_ context.Context, _ string, client backlog.OAuthClient, code, redirectURI string) (backlog.TokenSet, error) {
+	g.mu.Lock()
+	g.exchangeCalls++
+	g.exchangeCode, g.exchangeURI, g.exchangeID = code, redirectURI, client.ClientID
+	hook := g.onExchange
+	g.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.tokens, g.exchangeErr
+}
+
+func (g *fakeGateway) RefreshToken(ctx context.Context, _ string, _ backlog.OAuthClient, _ string) (backlog.TokenSet, error) {
+	g.mu.Lock()
+	g.refreshCalls++
+	delay, hook := g.refreshDelay, g.onRefresh
+	g.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	if hook != nil {
+		hook()
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.refreshed, g.refreshErr
+}
+
+func (g *fakeGateway) counts() (myself, projects, exchange, refresh int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.calls, g.projectsCalls, g.exchangeCalls, g.refreshCalls
 }
 
 type harness struct {

@@ -1,0 +1,422 @@
+{
+  "stage": "code-generation",
+  "unit": "git-pr",
+  "upstream_ids": [
+    "US5.5",
+    "US5.1",
+    "US5.6",
+    "US5.2",
+    "US5.4",
+    "US5.3",
+    "US6.1",
+    "US6.2",
+    "US6.3",
+    "US1.5",
+    "US1.7",
+    "US1.8",
+    "US1.9",
+    "US7.3",
+    "FR1.6",
+    "FR1.7",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR8",
+    "NFR9",
+    "NFR10",
+    "NFR11",
+    "AC5.1.1",
+    "AC5.1.2",
+    "AC5.2.1",
+    "AC5.2.2",
+    "AC5.2.3",
+    "AC5.3.1",
+    "AC5.3.2",
+    "AC5.3.3",
+    "AC5.3.4",
+    "AC5.4.1",
+    "AC5.4.2",
+    "AC5.4.3",
+    "AC5.5.1",
+    "AC5.5.2",
+    "AC5.6.1",
+    "AC5.6.2",
+    "AC5.6.3",
+    "AC6.1.1",
+    "AC6.1.2",
+    "AC6.1.3",
+    "AC6.1.4",
+    "AC6.1.5",
+    "AC6.2.1",
+    "AC6.2.2",
+    "AC6.2.3",
+    "AC6.2.4",
+    "AC6.2.5",
+    "AC6.3.1",
+    "AC6.3.2",
+    "AC1.5.4",
+    "AC1.7.1",
+    "AC1.8.1",
+    "AC1.8.2",
+    "AC1.8.3",
+    "AC1.9.1",
+    "AC1.9.2",
+    "AC7.3.2",
+    "AC8.3.1"
+  ],
+  "coverage": [
+    {
+      "id": "US5.5",
+      "status": "OK",
+      "target": "internal/connection/git_credential.go"
+    },
+    {
+      "id": "US5.1",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "US5.6",
+      "status": "OK",
+      "target": "internal/plugin/credential.go"
+    },
+    {
+      "id": "US5.2",
+      "status": "OK",
+      "target": "ui/src/git/pr-link.ts"
+    },
+    {
+      "id": "US5.4",
+      "status": "OK",
+      "target": "ui/src/git/review-provider.tsx"
+    },
+    {
+      "id": "US5.3",
+      "status": "OK",
+      "target": "ui/src/git/create-pr.ts"
+    },
+    {
+      "id": "US6.1",
+      "status": "OK",
+      "target": "ui/src/git/watches-page.tsx"
+    },
+    {
+      "id": "US6.2",
+      "status": "OK",
+      "target": "internal/git/watcher.go"
+    },
+    {
+      "id": "US6.3",
+      "status": "OK",
+      "target": "ui/src/git/dashboard-page.tsx"
+    },
+    {
+      "id": "US1.5",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "US1.7",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "US1.8",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "US1.9",
+      "status": "OK",
+      "target": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "id": "US7.3",
+      "status": "OK",
+      "target": "internal/backlog/client.go"
+    },
+    {
+      "id": "FR1.6",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "FR1.7",
+      "status": "OK",
+      "target": "internal/git/events.go"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR6.1",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR6.2",
+      "status": "OK",
+      "target": "internal/git/watcher.go"
+    },
+    {
+      "id": "FR6.3",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/backlog/client.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/git/leak_test.go"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "internal/backlog/testdata/pullrequests_ok.json"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "internal/git/store.go"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "NFR9",
+      "status": "OK",
+      "target": "ui/src/git/watch-form.tsx"
+    },
+    {
+      "id": "NFR10",
+      "status": "OK",
+      "target": "ui/src/messages/en.ts"
+    },
+    {
+      "id": "NFR11",
+      "status": "OK",
+      "target": "internal/git/watcher.go"
+    },
+    {
+      "id": "AC5.1.1",
+      "status": "OK",
+      "target": "internal/git/repos_test.go"
+    },
+    {
+      "id": "AC5.1.2",
+      "status": "OK",
+      "target": "ui/src/git/repository-provider.test.ts"
+    },
+    {
+      "id": "AC5.2.1",
+      "status": "OK",
+      "target": "internal/git/links_test.go"
+    },
+    {
+      "id": "AC5.2.2",
+      "status": "OK",
+      "target": "ui/src/git/pr-link.test.ts"
+    },
+    {
+      "id": "AC5.2.3",
+      "status": "OK",
+      "target": "internal/git/links_test.go"
+    },
+    {
+      "id": "AC5.3.1",
+      "status": "OK",
+      "target": "internal/git/types_test.go"
+    },
+    {
+      "id": "AC5.3.2",
+      "status": "OK",
+      "target": "internal/git/create_test.go"
+    },
+    {
+      "id": "AC5.3.3",
+      "status": "OK",
+      "target": "internal/git/create_test.go"
+    },
+    {
+      "id": "AC5.3.4",
+      "status": "OK",
+      "target": "ui/src/git/create-pr.test.ts"
+    },
+    {
+      "id": "AC5.4.1",
+      "status": "OK",
+      "target": "internal/git/status_test.go"
+    },
+    {
+      "id": "AC5.4.2",
+      "status": "Deferred",
+      "target": "[manual] 320 px layout and screen-reader wording are rendered by Kandev; checked in the B5 manual demo (docs/manual-checks/TEMPLATE.md step 17)"
+    },
+    {
+      "id": "AC5.4.3",
+      "status": "OK",
+      "target": "internal/git/status_test.go"
+    },
+    {
+      "id": "AC5.5.1",
+      "status": "OK",
+      "target": "internal/connection/git_credential_test.go"
+    },
+    {
+      "id": "AC5.5.2",
+      "status": "OK",
+      "target": "internal/connection/git_credential_test.go"
+    },
+    {
+      "id": "AC5.6.1",
+      "status": "OK",
+      "target": "internal/git/resolver_test.go"
+    },
+    {
+      "id": "AC5.6.2",
+      "status": "Deferred",
+      "target": "[manual] a real clone and push need a real Kandev and Backlog space; B5 manual demo (docs/manual-checks/TEMPLATE.md step 16), external dependency X6"
+    },
+    {
+      "id": "AC5.6.3",
+      "status": "OK",
+      "target": "internal/git/resolver_test.go"
+    },
+    {
+      "id": "AC6.1.1",
+      "status": "OK",
+      "target": "internal/git/watches_test.go"
+    },
+    {
+      "id": "AC6.1.2",
+      "status": "OK",
+      "target": "ui/src/git/watch-form.test.tsx"
+    },
+    {
+      "id": "AC6.1.3",
+      "status": "OK",
+      "target": "internal/git/watches_test.go"
+    },
+    {
+      "id": "AC6.1.4",
+      "status": "OK",
+      "target": "internal/git/watches_test.go"
+    },
+    {
+      "id": "AC6.1.5",
+      "status": "OK",
+      "target": "ui/src/git/watches-page.test.tsx"
+    },
+    {
+      "id": "AC6.2.1",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC6.2.2",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC6.2.3",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC6.2.4",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC6.2.5",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC6.3.1",
+      "status": "OK",
+      "target": "ui/src/git/dashboard-page.test.tsx"
+    },
+    {
+      "id": "AC6.3.2",
+      "status": "OK",
+      "target": "internal/git/queries_test.go"
+    },
+    {
+      "id": "AC1.5.4",
+      "status": "OK",
+      "target": "internal/connection/store_test.go"
+    },
+    {
+      "id": "AC1.7.1",
+      "status": "OK",
+      "target": "internal/git/repos_test.go"
+    },
+    {
+      "id": "AC1.8.1",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "id": "AC1.8.2",
+      "status": "OK",
+      "target": "internal/connection/store_test.go"
+    },
+    {
+      "id": "AC1.8.3",
+      "status": "OK",
+      "target": "internal/git/watcher_test.go"
+    },
+    {
+      "id": "AC1.9.1",
+      "status": "OK",
+      "target": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "id": "AC1.9.2",
+      "status": "OK",
+      "target": "internal/git/events_test.go"
+    },
+    {
+      "id": "AC7.3.2",
+      "status": "OK",
+      "target": "internal/backlog/git_client_test.go"
+    },
+    {
+      "id": "AC8.3.1",
+      "status": "OK",
+      "target": "internal/plugin/actions_u4_test.go"
+    }
+  ]
+}

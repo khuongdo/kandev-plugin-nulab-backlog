@@ -1,0 +1,1 @@
+{"id": 2010, "projectId": 101, "repositoryId": 11, "number": 43, "summary": "Add search", "description": "Related: PROJ-120", "base": "main", "branch": "feature/search", "status": {"id": 1, "name": "Open"}, "assignee": null, "issue": {"id": 5120}, "createdUser": {"id": 1234, "name": "Test User"}, "created": "2026-10-06T09:00:00Z", "updated": "2026-10-06T09:00:00Z"}

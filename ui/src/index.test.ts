@@ -22,6 +22,10 @@ function setup(views: Record<string, { enabled: boolean } | Error>) {
     registerIntegrationSettings: vi.fn(),
     registerNavItem: vi.fn(),
     registerRoute: vi.fn(),
+    // U4
+    registerRepositoryProvider: vi.fn(),
+    registerTaskAction: vi.fn(),
+    registerReviewProvider: vi.fn(),
   };
   let listener: ((ids: readonly string[]) => void) | undefined;
   const unsubscribe = vi.fn();
@@ -91,8 +95,28 @@ describe("plugin entry", () => {
     const s = setup({ "ws-1": { enabled: false }, "ws-2": { enabled: false } });
     await s.init();
     await flush();
-    expect(s.registry.registerNavItem).toHaveBeenCalledTimes(1);
-    expect(s.registry.registerRoute).toHaveBeenCalledTimes(1);
+    expect(s.registry.registerNavItem).toHaveBeenCalledTimes(3); // U4 adds watches and the dashboard
+    expect(s.registry.registerRoute).toHaveBeenCalledTimes(3);
+  });
+
+  it("registers the U4 provider, task action, review provider and pages", async () => {
+    const s = setup({});
+    await s.init();
+    expect(s.registry.registerRepositoryProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "nulab-backlog", supportsDraft: false }),
+    );
+    expect(s.registry.registerTaskAction).toHaveBeenCalledWith(
+      expect.objectContaining({ placement: "link" }),
+    );
+    expect(s.registry.registerReviewProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "nulab-backlog" }),
+    );
+    for (const path of ["/backlog/watches", "/backlog/dashboard"]) {
+      expect(s.registry.registerRoute).toHaveBeenCalledWith(path, expect.any(Function), expect.anything());
+      expect(s.registry.registerNavItem).toHaveBeenCalledWith(
+        expect.objectContaining({ path, section: "integrations" }),
+      );
+    }
   });
 
   it("publishes each workspace's switch at start, only after a successful load (BR7.5)", async () => {

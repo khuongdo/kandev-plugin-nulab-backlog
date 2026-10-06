@@ -1,0 +1,308 @@
+{
+  "stage": "code-generation",
+  "unit": "connection",
+  "upstream_ids": [
+    "US1.3",
+    "US1.4",
+    "US1.5",
+    "US1.6",
+    "US1.7",
+    "US1.8",
+    "US1.9",
+    "US8.3",
+    "US8.4",
+    "FR1.1",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR1.7",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR8",
+    "NFR9",
+    "NFR11",
+    "AC1.1.7",
+    "AC1.3.1",
+    "AC1.3.2",
+    "AC1.3.3",
+    "AC1.4.1",
+    "AC1.4.2",
+    "AC1.4.3",
+    "AC1.5.1",
+    "AC1.5.2",
+    "AC1.5.3",
+    "AC1.5.4",
+    "AC1.6.1",
+    "AC1.6.2",
+    "AC1.6.3",
+    "AC1.7.1",
+    "AC1.7.2",
+    "AC1.7.3",
+    "AC1.8.1",
+    "AC1.8.2",
+    "AC1.8.3",
+    "AC1.9.1",
+    "AC1.9.2",
+    "AC7.3.2",
+    "AC8.3.1",
+    "AC8.3.2",
+    "AC8.4.1",
+    "AC8.4.2",
+    "AC8.4.3",
+    "AC8.4.4"
+  ],
+  "coverage": [
+    {
+      "id": "US1.3",
+      "status": "OK",
+      "target": "internal/connection/oauth.go"
+    },
+    {
+      "id": "US1.4",
+      "status": "OK",
+      "target": "internal/connection/lifecycle.go"
+    },
+    {
+      "id": "US1.5",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "id": "US1.6",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "US1.7",
+      "status": "OK",
+      "target": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "id": "US1.8",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "US1.9",
+      "status": "OK",
+      "target": "internal/connection/change.go"
+    },
+    {
+      "id": "US8.3",
+      "status": "OK",
+      "target": "internal/plugin/runtime.go"
+    },
+    {
+      "id": "US8.4",
+      "status": "OK",
+      "target": "internal/backlog/client.go"
+    },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "id": "FR1.5",
+      "status": "OK",
+      "target": "internal/connection/credentials_test.go"
+    },
+    {
+      "id": "FR1.6",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "FR1.7",
+      "status": "OK",
+      "target": "internal/connection/projects_service_test.go"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/backlog/limiter_test.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/connection/events_test.go"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "internal/testutil/testutil.go"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "internal/backlog/client.go"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "Makefile"
+    },
+    {
+      "id": "NFR9",
+      "status": "OK",
+      "target": "ui/src/settings/confirm-dialog.test.tsx"
+    },
+    {
+      "id": "NFR11",
+      "status": "OK",
+      "target": "internal/backlog/limiter_test.go"
+    },
+    {
+      "id": "AC1.1.7",
+      "status": "OK",
+      "target": "internal/backlog/client_test.go"
+    },
+    {
+      "id": "AC1.3.1",
+      "status": "OK",
+      "target": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "id": "AC1.3.2",
+      "status": "OK",
+      "target": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "id": "AC1.3.3",
+      "status": "OK",
+      "target": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "id": "AC1.4.1",
+      "status": "OK",
+      "target": "internal/connection/credentials_test.go"
+    },
+    {
+      "id": "AC1.4.2",
+      "status": "OK",
+      "target": "internal/connection/credentials_test.go"
+    },
+    {
+      "id": "AC1.4.3",
+      "status": "OK",
+      "target": "internal/connection/credentials_test.go"
+    },
+    {
+      "id": "AC1.5.1",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "id": "AC1.5.2",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "id": "AC1.5.3",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "id": "AC1.5.4",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "AC1.6.1",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "AC1.6.2",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "AC1.6.3",
+      "status": "OK",
+      "target": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "id": "AC1.7.1",
+      "status": "OK",
+      "target": "internal/connection/projects_service_test.go"
+    },
+    {
+      "id": "AC1.7.2",
+      "status": "Deferred",
+      "target": "U3 owns the Issues page that shows 'No project selected'; U2 stores the selection it reads (Snapshot.SelectedProjects)."
+    },
+    {
+      "id": "AC1.7.3",
+      "status": "OK",
+      "target": "ui/src/settings/project-picker.test.tsx"
+    },
+    {
+      "id": "AC1.8.1",
+      "status": "Deferred",
+      "target": "Link and PR-watch counts come from U3/U4 data (ADR-004); U2 shows the change-space confirmation without counts (ui/src/settings/connected-panel.test.tsx)."
+    },
+    {
+      "id": "AC1.8.2",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "AC1.8.3",
+      "status": "OK",
+      "target": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "id": "AC1.9.1",
+      "status": "Deferred",
+      "target": "Link and PR-watch counts come from U3/U4 data; U2 shows the deselect confirmation without counts (ui/src/settings/project-picker.test.tsx)."
+    },
+    {
+      "id": "AC1.9.2",
+      "status": "OK",
+      "target": "internal/connection/projects_service_test.go"
+    },
+    {
+      "id": "AC7.3.2",
+      "status": "OK",
+      "target": "internal/backlog/projects_test.go"
+    },
+    {
+      "id": "AC8.3.1",
+      "status": "OK",
+      "target": "internal/plugin/actions_u2_test.go"
+    },
+    {
+      "id": "AC8.3.2",
+      "status": "Deferred",
+      "target": "The per-polling-cycle log belongs to U3, which owns polling (US4.2); U2 writes the backlog_wait lines it will count."
+    },
+    {
+      "id": "AC8.4.1",
+      "status": "OK",
+      "target": "internal/backlog/limiter_test.go"
+    },
+    {
+      "id": "AC8.4.2",
+      "status": "OK",
+      "target": "internal/backlog/limiter_test.go"
+    },
+    {
+      "id": "AC8.4.3",
+      "status": "OK",
+      "target": "internal/backlog/limiter_test.go"
+    },
+    {
+      "id": "AC8.4.4",
+      "status": "OK",
+      "target": "ui/src/settings/project-picker.test.tsx"
+    }
+  ]
+}

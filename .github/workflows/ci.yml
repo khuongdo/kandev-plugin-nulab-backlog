@@ -54,7 +54,7 @@ jobs:
 
       - name: Run the standard targets
         working-directory: plugin
-        run: make check-format vet lint test coverage build package verify-package
+        run: make check-format vet lint test coverage check-secrets build package verify-package
 
       - name: Upload the package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -62,3 +62,63 @@ jobs:
           name: plugin-package
           path: plugin/dist/
           if-no-files-found: error
+
+  # Install the packaged plugin on a throwaway Kandev built at exactly the
+  # manifest's min_kandev_version, and run it (US7.4, team Testing Posture).
+  packaged-host-contract:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: plugin
+
+      - name: Read the pinned SDK commit and the minimum Kandev version
+        id: versions
+        run: |
+          ref=$(cat plugin/.kandev-sdk-ref)
+          min=$(sed -n 's/^min_kandev_version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' plugin/manifest.yaml)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::.kandev-sdk-ref is not a full commit SHA"; exit 1; }
+          [[ "$min" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::min_kandev_version is not X.Y.Z"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "min=$min" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Kandev at the pinned SDK commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kdlbs/kandev
+          ref: ${{ steps.versions.outputs.ref }}
+          path: kandev
+
+      - name: Check out Kandev at the minimum version
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kdlbs/kandev
+          ref: v${{ steps.versions.outputs.min }}
+          path: kandev-min
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: plugin/go.mod
+          cache-dependency-path: |
+            plugin/go.sum
+            kandev-min/apps/backend/go.sum
+
+      # Test the exact bytes the checks job built and uploaded, never a
+      # rebuild (R-02).
+      - name: Download the built package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: plugin-package
+          path: plugin/dist
+
+      - name: Check the package checksum
+        working-directory: plugin/dist
+        run: sha256sum -c checksums.txt
+
+      - name: Verify the downloaded package and run the packaged-host contract test
+        working-directory: plugin
+        run: make verify-package contract-test KANDEV_MIN_DIR=../kandev-min

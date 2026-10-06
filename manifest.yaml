@@ -21,6 +21,12 @@ min_kandev_version: "0.96.0"
 capabilities:
   state: true
   secrets: true
+  # U4: watch tasks, the task-metadata lookup and the task's repository.
+  api_read: ["tasks", "repositories"]
+  api_write: ["tasks"]
+
+# U4: Backlog Git repositories are a Kandev repository provider (C8).
+repository_providers: ["nulab-backlog"]
 
 actions:
   - key: "connection.get"
@@ -35,6 +41,133 @@ actions:
     scope: "workspace"
     access: admin
     max_body_bytes: 8192
+  # U2 (R-01): actions that change the connection shared by the workspace are admin.
+  - key: "connection.start_oauth"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  - key: "connection.test"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 8192
+  - key: "connection.disconnect"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  - key: "connection.list_projects"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 8192
+  - key: "connection.set_projects"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  # U4 (C5): Git credentials, the repository provider, PR links, watches and queries.
+  - key: "connection.set_git_credential"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 16384
+  - key: "repositories.inspect"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "repositories.branches"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.repositories.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.link"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.unlink"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.create"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.status"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.links.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.impact"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.run"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.pause"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.resume"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.run"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+
+# The OAuth callback Backlog redirects the browser to. It must be public: the
+# browser arrives from Backlog. The plugin checks a single-use state.
+webhooks:
+  - key: "oauth-callback"
+    description: "Nulab Backlog OAuth callback"
+    method: GET
+    access: public
+    max_body_bytes: 1024
+
+# Optional: set these to offer "Sign in with Nulab". An API key works without them.
+config_schema:
+  type: object
+  properties:
+    oauth_client_id:
+      type: string
+      title: "Nulab OAuth client ID"
+    oauth_client_secret:
+      type: string
+      secret: true
+      title: "Nulab OAuth client secret"
+    public_base_url:
+      type: string
+      title: "Kandev public address"
+      description: "For example https://kandev.example.com. The OAuth redirect URI is <this>/api/plugins/nulab-backlog/webhooks/oauth-callback."
 
 ui:
   bundle: "/ui/bundle.js"

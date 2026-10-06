@@ -12,11 +12,14 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/kandev/kandev/pkg/pluginsdk"
 
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/backlog"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/git"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/redact"
 )
 
@@ -31,6 +34,11 @@ const (
 	actionGet           = "connection.get"
 	actionConnectAPIKey = "connection.connect_api_key"
 	actionSetEnabled    = "connection.set_enabled"
+	actionStartOAuth    = "connection.start_oauth"
+	actionTest          = "connection.test"
+	actionDisconnect    = "connection.disconnect"
+	actionListProjects  = "connection.list_projects"
+	actionSetProjects   = "connection.set_projects"
 )
 
 // guarded reports whether an action is refused while Backlog is off for the
@@ -67,6 +75,35 @@ var handlers = map[string]handler{
 		}
 		return r.service.SetEnabled(ctx, ws, *in.Enabled)
 	},
+	actionStartOAuth: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in connection.StartInput
+		if err := json.Unmarshal(body, &in); err != nil {
+			return nil, errBadBody
+		}
+		return r.service.StartOAuth(ctx, ws, in)
+	},
+	actionTest: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		return r.service.Test(ctx, ws)
+	},
+	actionDisconnect: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		return r.service.Disconnect(ctx, ws)
+	},
+	actionListProjects: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		items, err := r.service.ListProjects(ctx, ws)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"projects": items}, nil
+	},
+	actionSetProjects: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in struct {
+			ProjectKeys any `json:"projectKeys"`
+		}
+		if err := json.Unmarshal(body, &in); err != nil {
+			return nil, connection.ErrInvalidProjects
+		}
+		return r.service.SetProjects(ctx, ws, in.ProjectKeys)
+	},
 }
 
 const codeNotFound = "not_found"
@@ -75,18 +112,59 @@ const codeNotFound = "not_found"
 type Runtime struct {
 	pluginsdk.UnimplementedPlugin
 	service *connection.Service
+	git     *git.Service
+	watcher *git.Watcher
 	log     *slog.Logger
+
+	lifeMu   sync.Mutex
+	started  bool
+	unlisten func()
 }
 
 var _ pluginsdk.ActionHandler = (*Runtime)(nil)
 
-// NewRuntime returns the plugin served by server/main.go. It logs JSON to
-// standard error at the level in KANDEV_PLUGIN_LOG_LEVEL (default info).
-func NewRuntime() *Runtime {
-	return newRuntime(backlog.NewClient(), os.Stderr, os.Getenv("KANDEV_PLUGIN_LOG_LEVEL"))
+// gateway is every Backlog call the plugin makes. backlog.Client implements it.
+type gateway interface {
+	connection.Gateway
+	git.Gateway
 }
 
-func newRuntime(gateway connection.Gateway, logOut io.Writer, level string) *Runtime {
+// NewRuntime returns the plugin served by server/main.go, with the Git
+// service listening to ConnectionChanged and the PR watcher running. It logs
+// JSON to standard error at the level in KANDEV_PLUGIN_LOG_LEVEL (default info).
+func NewRuntime() *Runtime {
+	r := newRuntime(backlog.NewClient(), os.Stderr, os.Getenv("KANDEV_PLUGIN_LOG_LEVEL"))
+	r.Start()
+	return r
+}
+
+// Start subscribes the Git service to ConnectionChanged and starts the PR
+// watcher. It starts nothing twice.
+func (r *Runtime) Start() {
+	r.lifeMu.Lock()
+	defer r.lifeMu.Unlock()
+	if r.started {
+		return
+	}
+	r.started = true
+	r.unlisten = r.git.Listen()
+	r.watcher.Start()
+}
+
+// Close stops the watcher and the subscription. Safe to call more than once.
+func (r *Runtime) Close() {
+	r.lifeMu.Lock()
+	defer r.lifeMu.Unlock()
+	if !r.started {
+		return
+	}
+	r.started = false
+	r.watcher.Stop()
+	r.unlisten()
+	r.watcher = git.NewWatcher(r.git, r.log) // a stopped watcher can be started again
+}
+
+func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	lvl := slog.LevelInfo
 	if strings.EqualFold(level, "debug") {
 		lvl = slog.LevelDebug
@@ -96,6 +174,9 @@ func newRuntime(gateway connection.Gateway, logOut io.Writer, level string) *Run
 	// injects it from a background goroutine after NewRuntime returns.
 	stores := hostStores{host: r.Host}
 	r.service = connection.NewService(gateway, connection.NewStore(stores, stores))
+	r.service.Config = stores
+	r.git = git.NewService(gateway, r.service, hostPort{host: r.Host}, git.NewStore(stores))
+	r.watcher = git.NewWatcher(r.git, r.log)
 	r.log.Info("plugin started", "event", "plugin_started", "version", Version,
 		"platform", runtime.GOOS+"-"+runtime.GOARCH, "sdkRef", SDKRef)
 	return r
@@ -105,13 +186,15 @@ func newRuntime(gateway connection.Gateway, logOut io.Writer, level string) *Run
 // response with a status and never a Go error, so the UI keeps the error
 // code (contract C5).
 func (r *Runtime) HandleAction(ctx context.Context, req *pluginsdk.PluginActionRequest) (resp *pluginsdk.PluginActionResponse, err error) {
+	start := time.Now()
 	requestID := newRequestID()
 	log := r.log.With("workspaceId", req.Context.WorkspaceID, "requestId", requestID)
 	ctx = redact.WithLogger(ctx, log)
+	ctx = context.WithValue(ctx, verifiedKey{}, req.Context)
 	defer func() {
 		if p := recover(); p != nil {
 			log.ErrorContext(ctx, "action panicked", "event", "action_panic", "action", req.ActionKey)
-			resp, err = errorResponse(connection.Outcome{Code: connection.CodeInternal}, requestID), nil
+			resp, err = errorResponse(outcome{Outcome: connection.Outcome{Code: connection.CodeInternal}}, requestID), nil
 		}
 	}()
 
@@ -137,20 +220,33 @@ func (r *Runtime) HandleAction(ctx context.Context, req *pluginsdk.PluginActionR
 		return reject(ctx, log, req.ActionKey, connection.CodeValidation, requestID), nil
 	}
 	if actErr != nil {
-		out := connection.Classify(actErr)
-		if out.Code == connection.CodeInternal {
-			log.ErrorContext(ctx, "action failed", "event", "action_failed", "action", req.ActionKey, "err", actErr)
-		}
+		out := classify(actErr)
+		logFailure(ctx, log, req.ActionKey, out.Code, actErr, time.Since(start))
 		return errorResponse(out, requestID), nil
 	}
 	return jsonResponse(200, reply, nil), nil
+}
+
+// logFailure writes one action_failed line for every failure except a
+// validation error (AC8.3.1): ERROR for internal, WARN otherwise. The error
+// text goes through the redacting handler.
+func logFailure(ctx context.Context, log *slog.Logger, action, code string, err error, d time.Duration) {
+	if code == connection.CodeValidation {
+		return
+	}
+	level := slog.LevelWarn
+	if code == connection.CodeInternal {
+		level = slog.LevelError
+	}
+	log.Log(ctx, level, "action failed", "event", "action_failed", "action", action, "errorCode", code,
+		"durationMs", d.Milliseconds(), "err", err)
 }
 
 // reject answers a request refused before it reaches the service, and logs
 // it so its requestId can be found in the logs.
 func reject(ctx context.Context, log *slog.Logger, action, code, requestID string) *pluginsdk.PluginActionResponse {
 	log.WarnContext(ctx, "action rejected", "event", "action_rejected", "action", action, "errorCode", code)
-	return errorResponse(connection.Outcome{Code: code}, requestID)
+	return errorResponse(outcome{Outcome: connection.Outcome{Code: code}}, requestID)
 }
 
 // statusFor is the one table from action error code to HTTP status.
@@ -158,6 +254,8 @@ func statusFor(code string) int {
 	switch code {
 	case connection.CodeValidation:
 		return 400
+	case connection.CodeReconnectRequired:
+		return 401
 	case codeNotFound:
 		return 404
 	case connection.CodeConflict, connection.CodeIntegrationDisabled:
@@ -175,16 +273,39 @@ type actionError struct {
 	Code              string `json:"code"`
 	RetryAfterSeconds int    `json:"retryAfterSeconds,omitempty"`
 	Field             string `json:"field,omitempty"`
+	PullRequestNumber int    `json:"pullRequestNumber,omitempty"` // U4: the open PR of a create conflict
 	RequestID         string `json:"requestId"`
 }
 
-func errorResponse(out connection.Outcome, requestID string) *pluginsdk.PluginActionResponse {
+// outcome is an action error: the connection outcome plus U4's open PR number.
+type outcome struct {
+	connection.Outcome
+	PullRequestNumber int
+}
+
+// classify maps an action error to its code: U4's Git errors first, then
+// the connection's table.
+func classify(err error) outcome {
+	var open *git.OpenPRExistsError
+	switch {
+	case errors.As(err, &open):
+		return outcome{Outcome: connection.Outcome{Code: connection.CodeConflict}, PullRequestNumber: open.Number}
+	case errors.Is(err, git.ErrNotFound):
+		return outcome{Outcome: connection.Outcome{Code: codeNotFound}}
+	case errors.Is(err, git.ErrConflict), errors.Is(err, git.ErrStale):
+		return outcome{Outcome: connection.Outcome{Code: connection.CodeConflict}}
+	}
+	return outcome{Outcome: connection.Classify(err)}
+}
+
+func errorResponse(out outcome, requestID string) *pluginsdk.PluginActionResponse {
 	var headers map[string]string
 	if out.RetryAfterSeconds > 0 {
 		headers = map[string]string{"Retry-After": strconv.Itoa(out.RetryAfterSeconds)}
 	}
 	body := map[string]actionError{"error": {
-		Code: out.Code, RetryAfterSeconds: out.RetryAfterSeconds, Field: out.Field, RequestID: requestID,
+		Code: out.Code, RetryAfterSeconds: out.RetryAfterSeconds, Field: out.Field,
+		PullRequestNumber: out.PullRequestNumber, RequestID: requestID,
 	}}
 	return jsonResponse(statusFor(out.Code), body, headers)
 }
@@ -260,4 +381,12 @@ func (s hostStores) SetState(ctx context.Context, scope, scopeID, key string, va
 		return err
 	}
 	return h.SetState(ctx, scope, scopeID, key, value)
+}
+
+func (s hostStores) DeleteState(ctx context.Context, scope, scopeID, key string) error {
+	h, err := s.get()
+	if err != nil {
+		return err
+	}
+	return h.DeleteState(ctx, scope, scopeID, key)
 }

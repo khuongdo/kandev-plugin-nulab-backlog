@@ -1,0 +1,199 @@
+{
+  "stage": "code-generation",
+  "unit": "connection",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "docs/manual-checks/TEMPLATE.md"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "internal/backlog/client.go"
+    },
+    {
+      "path": "internal/backlog/client_test.go"
+    },
+    {
+      "path": "internal/backlog/group.go"
+    },
+    {
+      "path": "internal/backlog/group_test.go"
+    },
+    {
+      "path": "internal/backlog/limiter_test.go"
+    },
+    {
+      "path": "internal/backlog/oauth.go"
+    },
+    {
+      "path": "internal/backlog/oauth_test.go"
+    },
+    {
+      "path": "internal/backlog/oauth_types_test.go"
+    },
+    {
+      "path": "internal/backlog/projects.go"
+    },
+    {
+      "path": "internal/backlog/projects_test.go"
+    },
+    {
+      "path": "internal/backlog/projects_types_test.go"
+    },
+    {
+      "path": "internal/backlog/testdata/error_500_bait.json"
+    },
+    {
+      "path": "internal/backlog/testdata/projects_empty.json"
+    },
+    {
+      "path": "internal/backlog/testdata/projects_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/token_invalid_grant.json"
+    },
+    {
+      "path": "internal/backlog/testdata/token_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/token_refreshed.json"
+    },
+    {
+      "path": "internal/connection/change.go"
+    },
+    {
+      "path": "internal/connection/change_test.go"
+    },
+    {
+      "path": "internal/connection/credentials_test.go"
+    },
+    {
+      "path": "internal/connection/events_test.go"
+    },
+    {
+      "path": "internal/connection/fakes_test.go"
+    },
+    {
+      "path": "internal/connection/lifecycle.go"
+    },
+    {
+      "path": "internal/connection/lifecycle_test.go"
+    },
+    {
+      "path": "internal/connection/oauth.go"
+    },
+    {
+      "path": "internal/connection/oauth_config_test.go"
+    },
+    {
+      "path": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "path": "internal/connection/project_key_test.go"
+    },
+    {
+      "path": "internal/connection/projects.go"
+    },
+    {
+      "path": "internal/connection/projects_service_test.go"
+    },
+    {
+      "path": "internal/connection/record_compat_test.go"
+    },
+    {
+      "path": "internal/connection/service.go"
+    },
+    {
+      "path": "internal/connection/service_test.go"
+    },
+    {
+      "path": "internal/connection/state_token_test.go"
+    },
+    {
+      "path": "internal/connection/store.go"
+    },
+    {
+      "path": "internal/connection/store_test.go"
+    },
+    {
+      "path": "internal/connection/u2_helpers_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u2_test.go"
+    },
+    {
+      "path": "internal/plugin/config.go"
+    },
+    {
+      "path": "internal/plugin/config_test.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/plugin/webhook.go"
+    },
+    {
+      "path": "internal/plugin/webhook_test.go"
+    },
+    {
+      "path": "internal/testutil/testutil.go"
+    },
+    {
+      "path": "internal/testutil/testutil_test.go"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/confirm-dialog.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/confirm-dialog.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "path": "ui/src/settings/oauth.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/oauth.ts"
+    },
+    {
+      "path": "ui/src/settings/project-picker.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "path": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/state.test.ts"
+    },
+    {
+      "path": "ui/src/settings/state.ts"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    }
+  ]
+}

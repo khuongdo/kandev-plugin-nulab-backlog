@@ -1,0 +1,250 @@
+{
+  "stage": "code-generation",
+  "unit": "git-pr",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "docs/manual-checks/TEMPLATE.md"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "internal/backlog/client.go"
+    },
+    {
+      "path": "internal/backlog/git_client_test.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests_types_test.go"
+    },
+    {
+      "path": "internal/backlog/repositories.go"
+    },
+    {
+      "path": "internal/backlog/repositories_types_test.go"
+    },
+    {
+      "path": "internal/backlog/testdata/issue_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/pullrequest_created.json"
+    },
+    {
+      "path": "internal/backlog/testdata/pullrequest_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/pullrequests_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/repositories_empty.json"
+    },
+    {
+      "path": "internal/backlog/testdata/repositories_ok.json"
+    },
+    {
+      "path": "internal/connection/fakes_test.go"
+    },
+    {
+      "path": "internal/connection/git_credential.go"
+    },
+    {
+      "path": "internal/connection/git_credential_test.go"
+    },
+    {
+      "path": "internal/connection/git_credential_types_test.go"
+    },
+    {
+      "path": "internal/connection/lifecycle.go"
+    },
+    {
+      "path": "internal/connection/service.go"
+    },
+    {
+      "path": "internal/connection/store.go"
+    },
+    {
+      "path": "internal/connection/store_test.go"
+    },
+    {
+      "path": "internal/git/create_test.go"
+    },
+    {
+      "path": "internal/git/doc.go"
+    },
+    {
+      "path": "internal/git/events.go"
+    },
+    {
+      "path": "internal/git/events_test.go"
+    },
+    {
+      "path": "internal/git/fakes_test.go"
+    },
+    {
+      "path": "internal/git/harness_test.go"
+    },
+    {
+      "path": "internal/git/host.go"
+    },
+    {
+      "path": "internal/git/impact_test.go"
+    },
+    {
+      "path": "internal/git/leak_test.go"
+    },
+    {
+      "path": "internal/git/links_test.go"
+    },
+    {
+      "path": "internal/git/queries_test.go"
+    },
+    {
+      "path": "internal/git/repos_test.go"
+    },
+    {
+      "path": "internal/git/resolver_test.go"
+    },
+    {
+      "path": "internal/git/service.go"
+    },
+    {
+      "path": "internal/git/status_test.go"
+    },
+    {
+      "path": "internal/git/store.go"
+    },
+    {
+      "path": "internal/git/store_test.go"
+    },
+    {
+      "path": "internal/git/types.go"
+    },
+    {
+      "path": "internal/git/types_test.go"
+    },
+    {
+      "path": "internal/git/watcher.go"
+    },
+    {
+      "path": "internal/git/watcher_test.go"
+    },
+    {
+      "path": "internal/git/watches_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/credential.go"
+    },
+    {
+      "path": "internal/plugin/credential_test.go"
+    },
+    {
+      "path": "internal/plugin/git_actions.go"
+    },
+    {
+      "path": "internal/plugin/host_port.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/plugin/runtime_u4_test.go"
+    },
+    {
+      "path": "ui/src/git/create-pr.test.ts"
+    },
+    {
+      "path": "ui/src/git/create-pr.ts"
+    },
+    {
+      "path": "ui/src/git/dashboard-page.test.tsx"
+    },
+    {
+      "path": "ui/src/git/dashboard-page.tsx"
+    },
+    {
+      "path": "ui/src/git/git-access.test.tsx"
+    },
+    {
+      "path": "ui/src/git/git-access.tsx"
+    },
+    {
+      "path": "ui/src/git/git-state.test.ts"
+    },
+    {
+      "path": "ui/src/git/git-state.ts"
+    },
+    {
+      "path": "ui/src/git/pr-link.test.ts"
+    },
+    {
+      "path": "ui/src/git/pr-link.ts"
+    },
+    {
+      "path": "ui/src/git/repository-provider.test.ts"
+    },
+    {
+      "path": "ui/src/git/repository-provider.ts"
+    },
+    {
+      "path": "ui/src/git/review-provider.test.tsx"
+    },
+    {
+      "path": "ui/src/git/review-provider.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.test.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.tsx"
+    },
+    {
+      "path": "ui/src/git/watches-page.test.tsx"
+    },
+    {
+      "path": "ui/src/git/watches-page.tsx"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/index.ts"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "path": "ui/src/settings/state.ts"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    }
+  ]
+}

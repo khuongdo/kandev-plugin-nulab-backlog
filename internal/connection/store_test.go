@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -403,4 +404,446 @@ func TestLoadFailsWhenTheSwitchCannotBeRead(t *testing.T) {
 	state.data[stateKey("workspace", ws, "integration")] = map[string]any{"schemaVersion": 1, "enabled": 3}
 	_, err := newTestStore(newFakeSecrets(), state).Load(context.Background(), ws)
 	require.ErrorIs(t, err, ErrStore)
+}
+
+// ---- U2 store cases ----
+
+func oauthTokens(t *testing.T, expiresAt time.Time) backlog.TokenSet {
+	t.Helper()
+	return backlog.TokenSet{AccessToken: testutil.Token(t), RefreshToken: testutil.Token(t), ExpiresAt: expiresAt}
+}
+
+func TestOAuthSaveWritesTheTokenSecretAndRecord(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	tokens := oauthTokens(t, fixedNow.Add(time.Hour))
+
+	view, err := store.SaveOAuth(context.Background(), ws, "a.backlog.com", tokens, testUser)
+	require.NoError(t, err)
+
+	sec := secretOf(t, secrets, ws)
+	require.Equal(t, "oauth", sec["authMethod"])
+	require.Equal(t, tokens.AccessToken, sec["accessToken"])
+	require.Equal(t, tokens.RefreshToken, sec["refreshToken"])
+	require.Equal(t, fixedNow.Add(time.Hour).Format(time.RFC3339), sec["expiresAt"])
+	require.NotContains(t, sec, "apiKey")
+	require.EqualValues(t, 1, sec["connectionEpoch"])
+	rec := recordOf(t, state, ws)
+	require.Equal(t, "oauth", rec["authMethod"])
+	recJSON, _ := json.Marshal(rec)
+	require.NotContains(t, string(recJSON), tokens.AccessToken)
+	require.Equal(t, StateConnected, view.State)
+	require.Equal(t, "oauth", view.AuthMethod)
+	require.True(t, view.HasOAuthToken)
+	require.False(t, view.HasAPIKey)
+	require.Equal(t, 1, view.ConnectionEpoch)
+}
+
+func TestOAuthSaveRecordFailureRollsBackTheNewSecret(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	state.failSet = true
+	_, err := newTestStore(secrets, state).SaveOAuth(context.Background(), ws, "a.backlog.com", oauthTokens(t, fixedNow), testUser)
+	require.ErrorIs(t, err, ErrStore)
+	require.Empty(t, secrets.snapshot(), "secret written first, then deleted by the U1 rollback")
+}
+
+func TestTokenUpdateTokensRewritesOnlyTheSecretAndKeepsTheEpoch(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.SaveOAuth(context.Background(), ws, "a.backlog.com", oauthTokens(t, fixedNow), testUser)
+	require.NoError(t, err)
+	recBefore, stateWrites := recordOf(t, state, ws), state.setCalls
+	next := oauthTokens(t, fixedNow.Add(time.Hour))
+
+	require.NoError(t, store.UpdateTokens(context.Background(), ws, 1, next))
+	sec := secretOf(t, secrets, ws)
+	require.Equal(t, next.AccessToken, sec["accessToken"])
+	require.Equal(t, next.RefreshToken, sec["refreshToken"], "the rotated refresh token is stored (AC1.4.2)")
+	require.EqualValues(t, 1, sec["connectionEpoch"])
+	require.Equal(t, stateWrites, state.setCalls, "the record is never touched")
+	require.Equal(t, recBefore, recordOf(t, state, ws))
+	view, err := store.Load(context.Background(), ws)
+	require.NoError(t, err)
+	require.Equal(t, StateConnected, view.State)
+}
+
+func TestTokenUpdateTokensWithAStaleEpochWritesNothing(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.SaveOAuth(context.Background(), ws, "a.backlog.com", oauthTokens(t, fixedNow), testUser)
+	require.NoError(t, err)
+	before, setCalls := secrets.snapshot(), secrets.setCalls
+	err = store.UpdateTokens(context.Background(), ws, 7, oauthTokens(t, fixedNow))
+	require.ErrorIs(t, err, ErrStale)
+	require.Equal(t, before, secrets.snapshot())
+	require.Equal(t, setCalls, secrets.setCalls)
+}
+
+func TestTokenMarkSignInAgainChangesTheViewState(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.SaveOAuth(context.Background(), ws, "a.backlog.com", oauthTokens(t, fixedNow), testUser)
+	require.NoError(t, err)
+	require.ErrorIs(t, store.MarkSignInAgain(context.Background(), ws, 9), ErrStale)
+	require.NoError(t, store.MarkSignInAgain(context.Background(), ws, 1))
+	require.Equal(t, true, recordOf(t, state, ws)["signInAgain"])
+	view, err := store.Load(context.Background(), ws)
+	require.NoError(t, err)
+	require.Equal(t, StateSignInAgain, view.State)
+	require.False(t, view.Connected)
+	require.Equal(t, "a.backlog.com", view.SpaceHost)
+}
+
+func TestOAuthPendingStateIsSingleUse(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	nonce, err := newNonce()
+	require.NoError(t, err)
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(10*time.Minute)))
+
+	rec, ok := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
+	require.True(t, ok)
+	require.EqualValues(t, 1, rec["schemaVersion"])
+	require.Equal(t, "a.backlog.com", rec["spaceHost"])
+	require.Equal(t, fixedNow.Add(10*time.Minute).Format(time.RFC3339), rec["expiresAt"])
+	require.Len(t, rec["nonceHash"], 64, "hex SHA-256, never the nonce")
+	require.NotContains(t, fmt.Sprint(rec), fmt.Sprintf("%x", nonce))
+
+	host, found, err := store.TakePending(context.Background(), ws, nonce)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "a.backlog.com", host)
+	_, still := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
+	require.False(t, still, "deleted before it is returned")
+
+	_, found, err = store.TakePending(context.Background(), ws, nonce)
+	require.NoError(t, err)
+	require.False(t, found, "a used state is refused")
+}
+
+func TestOAuthPendingWrongNonceAndExpiryAreRefused(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	nonce, _ := newNonce()
+	other, _ := newNonce()
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(10*time.Minute)))
+
+	_, found, err := store.TakePending(context.Background(), ws, other)
+	require.NoError(t, err)
+	require.False(t, found, "a different nonce never matches")
+
+	store.Now = func() time.Time { return fixedNow.Add(10*time.Minute + time.Second) }
+	_, found, err = store.TakePending(context.Background(), ws, nonce)
+	require.NoError(t, err)
+	require.False(t, found, "an expired state is refused")
+	_, still := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
+	require.False(t, still, "an expired state is deleted")
+}
+
+func TestOAuthPendingDeleteAndUndecodable(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	nonce, _ := newNonce()
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(time.Minute)))
+	require.NoError(t, store.DeletePending(context.Background(), ws))
+	require.Empty(t, state.snapshot())
+
+	state.data[stateKey("workspace", ws, "oauth_pending")] = map[string]any{"schemaVersion": 1, "nonceHash": 3}
+	_, found, err := store.TakePending(context.Background(), ws, nonce)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	state.failDel = true
+	require.ErrorIs(t, store.DeletePending(context.Background(), ws), ErrStore)
+}
+
+func TestDisconnectDeletesTheSecretThenWritesADisconnectRecord(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	_, err = store.SaveProjects(context.Background(), ws, []string{"PROJ"})
+	require.NoError(t, err)
+
+	view, changed, err := store.Disconnect(context.Background(), ws)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Empty(t, secrets.snapshot(), "no API key, token or refresh token is left")
+	rec := recordOf(t, state, ws)
+	require.Equal(t, true, rec["disconnected"])
+	require.EqualValues(t, 3, rec["connectionEpoch"], "epoch + 1")
+	require.Equal(t, "a.backlog.com", rec["previousSpaceHost"])
+	require.Equal(t, []any{"PROJ"}, rec["previousProjects"])
+	require.Empty(t, rec["connectedUserName"])
+	require.Empty(t, rec["spaceHost"])
+	require.Equal(t, StateNotConnected, view.State)
+	require.Equal(t, 3, view.ConnectionEpoch)
+
+	loaded, err := store.Load(context.Background(), ws)
+	require.NoError(t, err)
+	require.Equal(t, StateNotConnected, loaded.State)
+
+	again, err := store.Save(context.Background(), ws, "b.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	require.Equal(t, 4, again.ConnectionEpoch, "the epoch never goes back")
+}
+
+func TestDisconnectWhenNotConnectedChangesNothing(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, changed, err := store.Disconnect(context.Background(), ws)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Empty(t, state.snapshot())
+
+	_, err = store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	_, _, err = store.Disconnect(context.Background(), ws)
+	require.NoError(t, err)
+	writes := state.setCalls
+	_, changed, err = store.Disconnect(context.Background(), ws)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, writes, state.setCalls)
+}
+
+func TestDisconnectSecretDeleteFailureWritesNoRecord(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	before := recordOf(t, state, ws)
+	secrets.failDel = true
+	_, _, err = store.Disconnect(context.Background(), ws)
+	require.ErrorIs(t, err, ErrStore)
+	require.Equal(t, before, recordOf(t, state, ws))
+}
+
+func TestProjectsSaveProjectsRewritesTheSecretThenTheRecord(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	key := testutil.APIKey(t)
+	_, err := store.Save(context.Background(), ws, "a.backlog.com", key, testUser)
+	require.NoError(t, err)
+
+	view, err := store.SaveProjects(context.Background(), ws, []string{"PROJ", "DEMO"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"PROJ", "DEMO"}, view.SelectedProjects)
+	require.Equal(t, 2, view.ConnectionEpoch)
+	sec := secretOf(t, secrets, ws)
+	require.Equal(t, key, sec["apiKey"], "same values")
+	require.EqualValues(t, 2, sec["connectionEpoch"])
+	rec := recordOf(t, state, ws)
+	require.EqualValues(t, 2, rec["connectionEpoch"])
+	require.Equal(t, []any{"PROJ", "DEMO"}, rec["selectedProjects"])
+	require.Equal(t, "Test User", rec["connectedUserName"])
+}
+
+func TestProjectsSaveProjectsRecordFailureRestoresThePreviousSecret(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	before := secrets.snapshot()
+	state.failSet = true
+	_, err = store.SaveProjects(context.Background(), ws, []string{"PROJ"})
+	require.ErrorIs(t, err, ErrStore)
+	require.Equal(t, before, secrets.snapshot())
+}
+
+func TestProjectsSaveProjectsNeedsAConnection(t *testing.T) {
+	_, err := newTestStore(newFakeSecrets(), newFakeState()).SaveProjects(context.Background(), ws, []string{"PROJ"})
+	require.ErrorIs(t, err, ErrNotConnected)
+}
+
+func TestSpaceChangeClearsTheSelectionAndRemembersThePreviousHost(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, err := store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	_, err = store.SaveProjects(context.Background(), ws, []string{"PROJ"})
+	require.NoError(t, err)
+
+	view, err := store.Save(context.Background(), ws, "b.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	require.Empty(t, view.SelectedProjects)
+	rec := recordOf(t, state, ws)
+	require.Equal(t, "a.backlog.com", rec["previousSpaceHost"])
+	require.Equal(t, []any{"PROJ"}, rec["previousProjects"])
+	require.NotContains(t, rec, "selectedProjects")
+
+	same, err := store.Save(context.Background(), ws, "b.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	require.Equal(t, "b.backlog.com", same.SpaceHost, "same host keeps the selection and the memory")
+	require.Equal(t, "a.backlog.com", recordOf(t, state, ws)["previousSpaceHost"])
+}
+
+func TestRestorePutsBackThePreviousProjects(t *testing.T) {
+	t.Run("after a space change", func(t *testing.T) {
+		secrets, state := newFakeSecrets(), newFakeState()
+		store := newTestStore(secrets, state)
+		_, _ = store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+		_, _ = store.SaveProjects(context.Background(), ws, []string{"PROJ"})
+		_, _ = store.Save(context.Background(), ws, "b.backlog.com", testutil.APIKey(t), testUser)
+		_, _ = store.SaveProjects(context.Background(), ws, []string{"DEMO"})
+		view, err := store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+		require.NoError(t, err)
+		require.Equal(t, []string{"PROJ"}, view.SelectedProjects)
+		require.Equal(t, "b.backlog.com", recordOf(t, state, ws)["previousSpaceHost"])
+	})
+	t.Run("after a disconnect", func(t *testing.T) {
+		secrets, state := newFakeSecrets(), newFakeState()
+		store := newTestStore(secrets, state)
+		_, _ = store.Save(context.Background(), ws, "a.backlog.com", testutil.APIKey(t), testUser)
+		_, _ = store.SaveProjects(context.Background(), ws, []string{"PROJ"})
+		_, _, _ = store.Disconnect(context.Background(), ws)
+		view, err := store.SaveOAuth(context.Background(), ws, "a.backlog.com", oauthTokens(t, fixedNow), testUser)
+		require.NoError(t, err)
+		require.Equal(t, []string{"PROJ"}, view.SelectedProjects)
+		require.NotContains(t, recordOf(t, state, ws), "previousSpaceHost", "nothing left to restore")
+	})
+}
+
+func TestU2_StoreCallsKeepTheOneSecondLimit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		state := newFakeState()
+		state.blockGet = true
+		store := newTestStore(newFakeSecrets(), state)
+		nonce, _ := newNonce()
+		for name, call := range map[string]func() error{
+			"TakePending":  func() error { _, _, err := store.TakePending(context.Background(), ws, nonce); return err },
+			"SaveProjects": func() error { _, err := store.SaveProjects(context.Background(), ws, nil); return err },
+			"Disconnect":   func() error { _, _, err := store.Disconnect(context.Background(), ws); return err },
+		} {
+			start := time.Now()
+			require.ErrorIs(t, call(), ErrStore, name)
+			require.Equal(t, time.Second, time.Since(start), name)
+		}
+	})
+}
+
+func TestU2_WorkspacesStayIndependent(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	_, _ = store.Save(context.Background(), "ws-a", "a.backlog.com", testutil.APIKey(t), testUser)
+	_, _ = store.Save(context.Background(), "ws-b", "b.backlog.com", testutil.APIKey(t), testUser)
+	_, _, err := store.Disconnect(context.Background(), "ws-a")
+	require.NoError(t, err)
+	b, err := store.Load(context.Background(), "ws-b")
+	require.NoError(t, err)
+	require.Equal(t, StateConnected, b.State)
+}
+
+// U4: the Git secret backlog.git.<ws> (US5.5, AC1.5.4, AC1.8.2).
+
+const gitKey = "backlog.git." + ws
+
+func gitSecretOf(t *testing.T, secrets *fakeSecrets) (map[string]any, bool) {
+	t.Helper()
+	raw, ok := secrets.snapshot()[gitKey]
+	if !ok {
+		return nil, false
+	}
+	var v map[string]any
+	require.NoError(t, json.Unmarshal([]byte(raw), &v))
+	return v, true
+}
+
+func connectedStore(t *testing.T, host string) (*Store, *fakeSecrets, *fakeState, context.Context) {
+	t.Helper()
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	log, _ := testLogger(t)
+	ctx := redact.WithLogger(context.Background(), log)
+	_, err := store.Save(ctx, ws, host, testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	return store, secrets, state, ctx
+}
+
+func TestU4_GitStore_SaveBindsToTheConnectedHost(t *testing.T) {
+	store, secrets, _, ctx := connectedStore(t, "a.backlog.com")
+	pw := testutil.Token(t)
+	require.NoError(t, store.SaveGit(ctx, ws, "lan", pw))
+	sec, ok := gitSecretOf(t, secrets)
+	require.True(t, ok)
+	require.Equal(t, map[string]any{"username": "lan", "password": pw, "spaceHost": "a.backlog.com", "revision": float64(1)}, sec)
+
+	require.NoError(t, store.SaveGit(ctx, ws, "lan2", testutil.Token(t)))
+	sec, _ = gitSecretOf(t, secrets)
+	require.EqualValues(t, 2, sec["revision"], "every save bumps the revision")
+
+	view, err := store.Load(ctx, ws)
+	require.NoError(t, err)
+	require.True(t, view.HasGitCredential)
+	b, _ := json.Marshal(view)
+	testutil.AssertNoLeak(t, string(b), pw, 8)
+}
+
+func TestU4_GitStore_SaveNeedsAConnection(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	require.ErrorIs(t, store.SaveGit(context.Background(), ws, "lan", testutil.Token(t)), ErrNotConnected)
+	require.Empty(t, secrets.snapshot())
+}
+
+func TestU4_GitStore_LoadIgnoresAnotherHost(t *testing.T) {
+	store, secrets, _, ctx := connectedStore(t, "a.backlog.com")
+	secrets.data[gitKey] = `{"username":"lan","password":"TESTSECRET-x","spaceHost":"b.backlog.com","revision":1}`
+	view, err := store.Load(ctx, ws)
+	require.NoError(t, err)
+	require.False(t, view.HasGitCredential)
+	secrets.data[gitKey] = `not json`
+	view, err = store.Load(ctx, ws)
+	require.NoError(t, err)
+	require.False(t, view.HasGitCredential)
+}
+
+func TestU4_GitStore_DisconnectDeletesTheGitSecretFirst(t *testing.T) {
+	store, secrets, state, ctx := connectedStore(t, "a.backlog.com")
+	require.NoError(t, store.SaveGit(ctx, ws, "lan", testutil.Token(t)))
+	secrets.ops = nil
+	_, changed, err := store.Disconnect(ctx, ws)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, []string{"del:backlog.connection." + ws, "del:" + gitKey}, secrets.ops)
+	require.Empty(t, secrets.snapshot())
+	require.Equal(t, true, recordOf(t, state, ws)["disconnected"])
+}
+
+func TestU4_GitStore_FailedGitDeleteWritesNoRecord(t *testing.T) {
+	store, secrets, state, ctx := connectedStore(t, "a.backlog.com")
+	require.NoError(t, store.SaveGit(ctx, ws, "lan", testutil.Token(t)))
+	secrets.failDelKey = gitKey
+	_, _, err := store.Disconnect(ctx, ws)
+	require.ErrorIs(t, err, ErrStore)
+	require.NotContains(t, recordOf(t, state, ws), "disconnected", "no disconnect record")
+}
+
+func TestU4_GitStore_SpaceChangeDeletesItFirst(t *testing.T) {
+	store, secrets, _, ctx := connectedStore(t, "a.backlog.com")
+	require.NoError(t, store.SaveGit(ctx, ws, "lan", testutil.Token(t)))
+	secrets.ops = nil
+	_, err := store.Save(ctx, ws, "b.backlog.jp", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	require.Equal(t, []string{"del:" + gitKey, "set:backlog.connection." + ws}, secrets.ops)
+	_, ok := gitSecretOf(t, secrets)
+	require.False(t, ok)
+}
+
+func TestU4_GitStore_SameHostChangesKeepIt(t *testing.T) {
+	store, secrets, _, ctx := connectedStore(t, "a.backlog.com")
+	require.NoError(t, store.SaveGit(ctx, ws, "lan", testutil.Token(t)))
+	_, err := store.Save(ctx, ws, "a.backlog.com", testutil.APIKey(t), testUser)
+	require.NoError(t, err)
+	_, err = store.SaveProjects(ctx, ws, []string{"PROJ"})
+	require.NoError(t, err)
+	tokens := oauthTokens(t, fixedNow.Add(time.Hour))
+	view, err := store.SaveOAuth(ctx, ws, "a.backlog.com", tokens, testUser)
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateTokens(ctx, ws, view.ConnectionEpoch, oauthTokens(t, fixedNow.Add(2*time.Hour))))
+	_, ok := gitSecretOf(t, secrets)
+	require.True(t, ok, "same-host replacement, project saves and token refresh keep it")
+	view, err = store.Load(ctx, ws)
+	require.NoError(t, err)
+	require.True(t, view.HasGitCredential)
 }

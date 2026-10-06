@@ -59,7 +59,7 @@ func TestMyselfReturnsTheUser(t *testing.T) {
 	require.Equal(t, User{ID: 1234, UserID: "test.user", Name: "Test User"}, u)
 }
 
-func TestMyselfSendsTheKeyAsAQueryParameterOverHTTPS(t *testing.T) {
+func TestAPIKeyHeaderSendsTheKeyAsAHeaderOverHTTPS(t *testing.T) {
 	key := testutil.APIKey(t) + "+/="
 	var got *http.Request
 	c, _ := fakeBacklog(t, func(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +71,32 @@ func TestMyselfSendsTheKeyAsAQueryParameterOverHTTPS(t *testing.T) {
 	require.NotNil(t, got.TLS)
 	require.Equal(t, spaceHost, got.Host)
 	require.Equal(t, "/api/v2/users/myself", got.URL.Path)
-	require.Equal(t, key, got.URL.Query().Get("apiKey"))
-	require.Contains(t, got.URL.RawQuery, url.QueryEscape(key))
+	require.Equal(t, key, got.Header.Get("Backlog-API-Key"))
+	require.Empty(t, got.URL.RawQuery, "the key is never a query parameter (NFR3, AC1.1.7)")
+	require.Empty(t, got.Header.Get("Authorization"))
+}
+
+func TestAPIKeyHeaderAccessTokenIsSentAsBearer(t *testing.T) {
+	for name, c := range map[string]Credentials{
+		"token only":         {SpaceHost: spaceHost, AccessToken: "TOKEN"},
+		"never both headers": {SpaceHost: spaceHost, AccessToken: "TOKEN", APIKey: "KEY"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			token := testutil.Token(t)
+			c.AccessToken = token
+			var got http.Header
+			var query string
+			client, _ := fakeBacklog(t, func(w http.ResponseWriter, r *http.Request) {
+				got, query = r.Header.Clone(), r.URL.RawQuery
+				_, _ = w.Write(readFixture(t, "myself_ok.json"))
+			})
+			_, err := client.Myself(context.Background(), c)
+			require.NoError(t, err)
+			require.Equal(t, "Bearer "+token, got.Get("Authorization"))
+			require.Empty(t, got.Get("Backlog-API-Key"))
+			require.Empty(t, query)
+		})
+	}
 }
 
 func TestMyselfDoesNotFollowRedirects(t *testing.T) {
@@ -172,12 +196,15 @@ func TestMyselfRateLimitWait(t *testing.T) {
 		name    string
 		headers map[string]string
 		want    time.Duration
+		hits    int32
 	}{
-		{"uses X-RateLimit-Reset first", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()+30, 10), "Retry-After": "5"}, 30 * time.Second},
-		{"falls back to Retry-After", map[string]string{"Retry-After": "12"}, 12 * time.Second},
-		{"defaults to 60 seconds", nil, 60 * time.Second},
-		{"clamps a past reset to 1 second", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()-10, 10)}, time.Second},
-		{"ignores a malformed reset", map[string]string{"X-RateLimit-Reset": "soon", "Retry-After": "7"}, 7 * time.Second},
+		// Myself is Interactive: a wait over 3 s is returned at once, a
+		// shorter one is retried up to 3 times (U2, AC8.4.2).
+		{"uses X-RateLimit-Reset first", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()+30, 10), "Retry-After": "5"}, 30 * time.Second, 1},
+		{"falls back to Retry-After", map[string]string{"Retry-After": "12"}, 12 * time.Second, 1},
+		{"defaults to 60 seconds", nil, 60 * time.Second, 1},
+		{"clamps a past reset to 1 second", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()-10, 10)}, time.Second, 4},
+		{"ignores a malformed reset", map[string]string{"X-RateLimit-Reset": "soon", "Retry-After": "7"}, 7 * time.Second, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,12 +218,13 @@ func TestMyselfRateLimitWait(t *testing.T) {
 				_, _ = w.Write(readFixture(t, "error_429.json"))
 			})
 			c.Now = func() time.Time { return now }
+			c.Wait = func(context.Context, time.Duration) error { return nil }
 			_, err := c.Myself(context.Background(), creds(testutil.APIKey(t)))
 			var be *Error
 			require.True(t, errors.As(err, &be))
 			require.Equal(t, KindRateLimited, be.Kind)
 			require.Equal(t, tc.want, be.RetryAfter)
-			require.EqualValues(t, 1, hits.Load(), "no retry (BR2.10)")
+			require.Equal(t, tc.hits, hits.Load())
 		})
 	}
 }

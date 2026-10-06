@@ -37,10 +37,10 @@
 - **In Progress**: code-generation
 
 ## Runtime State
-- **Revision Count**: 0
+- **Revision Count**: 1
 - **Construction Checkpoints**: enabled
 - **Construction Iteration**: stage-major
-- **Construction Execution**: swarm
+- **Construction Execution**: serial
 
 
 
@@ -71,6 +71,26 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+- **Active Unit**: git-pr
+
+- **Unit State**: in-progress
+
+- **Parked**: 2026-10-06T12:38:53Z
+
+- **Parked At Stage**: code-generation
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -133,7 +153,9 @@ Per unit: [TBD]
 - **Current Stage**: code-generation
 - **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-10-06T08:41:38Z
+- **Last Updated**: 2026-10-06T12:38:53Z
+
+- **Construction Autonomy Mode**: gated
 
 ## Session Resume Point
 - **Last Completed Stage**: delivery-planning

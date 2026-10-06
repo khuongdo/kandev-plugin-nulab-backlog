@@ -33,6 +33,19 @@ type fakeHost struct {
 	reads          []string      // secret and state keys read, in order
 	writes         int           // secret and state writes
 	getDelay       time.Duration // each GetState takes this long (virtual time under synctest)
+	config         map[string]any
+	failConfig     bool
+	configCalls    int
+}
+
+func (h *fakeHost) GetConfig(context.Context) (map[string]any, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.configCalls++
+	if h.failConfig {
+		return nil, errors.New("config unavailable")
+	}
+	return h.config, nil
 }
 
 func newFakeHost() *fakeHost {
@@ -62,6 +75,14 @@ func (h *fakeHost) SetState(_ context.Context, scope, scopeID, key string, value
 	defer h.mu.Unlock()
 	h.writes++
 	h.state[scope+"/"+scopeID+"/"+key] = value
+	return nil
+}
+
+func (h *fakeHost) DeleteState(_ context.Context, scope, scopeID, key string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.writes++
+	delete(h.state, scope+"/"+scopeID+"/"+key)
 	return nil
 }
 
@@ -96,6 +117,27 @@ type fakeGateway struct {
 	panic bool
 	block bool // never answer: wait for the call's deadline
 	calls int
+
+	projects      []backlog.Project
+	projectsErr   error
+	tokens        backlog.TokenSet
+	exchangeErr   error
+	exchangePanic bool
+}
+
+func (g *fakeGateway) Projects(context.Context, backlog.Credentials) ([]backlog.Project, error) {
+	return g.projects, g.projectsErr
+}
+
+func (g *fakeGateway) ExchangeOAuthCode(context.Context, string, backlog.OAuthClient, string, string) (backlog.TokenSet, error) {
+	if g.exchangePanic {
+		panic("exchange exploded")
+	}
+	return g.tokens, g.exchangeErr
+}
+
+func (g *fakeGateway) RefreshToken(context.Context, string, backlog.OAuthClient, string) (backlog.TokenSet, error) {
+	return g.tokens, nil
 }
 
 func (g *fakeGateway) Myself(ctx context.Context, _ backlog.Credentials) (backlog.User, error) {
