@@ -23,6 +23,7 @@ function scripted(
   const host = fakeHost(async (key, input) => {
     if (key === "connection.list_projects") return list();
     if (key === "git.impact") return { prLinks: 3, prWatches: 2 };
+    if (key === "issues.impact") return { issueLinks: 4 };
     if (key === "connection.set_projects") return save(input?.body);
     throw new Error(`unexpected ${key}`);
   });
@@ -117,15 +118,17 @@ describe("Project picker (US1.7, US1.9)", () => {
     expect(announce).toHaveBeenCalledWith({ key: "rateLimitedRetrying", params: { seconds: 3 } });
   });
 
-  it("says how many PR links and watches of the unselected projects are turned off (AC1.9.1)", async () => {
+  it("says how many issue links, PR links and watches of the unselected projects are turned off (AC1.9.1)", async () => {
     const { host } = scripted(async () => ({ projects: PROJECTS }));
     const { c } = await render(host);
     await act(async () => box(c, "PROJ").click());
     await act(async () => byTestId(c, "backlog-projects-save")!.click());
     expect(byTestId(c, "backlog-deselect-dialog")!.textContent).toContain(
-      "3 PR links and 2 PR watches will be turned off.",
+      "4 issue links, 3 PR links and 2 PR watches will be turned off.",
     );
-    const impact = vi.mocked(host.api.invokeAction).mock.calls.find(([k]) => k === "git.impact")!;
-    expect(impact[1]).toEqual({ workspaceId: "ws-1", body: { projectKeys: ["PROJ"] } });
+    for (const key of ["git.impact", "issues.impact"]) {
+      const impact = vi.mocked(host.api.invokeAction).mock.calls.find(([k]) => k === key)!;
+      expect(impact[1]).toEqual({ workspaceId: "ws-1", body: { projectKeys: ["PROJ"] } });
+    }
   });
 });

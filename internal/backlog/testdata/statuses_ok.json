@@ -1,0 +1,30 @@
+[
+ {
+  "id": 1,
+  "projectId": 101,
+  "name": "Open",
+  "color": "#ed8077",
+  "displayOrder": 1000
+ },
+ {
+  "id": 2,
+  "projectId": 101,
+  "name": "In Progress",
+  "color": "#ed8077",
+  "displayOrder": 2000
+ },
+ {
+  "id": 3,
+  "projectId": 101,
+  "name": "Resolved",
+  "color": "#ed8077",
+  "displayOrder": 3000
+ },
+ {
+  "id": 4,
+  "projectId": 101,
+  "name": "Closed",
+  "color": "#ed8077",
+  "displayOrder": 4000
+ }
+]

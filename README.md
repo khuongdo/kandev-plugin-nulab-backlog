@@ -167,3 +167,30 @@ A1). They only use repositories of the projects selected in the Backlog settings
   to the same space brings them back **Paused**.
 - **Saved queries.** **Integrations > PR dashboard** saves pull request queries and lists up to 20
   matching pull requests with their linked tasks.
+
+## Backlog issues
+
+These features use only the projects selected in the Backlog settings. The plugin only reads
+from Backlog: it never creates, changes or comments on a Backlog issue.
+
+- **Issues page.** **Integrations > Backlog** lists the issues of the selected projects, newest
+  updated first, 20 per page. Filter by project, status and assignee, or search; typing a full
+  issue key such as `PROJ-123` puts that issue on top. Each row shows the Kandev tasks linked to
+  it. On a phone the rows become cards and the filters open from **Filters (n)**.
+- **Create task.** In a row's **…** menu, **Create task** creates a Kandev task in the workspace's
+  default workflow: the issue title, its description plus a link back to Backlog, and its priority
+  (High, Normal or Low). The task is linked to the issue. If the issue already has a task, you are
+  asked whether to open it or create another one.
+- **Link to task.** **Link to task** in the same menu links an existing task. A task links one issue
+  only; several tasks may link the same issue. **Unlink Backlog issue** in the task's menu removes
+  the link and changes nothing in Backlog.
+- **`#` references.** In the message composer, type `#` and choose **Backlog issues** to reference
+  an issue by key or title. Kandev checks the issue again when the message is sent.
+- **Backlog panel in the task.** Open the **Backlog issue** panel from the task's **+** panel menu to
+  see the issue's status, assignee, priority, due date, comments and attachments, read live from
+  Backlog. Attachments open in Backlog; files over 10 MB are not previewed.
+- **Badge and status sync.** A linked task's card shows a badge such as `PROJ-120 · Resolved`. The
+  plugin checks the status of linked issues every 5 minutes by default; an admin can set the
+  interval (at least 1 minute) under **Sync interval** in the Backlog settings, and **Refresh** on
+  the Issues page checks at once. A badge says **may be out of date** after three failed checks,
+  and **Issue unavailable** when the issue was deleted or hidden. Deleting a task removes its link.

@@ -1,0 +1,18 @@
+[
+ {
+  "id": 1,
+  "userId": "test.user",
+  "name": "Test User",
+  "roleType": 2,
+  "lang": "ja",
+  "mailAddress": "test.user@example.com"
+ },
+ {
+  "id": 2,
+  "userId": "lan",
+  "name": "Lan",
+  "roleType": 2,
+  "lang": "ja",
+  "mailAddress": "lan@example.com"
+ }
+]

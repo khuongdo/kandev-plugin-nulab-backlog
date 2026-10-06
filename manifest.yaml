@@ -24,9 +24,19 @@ capabilities:
   # U4: watch tasks, the task-metadata lookup and the task's repository.
   api_read: ["tasks", "repositories"]
   api_write: ["tasks"]
+  # U3: links of a deleted task are removed (R-05); every sync cycle also checks.
+  events: ["task.deleted"]
 
 # U4: Backlog Git repositories are a Kandev repository provider (C8).
 repository_providers: ["nulab-backlog"]
+
+# U3: the `#` Backlog issue source of the message composer (M10).
+reference_sources:
+  - source: "nulab-backlog-issues"
+    provider: "nulab-backlog"
+    kind: "issue"
+    display_name: "Backlog issues"
+    kind_label: "Issue"
 
 actions:
   - key: "connection.get"
@@ -142,6 +152,59 @@ actions:
   - key: "git.queries.run"
     scope: "workspace"
     access: authenticated
+    max_body_bytes: 16384
+  # U3 (C5, R-04): the issue list, tasks from issues, links, the task panel and the sync.
+  - key: "issues.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.filters"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.create_task"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.tasks.search"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.links.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.refresh"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.impact"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.settings.get"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.link"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.unlink"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.get"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.comments"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.set_poll_interval"
+    scope: "workspace"
+    access: admin
     max_body_bytes: 16384
 
 # The OAuth callback Backlog redirects the browser to. It must be public: the

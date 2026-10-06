@@ -29,6 +29,9 @@ function scripted(view: View, handlers: Record<string, Handler> = {}) {
     if (key === "connection.get") return view;
     if (key === "connection.list_projects") return { projects: [] };
     if (key === "git.impact" && !handlers[key]) return { prLinks: 2, prWatches: 1 };
+    // U3: issue links in the dialogs and the sync interval block.
+    if (key === "issues.impact" && !handlers[key]) return { issueLinks: 3 };
+    if (key === "issues.settings.get" && !handlers[key]) return { pollMinutes: 5 };
     const h = handlers[key];
     if (!h) throw new Error(`unexpected ${key}`);
     return h(input?.body);
@@ -170,28 +173,37 @@ describe("Connected panel (US1.5, US1.6, US1.8)", () => {
     expect(byTestId(c, "backlog-git-invalid")!.textContent).toBe(en.gitInvalid);
   });
 
-  it("says how many PR links and watches a disconnect turns off (AC1.8.1)", async () => {
+  it("says how many issue links, PR links and watches a disconnect turns off (AC1.8.1)", async () => {
     const host = scripted(connected, { "connection.disconnect": async () => notConnected });
     const c = await render(host);
     await act(async () => byTestId(c, "backlog-disconnect")!.click());
     expect(byTestId(c, "backlog-disconnect-dialog")!.textContent).toContain(
-      "2 PR links and 1 PR watches will be turned off.",
+      "3 issue links, 2 PR links and 1 PR watches will be turned off.",
     );
     expect(calls(host, "git.impact")[0]![1]).toEqual({ workspaceId: "ws-1", body: {} });
+    expect(calls(host, "issues.impact")[0]![1]).toEqual({ workspaceId: "ws-1", body: {} });
   });
 
-  it("says how many PR links and watches a space change turns off", async () => {
+  it("says how many issue links, PR links and watches a space change turns off", async () => {
     const c = await render(scripted(connected));
     await submitReplace(c, "other.backlog.jp");
     expect(byTestId(c, "backlog-change-space-dialog")!.textContent).toContain(
-      "2 PR links and 1 PR watches will be turned off.",
+      "3 issue links, 2 PR links and 1 PR watches will be turned off.",
     );
+  });
+
+  it("mounts the sync interval block (M1, US4.2)", async () => {
+    const c = await render(scripted(connected));
+    expect((byTestId(c, "backlog-poll-minutes") as HTMLInputElement).value).toBe("5");
   });
 
   it("keeps the dialog usable when the counts cannot be loaded", async () => {
     const c = await render(
       scripted(connected, {
         "git.impact": async () => {
+          throw actionError(500, { code: "internal" });
+        },
+        "issues.impact": async () => {
           throw actionError(500, { code: "internal" });
         },
       }),

@@ -152,15 +152,6 @@ func (c *Client) CreatePullRequest(ctx context.Context, creds Credentials, proje
 	return parsePullRequest(body)
 }
 
-// Issue returns one issue by key (GET /api/v2/issues/:issueIdOrKey, C1).
-func (c *Client) Issue(ctx context.Context, creds Credentials, class CallClass, issueKey string) (Issue, error) {
-	body, err := c.send(ctx, request{method: http.MethodGet, path: "/api/v2/issues/" + issueKey, creds: creds, class: class})
-	if err != nil {
-		return Issue{}, err
-	}
-	return parseIssue(body)
-}
-
 // CheckGitAccess asks Backlog's Git smart-HTTP endpoint whether username and
 // password may fetch the repository. A refusal (401 or 403) is Unauthorized;
 // the password and the Basic header value are redacted from logs and errors.

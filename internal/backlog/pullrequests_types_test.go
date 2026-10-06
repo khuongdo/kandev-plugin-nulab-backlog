@@ -75,7 +75,8 @@ func TestU4_PRFormat_HidesTheDescription(t *testing.T) {
 func TestU4_IssueParse_DecodesTheIssue(t *testing.T) {
 	got, err := parseIssue(readFixture(t, "issue_ok.json"))
 	require.NoError(t, err)
-	require.Equal(t, Issue{ID: 5120, IssueKey: "PROJ-120", Summary: "Login page"}, got)
+	// U3 widened Issue; U4 relies on these three fields only.
+	require.Equal(t, [3]any{int64(5120), "PROJ-120", "Login page"}, [3]any{got.ID, got.IssueKey, got.Summary})
 	_, err = parseIssue([]byte(`{"issueKey":"PROJ-1"}`))
 	require.Error(t, err)
 }

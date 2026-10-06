@@ -4,8 +4,8 @@
 
 Review `code-generation-plan.md` (16 steps, TDD per layer, with the embedded Testing Contract) and `unit-test-instructions.md` in this folder. There is no unit-level design for U2 (user choice), so every design decision is listed as an assumption at the end of the plan. Approving lets the developer generate the code exactly as planned.
 
-[Approval Fingerprint]: sha256:v3:e03081e91bd255f8602a2fda28ee4c2c40e5421e44e70b43d37f4d44a1ecfa56
-[Planned Source]: 0e31a335467e2586cd4431e149dc5a3609dc1df03fe904e98c52d160fca2c777
+[Approval Fingerprint]: sha256:v3:d108b009a1a97ea32947a091d7f5a8302bcfb0b0a0329d6bd707431c6f71bd04
+[Planned Source]: 465a7ac45636d397cce8841dc40791ac3f984cb8d7ea0f86c602f55b25a731ef
 
 - Approve Plan
 - Request Changes

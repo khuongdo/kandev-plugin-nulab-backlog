@@ -1,7 +1,9 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { createGitAccess } from "../git/git-access";
-import { loadImpact, withImpact } from "../git/git-state";
+import { withImpact } from "../git/git-state";
+import { loadImpactText } from "../issues/issues-state";
+import { createPollInterval } from "../issues/poll-interval";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { failureNotice, type ConnectionView, type Notice } from "./state";
@@ -31,6 +33,7 @@ export function createConnectedPanel(
   const Button = host.ui.Button as Component<AnyProps>;
   const ConfirmDialog = createConfirmDialog(host, messages);
   const GitAccess = createGitAccess(host, messages);
+  const PollInterval = createPollInterval(host, messages);
   const t = (n: Notice) => format(messages[n.key], n.params);
 
   return function ConnectedPanel({ workspaceId, onView, announce, view }: ConnectedPanelProps) {
@@ -80,13 +83,14 @@ export function createConnectedPanel(
             onClick={() => {
               setImpact("");
               setConfirming(true);
-              void loadImpact(host, workspaceId, undefined, messages).then(setImpact);
+              void loadImpactText(host, workspaceId, undefined, messages).then(setImpact);
             }}
           >
             {messages.disconnect}
           </Button>
         </div>
         {result ? <p data-testid="backlog-test-result">{t(result)}</p> : null}
+        <PollInterval workspaceId={workspaceId} />
         <GitAccess
           workspaceId={workspaceId}
           hasGitCredential={Boolean(view?.hasGitCredential)}

@@ -1,5 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createIssuesPage } from "../issues/issues-page";
+import type { LinksStore } from "../issues/links-store";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
 import type { ConnectionView } from "../settings/state";
 import { PLUGIN_ID } from "../switch/enabled-events";
@@ -39,11 +41,16 @@ const STATUS_KEY: Record<"off" | "not_connected" | "incomplete", MessageKey> = {
   incomplete: "incomplete",
 };
 
-/** The U1 Backlog page at /backlog (WF7, BR7.7). U3 adds the issue list. */
-export function createBacklogPage(host: PluginHostApi, messages: Messages = en): Component {
+/** The Backlog page at /backlog (WF7, BR7.7); once connected it lists the issues (U3, M2). */
+export function createBacklogPage(
+  host: PluginHostApi,
+  messages: Messages = en,
+  store?: LinksStore,
+): Component {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const Button = host.ui.Button as Component<AnyProps>;
+  const IssuesPage = createIssuesPage(host, messages, store);
 
   return function BacklogPage() {
     const [workspaceId, setWorkspaceId] = useState(host.context.getActiveWorkspaceId());
@@ -116,6 +123,11 @@ export function createBacklogPage(host: PluginHostApi, messages: Messages = en):
             >
               {messages.openSettings}
             </a>,
+            state.kind === "connected" ? (
+              <div key="i">
+                <IssuesPage workspaceId={state.workspaceId} />
+              </div>
+            ) : null,
           ];
         }
       }

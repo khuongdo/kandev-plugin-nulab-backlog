@@ -1,0 +1,30 @@
+[
+ {
+  "id": 8,
+  "name": "spec.pdf",
+  "size": 1258291,
+  "createdUser": {
+   "id": 1,
+   "userId": "test.user",
+   "name": "Test User",
+   "roleType": 2,
+   "lang": "ja",
+   "mailAddress": "test.user@example.com"
+  },
+  "created": "2026-09-21T09:00:00Z"
+ },
+ {
+  "id": 9,
+  "name": "dump.zip",
+  "size": 50331648,
+  "createdUser": {
+   "id": 2,
+   "userId": "lan",
+   "name": "Lan",
+   "roleType": 2,
+   "lang": "ja",
+   "mailAddress": "lan@example.com"
+  },
+  "created": "2026-09-22T09:00:00Z"
+ }
+]

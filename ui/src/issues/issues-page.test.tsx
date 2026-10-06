@@ -1,0 +1,331 @@
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { en } from "../messages/en";
+import {
+  actionError,
+  axeViolations,
+  byTestId,
+  deferred,
+  expectOnlyCatalogueText,
+  expectTestIds,
+  fakeHost,
+  mount,
+  press,
+  pseudoCatalogue,
+  selectValue,
+  setValue,
+  text,
+  unmount,
+} from "../testing/harness";
+import { createIssuesPage } from "./issues-page";
+import type { IssueItem } from "./issues-state";
+
+afterEach(() => {
+  unmount();
+  vi.useRealTimers();
+});
+
+const JP = "ログイン画面でセッションがタイムアウトした後に再ログインすると入力内容が失われる".repeat(4);
+
+function issue(n: number, extra: Partial<IssueItem> = {}): IssueItem {
+  return {
+    issueKey: `PROJ-${n}`,
+    summary: n === 57 ? JP : `Issue ${n}`,
+    status: "Open",
+    statusId: 1,
+    assignee: "Lan",
+    updatedAt: "2026-10-01T09:00:00Z",
+    url: `https://example-space.backlog.com/view/PROJ-${n}`,
+    linkedTasks: [],
+    ...extra,
+  };
+}
+
+const ALL = Array.from({ length: 57 }, (_, i) => issue(57 - i));
+
+type Handlers = Record<string, (body: Record<string, unknown>) => Promise<unknown>>;
+
+function setup(handlers: Handlers = {}, overrides: Record<string, unknown> = {}) {
+  return fakeHost(async (key, input) => {
+    const body = (input?.body ?? {}) as Record<string, unknown>;
+    if (handlers[key]) return handlers[key](body);
+    if (key === "issues.filters")
+      return {
+        projects: [{ key: "PROJ", name: "Test Project" }],
+        statuses: [
+          { id: 1, name: "Open" },
+          { id: 2, name: "In Progress" },
+        ],
+        assignees: [{ id: 2, name: "Lan" }],
+      };
+    if (key === "issues.list") {
+      const page = (body.page as number) ?? 1;
+      return {
+        items: ALL.slice((page - 1) * 20, page * 20),
+        total: 57,
+        page,
+        pageSize: 20,
+        refreshedAt: "2026-10-06T00:00:00Z",
+        connectionEpoch: 1,
+      };
+    }
+    throw new Error(`unexpected ${key}`);
+  }, overrides);
+}
+
+const calls = (host: ReturnType<typeof setup>, key: string) =>
+  vi.mocked(host.api.invokeAction).mock.calls.filter(([k]) => k === key);
+
+const render = (host: ReturnType<typeof setup>, messages = en) =>
+  mount(createIssuesPage(host, messages), { workspaceId: "ws-1" });
+
+describe("Issues page (M2, US2.1, US2.2)", () => {
+  it("shows skeleton rows with the filters while loading, announced once (AC2.1.5)", async () => {
+    const pending = deferred<unknown>();
+    const c = await render(setup({ "issues.list": () => pending.promise }));
+    expect(
+      byTestId(c, "backlog-issues-loading")!.querySelectorAll('[data-testid="fake-skeleton"]').length,
+    ).toBe(5);
+    expect(byTestId(c, "backlog-issues-search")).not.toBeNull();
+    expect(byTestId(c, "backlog-issues-announcer")!.textContent).toBe(en.issuesLoading);
+    await act(async () => pending.resolve({ items: [issue(1)], total: 1, page: 1, pageSize: 20 }));
+    expect(byTestId(c, "backlog-issues-loading")).toBeNull();
+  });
+
+  it("lists 20 rows and pages to 41-57 of 57 (AC2.1.1, AC2.1.2)", async () => {
+    const c = await render(setup());
+    expect(c.querySelectorAll('[data-testid^="backlog-issue-row-"]')).toHaveLength(20);
+    const row = byTestId(c, "backlog-issue-row-PROJ-56")!;
+    expect(row.textContent).toContain("PROJ-56");
+    expect(row.textContent).toContain("Issue 56");
+    expect(row.textContent).toContain("Open");
+    expect(row.textContent).toContain("Lan");
+    expect(row.textContent).toContain("rel:2026-10-01T09:00:00Z");
+    expect(byTestId(c, "backlog-issues-showing")!.textContent).toBe("Showing 1-20 of 57");
+    await act(async () => byTestId(c, "backlog-issues-next")!.click());
+    await act(async () => byTestId(c, "backlog-issues-next")!.click());
+    expect(byTestId(c, "backlog-issues-showing")!.textContent).toBe("Showing 41-57 of 57");
+    expect((byTestId(c, "backlog-issues-next") as HTMLButtonElement).disabled).toBe(true);
+    expect(document.activeElement).toBe(byTestId(c, "backlog-issues-list"));
+    expect(byTestId(c, "backlog-issues-announcer")!.textContent).toBe("Showing 41-57 of 57");
+  });
+
+  it("sends the filters and waits 400 ms before a search (AC2.2.1)", async () => {
+    vi.useFakeTimers();
+    const host = setup();
+    const c = await render(host);
+    await act(async () => selectValue(byTestId(c, "backlog-issues-status") as HTMLSelectElement, "2"));
+    expect(calls(host, "issues.list").at(-1)![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { page: 1, pageSize: 20, keyword: "", statusIds: [2] },
+    });
+    await act(async () => selectValue(byTestId(c, "backlog-issues-assignee") as HTMLSelectElement, "2"));
+    await act(async () => selectValue(byTestId(c, "backlog-issues-project") as HTMLSelectElement, "PROJ"));
+    const before = calls(host, "issues.list").length;
+    await act(async () => setValue(byTestId(c, "backlog-issues-search") as HTMLInputElement, "log"));
+    await act(async () => setValue(byTestId(c, "backlog-issues-search") as HTMLInputElement, "login"));
+    expect(calls(host, "issues.list")).toHaveLength(before);
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(calls(host, "issues.list")).toHaveLength(before + 1);
+    expect(calls(host, "issues.list").at(-1)![1]).toEqual({
+      workspaceId: "ws-1",
+      body: {
+        page: 1,
+        pageSize: 20,
+        keyword: "login",
+        statusIds: [2],
+        assigneeIds: [2],
+        projectKeys: ["PROJ"],
+      },
+    });
+  });
+
+  it("shows the empty state with Reset filters, and errors with Retry (AC2.1.3, AC2.1.4)", async () => {
+    let mode: "empty" | "error" | "ok" = "empty";
+    const host = setup({
+      "issues.list": async () => {
+        if (mode === "error") throw actionError(503, { code: "unreachable" });
+        return {
+          items: mode === "empty" ? [] : [issue(1)],
+          total: mode === "empty" ? 0 : 1,
+          page: 1,
+          pageSize: 20,
+        };
+      },
+    });
+    const c = await render(host);
+    expect(byTestId(c, "backlog-issues-empty")!.textContent).toContain(en.issuesEmpty);
+    mode = "error";
+    await act(async () => byTestId(c, "backlog-issues-reset")!.click());
+    expect(byTestId(c, "backlog-issues-error")!.textContent).toContain(en.unreachable);
+    mode = "ok";
+    await act(async () => byTestId(c, "backlog-issues-retry")!.click());
+    expect(byTestId(c, "backlog-issue-row-PROJ-1")).not.toBeNull();
+  });
+
+  it("links to the settings when no project, not connected or sign-in needed (AC1.4.3, AC1.7.2)", async () => {
+    for (const [error, key] of [
+      [actionError(400, { code: "validation", field: "projectKeys" }), "issuesNoProject"],
+      [actionError(401, { code: "reconnect_required" }), "issuesSignInAgain"],
+    ] as const) {
+      const host = setup({
+        "issues.list": async () => {
+          throw error;
+        },
+      });
+      const c = await render(host);
+      expect(text(c)).toContain(en[key]);
+      const link = byTestId(c, "backlog-issues-settings-link")!;
+      expect(link.getAttribute("href")).toBe("/settings/workspaces/ws-1/integrations/nulab-backlog");
+      await act(async () => link.click());
+      expect(host.navigate).toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it("clamps a long title to 2 lines with the full text kept (AC2.1.6)", async () => {
+    const c = await render(setup());
+    const title = byTestId(c, "backlog-issue-title-PROJ-57")!;
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.getAttribute("title")).toBe(JP);
+    expect(title.getAttribute("tabindex")).toBe("0");
+    expect(title.textContent).toBe(JP);
+  });
+
+  it("shows linked task keys and the row menu (AC2.3.1)", async () => {
+    const host = setup({
+      "issues.list": async () => ({
+        items: [issue(17, { linkedTasks: [{ taskId: "task-17", taskKey: "T-17" }] })],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+    });
+    const c = await render(host);
+    const link = byTestId(c, "backlog-issue-task-PROJ-17-task-17")!;
+    expect(link.textContent).toBe("T-17");
+    expect(link.getAttribute("href")).toBe("/t/task-17");
+    expect(byTestId(c, "backlog-issue-menu-PROJ-17")!.getAttribute("aria-label")).toBe(
+      "More actions for PROJ-17",
+    );
+    expect(byTestId(c, "backlog-issue-create-PROJ-17")!.textContent).toBe(en.createTask);
+    expect(byTestId(c, "backlog-issue-link-PROJ-17")!.textContent).toBe(en.linkToTask);
+  });
+
+  it("creates a task once, then shows Created T-18 and updates the row (AC3.1.1, AC3.1.2)", async () => {
+    const pending = deferred<unknown>();
+    const host = setup({ "issues.create_task": () => pending.promise });
+    const c = await render(host);
+    const button = byTestId(c, "backlog-issue-create-PROJ-56") as HTMLButtonElement;
+    await act(async () => button.click());
+    await act(async () => button.click());
+    expect(button.textContent).toBe(en.creatingTask);
+    expect(button.disabled).toBe(true);
+    expect(calls(host, "issues.create_task")).toHaveLength(1);
+    expect(calls(host, "issues.create_task")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { issueKey: "PROJ-56", workflowId: "wf-1", workflowStepId: "step-1" },
+    });
+    await act(async () => pending.resolve({ taskId: "task-18", taskKey: "T-18", issueKey: "PROJ-56" }));
+    expect(byTestId(c, "backlog-issue-created-PROJ-56")!.textContent).toBe("Created T-18");
+    expect(byTestId(c, "backlog-issue-task-PROJ-56-task-18")!.getAttribute("href")).toBe("/t/task-18");
+  });
+
+  it("asks before a second task for a linked issue, focus on Cancel (AC3.1.3, AC3.1.4)", async () => {
+    let fail = true;
+    const host = setup({
+      "issues.list": async () => ({
+        items: [issue(17, { linkedTasks: [{ taskId: "task-17", taskKey: "T-17" }] })],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+      "issues.create_task": async () => {
+        if (fail) throw actionError(500, { code: "internal" });
+        return { taskId: "task-19", taskKey: "T-19", issueKey: "PROJ-17" };
+      },
+    });
+    const c = await render(host);
+    await act(async () => byTestId(c, "backlog-issue-create-PROJ-17")!.click());
+    const dialog = byTestId(c, "backlog-issue-linked-dialog")!;
+    expect(dialog.textContent).toContain(en.createAnother);
+    expect(byTestId(c, "backlog-issue-linked-dialog-open")!.textContent).toBe("Open T-17");
+    expect(document.activeElement).toBe(byTestId(c, "backlog-issue-linked-dialog-cancel"));
+    expect(await axeViolations(c)).toEqual([]);
+    await act(async () => byTestId(c, "backlog-issue-linked-dialog-confirm")!.click());
+    expect(calls(host, "issues.create_task")[0]![1]).toMatchObject({
+      body: { issueKey: "PROJ-17", force: true },
+    });
+    expect(byTestId(c, "backlog-issue-linked-dialog-error")).not.toBeNull();
+    expect(c.querySelectorAll('[data-testid^="backlog-issue-task-PROJ-17-"]')).toHaveLength(1);
+    fail = false;
+    await act(async () => byTestId(c, "backlog-issue-linked-dialog-confirm")!.click());
+    expect(byTestId(c, "backlog-issue-linked-dialog")).toBeNull();
+    expect(byTestId(c, "backlog-issue-task-PROJ-17-task-19")).not.toBeNull();
+    await act(async () => byTestId(c, "backlog-issue-create-PROJ-17")!.click());
+    await act(async () => press(document.activeElement as HTMLElement, "Escape"));
+    expect(byTestId(c, "backlog-issue-linked-dialog")).toBeNull();
+  });
+
+  it("refreshes, then reloads, disabled while running (AC4.2.3)", async () => {
+    const pending = deferred<unknown>();
+    const host = setup({ "issues.refresh": () => pending.promise });
+    const c = await render(host);
+    expect(byTestId(c, "backlog-issues-updated")!.textContent).toBe("Updated at rel:2026-10-06T00:00:00Z");
+    const button = byTestId(c, "backlog-issues-refresh") as HTMLButtonElement;
+    await act(async () => button.click());
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe(en.refreshing);
+    const before = calls(host, "issues.list").length;
+    await act(async () => pending.resolve({ updatedCount: 2, refreshedAt: "2026-10-06T00:05:00Z" }));
+    expect(calls(host, "issues.list")).toHaveLength(before + 1);
+    expect(button.disabled).toBe(false);
+  });
+
+  it("shows cards and a Filters (n) drawer on mobile (M2m)", async () => {
+    const c = await render(setup({}, { useResponsiveBreakpoint: () => ({ isMobile: true }) }));
+    expect(byTestId(c, "backlog-issues-cards")!.querySelectorAll("li")).toHaveLength(20);
+    expect(byTestId(c, "backlog-issues-table")).toBeNull();
+    const toggle = byTestId(c, "backlog-issues-filters-toggle")!;
+    expect(toggle.textContent).toBe("Filters (0)");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(byTestId(c, "backlog-issues-status")).toBeNull();
+    await act(async () => toggle.click());
+    expect(byTestId(c, "backlog-issues-status")).not.toBeNull();
+    await act(async () => selectValue(byTestId(c, "backlog-issues-status") as HTMLSelectElement, "1"));
+    expect(byTestId(c, "backlog-issues-filters-toggle")!.textContent).toBe("Filters (1)");
+  });
+
+  it("is accessible, has test ids and only catalogue text (AC8.2.2)", async () => {
+    const c = await render(setup());
+    expect(await axeViolations(c)).toEqual([]);
+    expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+    unmount();
+    const pseudo = setup({
+      "issues.filters": async () => ({
+        projects: [{ key: "PROJ", name: "⟦Test Project⟧" }],
+        statuses: [],
+        assignees: [],
+      }),
+      "issues.list": async () => ({
+        items: [
+          {
+            issueKey: "⟦PROJ-1⟧",
+            summary: "⟦S⟧",
+            status: "⟦Open⟧",
+            statusId: 1,
+            updatedAt: "",
+            url: "",
+            linkedTasks: [],
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      }),
+    });
+    const p = await render(pseudo, pseudoCatalogue(en));
+    expectOnlyCatalogueText(p, (ok, msg) => expect(ok, msg).toBe(true));
+  });
+});

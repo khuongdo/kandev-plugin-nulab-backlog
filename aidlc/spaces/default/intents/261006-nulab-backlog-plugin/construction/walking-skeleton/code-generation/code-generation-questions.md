@@ -4,8 +4,8 @@
 
 Review `code-generation-plan.md` (Steps 1–14 already built; Revision 2 adds Steps 15–22 for the design changes after the first manual check, TDD per layer, with the embedded Testing Contract) and `unit-test-instructions.md` in this folder. Approving lets the developer modify the existing code exactly as planned.
 
-[Approval Fingerprint]: sha256:v3:7b3eb03b6ef6ef731dbc875cf57ff32efcc6deee41a727ef7e72b04cc8a7514c
-[Planned Source]: 78e2fa1090dd68c1985fa2888b32d37b36ce9ba6109872533223a6d903c1155b
+[Approval Fingerprint]: sha256:v3:53d5adc4ed52c72ab18087c5f1c4e407886af2e7093b736136bc150c70366076
+[Planned Source]: 465a7ac45636d397cce8841dc40791ac3f984cb8d7ea0f86c602f55b25a731ef
 
 - Approve Plan
 - Request Changes

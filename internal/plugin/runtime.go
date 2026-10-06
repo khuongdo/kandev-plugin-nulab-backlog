@@ -20,6 +20,7 @@ import (
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/backlog"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/git"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/issues"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/redact"
 )
 
@@ -114,11 +115,13 @@ type Runtime struct {
 	service *connection.Service
 	git     *git.Service
 	watcher *git.Watcher
+	issues  *issues.Service
+	syncer  *issues.Syncer
 	log     *slog.Logger
 
 	lifeMu   sync.Mutex
 	started  bool
-	unlisten func()
+	unlisten []func()
 }
 
 var _ pluginsdk.ActionHandler = (*Runtime)(nil)
@@ -127,10 +130,12 @@ var _ pluginsdk.ActionHandler = (*Runtime)(nil)
 type gateway interface {
 	connection.Gateway
 	git.Gateway
+	issues.Gateway
 }
 
-// NewRuntime returns the plugin served by server/main.go, with the Git
-// service listening to ConnectionChanged and the PR watcher running. It logs
+// NewRuntime returns the plugin served by server/main.go, with the Git and
+// issue services listening to ConnectionChanged and the PR watcher and the
+// issue sync running. It logs
 // JSON to standard error at the level in KANDEV_PLUGIN_LOG_LEVEL (default info).
 func NewRuntime() *Runtime {
 	r := newRuntime(backlog.NewClient(), os.Stderr, os.Getenv("KANDEV_PLUGIN_LOG_LEVEL"))
@@ -138,8 +143,8 @@ func NewRuntime() *Runtime {
 	return r
 }
 
-// Start subscribes the Git service to ConnectionChanged and starts the PR
-// watcher. It starts nothing twice.
+// Start subscribes the Git and issue services to ConnectionChanged and
+// starts the PR watcher and the issue sync. It starts nothing twice.
 func (r *Runtime) Start() {
 	r.lifeMu.Lock()
 	defer r.lifeMu.Unlock()
@@ -147,11 +152,12 @@ func (r *Runtime) Start() {
 		return
 	}
 	r.started = true
-	r.unlisten = r.git.Listen()
+	r.unlisten = []func(){r.git.Listen(), r.issues.Listen()}
 	r.watcher.Start()
+	r.syncer.Start()
 }
 
-// Close stops the watcher and the subscription. Safe to call more than once.
+// Close stops the workers and the subscriptions. Safe to call more than once.
 func (r *Runtime) Close() {
 	r.lifeMu.Lock()
 	defer r.lifeMu.Unlock()
@@ -160,8 +166,13 @@ func (r *Runtime) Close() {
 	}
 	r.started = false
 	r.watcher.Stop()
-	r.unlisten()
-	r.watcher = git.NewWatcher(r.git, r.log) // a stopped watcher can be started again
+	r.syncer.Stop()
+	for _, stop := range r.unlisten {
+		stop()
+	}
+	// Stopped workers cannot be started again, so Start gets new ones.
+	r.watcher = git.NewWatcher(r.git, r.log)
+	r.syncer = issues.NewSyncer(r.issues, r.log)
 }
 
 func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
@@ -175,8 +186,11 @@ func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	stores := hostStores{host: r.Host}
 	r.service = connection.NewService(gateway, connection.NewStore(stores, stores))
 	r.service.Config = stores
-	r.git = git.NewService(gateway, r.service, hostPort{host: r.Host}, git.NewStore(stores))
+	ports := hostPort{host: r.Host}
+	r.git = git.NewService(gateway, r.service, ports, git.NewStore(stores))
 	r.watcher = git.NewWatcher(r.git, r.log)
+	r.issues = issues.NewService(gateway, r.service, issueHost{ports}, issues.NewStore(stores))
+	r.syncer = issues.NewSyncer(r.issues, r.log)
 	r.log.Info("plugin started", "event", "plugin_started", "version", Version,
 		"platform", runtime.GOOS+"-"+runtime.GOARCH, "sdkRef", SDKRef)
 	return r
@@ -283,8 +297,8 @@ type outcome struct {
 	PullRequestNumber int
 }
 
-// classify maps an action error to its code: U4's Git errors first, then
-// the connection's table.
+// classify maps an action error to its code: U4's Git and U3's issue
+// errors first, then the connection's table.
 func classify(err error) outcome {
 	var open *git.OpenPRExistsError
 	switch {
@@ -293,6 +307,10 @@ func classify(err error) outcome {
 	case errors.Is(err, git.ErrNotFound):
 		return outcome{Outcome: connection.Outcome{Code: codeNotFound}}
 	case errors.Is(err, git.ErrConflict), errors.Is(err, git.ErrStale):
+		return outcome{Outcome: connection.Outcome{Code: connection.CodeConflict}}
+	case errors.Is(err, issues.ErrNotFound):
+		return outcome{Outcome: connection.Outcome{Code: codeNotFound}}
+	case errors.Is(err, issues.ErrConflict), errors.Is(err, issues.ErrStale):
 		return outcome{Outcome: connection.Outcome{Code: connection.CodeConflict}}
 	}
 	return outcome{Outcome: connection.Classify(err)}

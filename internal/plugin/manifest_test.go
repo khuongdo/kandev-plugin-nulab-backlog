@@ -21,7 +21,14 @@ type manifest struct {
 	} `yaml:"runtime"`
 	Capabilities        map[string]any `yaml:"capabilities"`
 	RepositoryProviders []string       `yaml:"repository_providers"`
-	Actions             []struct {
+	ReferenceSources    []struct {
+		Source      string `yaml:"source"`
+		Provider    string `yaml:"provider"`
+		Kind        string `yaml:"kind"`
+		DisplayName string `yaml:"display_name"`
+		KindLabel   string `yaml:"kind_label"`
+	} `yaml:"reference_sources"`
+	Actions []struct {
 		Key          string `yaml:"key"`
 		Scope        string `yaml:"scope"`
 		Access       string `yaml:"access"`
@@ -82,7 +89,7 @@ func TestManifestCapabilities(t *testing.T) {
 	m := loadManifest(t)
 	require.Equal(t, true, m.Capabilities["state"])
 	require.Equal(t, true, m.Capabilities["secrets"])
-	require.Len(t, m.Capabilities, 4, "U1 declares state and secrets; U4 adds api_read and api_write")
+	require.Len(t, m.Capabilities, 5, "U1 declares state and secrets; U4 adds api_read and api_write; U3 adds events")
 }
 
 func TestManifestActionsAndAccess(t *testing.T) {
@@ -90,8 +97,8 @@ func TestManifestActionsAndAccess(t *testing.T) {
 	access := map[string]string{}
 	for _, a := range m.Actions {
 		require.Regexp(t, `^[a-z0-9][a-z0-9._-]*$`, a.Key, "Kandev's action key rule")
-		if slices.Contains(u4Actions, a.Key) {
-			continue // TestU4_Manifest_ActionsAndProvider
+		if slices.Contains(u4Actions, a.Key) || slices.Contains(u3Actions, a.Key) {
+			continue // TestU4_Manifest_ActionsAndProvider, TestU3_Manifest_Actions
 		}
 		require.Equal(t, "workspace", a.Scope, a.Key)
 		require.Equal(t, 8192, a.MaxBodyBytes, a.Key)
@@ -155,4 +162,37 @@ func TestU4_Manifest_ActionsAndProvider(t *testing.T) {
 	require.Equal(t, []string{"nulab-backlog"}, m.RepositoryProviders)
 	require.Equal(t, []any{"tasks", "repositories"}, m.Capabilities["api_read"])
 	require.Equal(t, []any{"tasks"}, m.Capabilities["api_write"])
+}
+
+func TestU3_Manifest_Actions(t *testing.T) {
+	m := loadManifest(t)
+	got := map[string]string{}
+	for _, a := range m.Actions {
+		if slices.Contains(u3Actions, a.Key) {
+			require.Equal(t, 16384, a.MaxBodyBytes, a.Key)
+			got[a.Key] = a.Scope + "/" + a.Access
+		}
+	}
+	want := map[string]string{}
+	for _, k := range u3Actions {
+		want[k] = "workspace/authenticated"
+	}
+	for _, k := range []string{actionIssuesLink, actionIssuesUnlink, actionIssuesGet, actionIssuesComments} {
+		want[k] = "task/authenticated"
+	}
+	want[actionSetPollInterval] = "workspace/admin"
+	require.Equal(t, want, got)
+	require.Len(t, u3Actions, 13)
+}
+
+func TestU3_Manifest_EventsAndReferences(t *testing.T) {
+	m := loadManifest(t)
+	require.Equal(t, []any{"task.deleted"}, m.Capabilities["events"])
+	require.Len(t, m.ReferenceSources, 1)
+	src := m.ReferenceSources[0]
+	require.Equal(t, [5]string{referenceSource, referenceProvider, referenceKind, "Backlog issues", "Issue"},
+		[5]string{src.Source, src.Provider, src.Kind, src.DisplayName, src.KindLabel})
+	for _, id := range []string{src.Source, src.Provider, src.Kind} {
+		require.Regexp(t, `^[a-z0-9][a-z0-9._:-]{0,127}$`, id, "Kandev's reference identity rule")
+	}
 }

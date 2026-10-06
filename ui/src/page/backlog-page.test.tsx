@@ -26,9 +26,18 @@ afterEach(unmount);
 const SETTINGS_HREF = "/settings/workspaces/ws-1/integrations/nulab-backlog";
 const off: View = { ...connected, enabled: false };
 
+/** U3: once connected, /backlog lists the issues; these tests answer with an empty list. */
+const withIssues =
+  (invoke: Invoke): Invoke =>
+  async (key, input) => {
+    if (key === "issues.filters") return { projects: [], statuses: [], assignees: [] };
+    if (key === "issues.list") return { items: [], total: 0, page: 1, pageSize: 20 };
+    return invoke(key, input);
+  };
+
 /** `workspace: null` means no active workspace. */
 async function renderPage(invoke: Invoke, workspace: string | null = "ws-1", messages: Messages = en) {
-  const host = fakeHost(invoke, {
+  const host = fakeHost(withIssues(invoke), {
     context: {
       getActiveWorkspaceId: () => workspace ?? undefined,
       subscribeActiveWorkspace: () => () => undefined,
@@ -97,6 +106,19 @@ describe("Backlog page (/backlog)", () => {
       expect(host.navigate).toHaveBeenCalledWith(SETTINGS_HREF);
     },
   );
+
+  it("lists the issues once connected, and not otherwise (U3)", async () => {
+    const { c, host } = await renderPage(async () => connected);
+    expect(byTestId(c, "backlog-issues")).not.toBeNull();
+    expect(host.api.invokeAction).toHaveBeenCalledWith(
+      "issues.list",
+      expect.objectContaining({ workspaceId: "ws-1" }),
+    );
+    unmount();
+    const other = await renderPage(async () => notConnected);
+    expect(byTestId(other.c, "backlog-issues")).toBeNull();
+    expect(other.host.api.invokeAction).not.toHaveBeenCalledWith("issues.list", expect.anything());
+  });
 
   it("puts a data-testid on every interactive element", async () => {
     for (const invoke of [async () => connected, async () => Promise.reject(actionError(500, {}))]) {

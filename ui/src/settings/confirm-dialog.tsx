@@ -13,6 +13,8 @@ export interface ConfirmProps {
   /** Runs on Confirm; a rejection keeps the dialog open with an inline error. */
   onConfirm: () => Promise<void>;
   onClose: () => void;
+  /** U3: extra content under the body, such as a link (the three-choice dialog). */
+  children?: unknown;
 }
 
 const STACK = "flex flex-col gap-4";
@@ -29,7 +31,15 @@ export function createConfirmDialog(host: PluginHostApi, messages: Messages = en
   const { useEffect, useRef, useState } = host.React;
   const Button = host.ui.Button as Component<AnyProps>;
 
-  return function ConfirmDialog({ testId, title, body, confirmLabel, onConfirm, onClose }: ConfirmProps) {
+  return function ConfirmDialog({
+    testId,
+    title,
+    body,
+    confirmLabel,
+    onConfirm,
+    onClose,
+    children,
+  }: ConfirmProps) {
     const [working, setWorking] = useState(false);
     const [failed, setFailed] = useState(false);
     const root = useRef<HTMLDivElement | null>(null);
@@ -47,7 +57,7 @@ export function createConfirmDialog(host: PluginHostApi, messages: Messages = en
         return;
       }
       if (e.key !== "Tab" || !root.current) return;
-      const items = [...root.current.querySelectorAll<HTMLElement>("button:not([disabled])")];
+      const items = [...root.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")];
       if (items.length === 0) return;
       const first = items[0];
       const last = items[items.length - 1];
@@ -87,6 +97,7 @@ export function createConfirmDialog(host: PluginHostApi, messages: Messages = en
       >
         <h3 id={`${testId}-title`}>{title}</h3>
         <p id={`${testId}-body`}>{body}</p>
+        {children ?? null}
         {failed ? (
           <p role="alert" data-testid={`${testId}-error`}>
             {messages.actionFailed}

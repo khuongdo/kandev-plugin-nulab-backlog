@@ -1,6 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { loadImpact, withImpact } from "../git/git-state";
+import { withImpact } from "../git/git-state";
+import { loadImpactText } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { createConnectedPanel } from "./connected-panel";
@@ -138,9 +139,9 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
         const host = normalizeHost(spaceUrl);
         const kind = host === view.spaceHost ? "replace" : "changeSpace";
         setConfirm({ kind, host });
-        // U4: a space change turns off the old space's PR links and watches (AC1.8.1).
+        // U3/U4: a space change turns off the old space's issue links, PR links and watches (AC1.8.1).
         if (kind === "changeSpace" && workspaceId) {
-          void loadImpact(hostApi, workspaceId, undefined, messages).then((impact) =>
+          void loadImpactText(hostApi, workspaceId, undefined, messages).then((impact) =>
             setConfirm((c) => (c && c.host === host ? { ...c, impact } : c)),
           );
         }

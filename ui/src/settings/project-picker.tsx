@@ -1,6 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { loadImpact, withImpact } from "../git/git-state";
+import { withImpact } from "../git/git-state";
+import { loadImpactText } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { failureNotice, type ConnectionView, type Notice } from "./state";
@@ -124,8 +125,8 @@ export function createProjectPicker(
       if (removed.length === 0) return void save();
       setImpact("");
       setConfirming(true);
-      // U4: how many PR links and watches of those projects stop (AC1.9.1).
-      void loadImpact(host, workspaceId, removed, messages).then(setImpact);
+      // U3/U4: how many issue links, PR links and watches of those projects stop (AC1.9.1).
+      void loadImpactText(host, workspaceId, removed, messages).then(setImpact);
     };
 
     const toggle = (key: string) =>

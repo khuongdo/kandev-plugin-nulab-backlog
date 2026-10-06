@@ -1,0 +1,36 @@
+[
+ {
+  "id": 902,
+  "content": "Fixed on staging.",
+  "changeLog": [],
+  "createdUser": {
+   "id": 2,
+   "userId": "lan",
+   "name": "Lan",
+   "roleType": 2,
+   "lang": "ja",
+   "mailAddress": "lan@example.com"
+  },
+  "created": "2026-10-01T09:00:00Z",
+  "updated": "2026-10-01T09:00:00Z",
+  "stars": [],
+  "notifications": []
+ },
+ {
+  "id": 901,
+  "content": "I can reproduce this.",
+  "changeLog": [],
+  "createdUser": {
+   "id": 1,
+   "userId": "test.user",
+   "name": "Test User",
+   "roleType": 2,
+   "lang": "ja",
+   "mailAddress": "test.user@example.com"
+  },
+  "created": "2026-09-30T09:00:00Z",
+  "updated": "2026-09-30T09:00:00Z",
+  "stars": [],
+  "notifications": []
+ }
+]

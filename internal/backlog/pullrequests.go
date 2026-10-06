@@ -160,22 +160,3 @@ func parsePullRequest(body []byte) (PullRequest, error) {
 	}
 	return pr, nil
 }
-
-// Issue is the part of GET /api/v2/issues/:issueIdOrKey U4 needs.
-type Issue struct {
-	ID       int64
-	IssueKey string
-	Summary  string
-}
-
-func parseIssue(body []byte) (Issue, error) {
-	var raw struct {
-		ID       *int64 `json:"id"`
-		IssueKey string `json:"issueKey"`
-		Summary  string `json:"summary"`
-	}
-	if err := json.Unmarshal(body, &raw); err != nil || raw.ID == nil || raw.IssueKey == "" {
-		return Issue{}, errBody()
-	}
-	return Issue{ID: *raw.ID, IssueKey: raw.IssueKey, Summary: raw.Summary}, nil
-}

@@ -1,0 +1,244 @@
+{
+  "stage": "code-generation",
+  "unit": "issues",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "docs/manual-checks/TEMPLATE.md"
+    },
+    {
+      "path": "internal/backlog/client.go"
+    },
+    {
+      "path": "internal/backlog/issues.go"
+    },
+    {
+      "path": "internal/backlog/issues_client_test.go"
+    },
+    {
+      "path": "internal/backlog/issues_types_test.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests_types_test.go"
+    },
+    {
+      "path": "internal/backlog/testdata/attachments_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/comments_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/issue_detail_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/issues_count_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/issues_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/project_users_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/statuses_ok.json"
+    },
+    {
+      "path": "internal/issues/create_test.go"
+    },
+    {
+      "path": "internal/issues/detail_test.go"
+    },
+    {
+      "path": "internal/issues/doc.go"
+    },
+    {
+      "path": "internal/issues/events.go"
+    },
+    {
+      "path": "internal/issues/events_test.go"
+    },
+    {
+      "path": "internal/issues/fakes_test.go"
+    },
+    {
+      "path": "internal/issues/filters_test.go"
+    },
+    {
+      "path": "internal/issues/harness_test.go"
+    },
+    {
+      "path": "internal/issues/impact_test.go"
+    },
+    {
+      "path": "internal/issues/leak_test.go"
+    },
+    {
+      "path": "internal/issues/links_test.go"
+    },
+    {
+      "path": "internal/issues/list_test.go"
+    },
+    {
+      "path": "internal/issues/service.go"
+    },
+    {
+      "path": "internal/issues/settings_test.go"
+    },
+    {
+      "path": "internal/issues/store.go"
+    },
+    {
+      "path": "internal/issues/store_test.go"
+    },
+    {
+      "path": "internal/issues/suggest_test.go"
+    },
+    {
+      "path": "internal/issues/sync.go"
+    },
+    {
+      "path": "internal/issues/sync_test.go"
+    },
+    {
+      "path": "internal/issues/types.go"
+    },
+    {
+      "path": "internal/issues/types_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/events.go"
+    },
+    {
+      "path": "internal/plugin/events_test.go"
+    },
+    {
+      "path": "internal/plugin/host_port.go"
+    },
+    {
+      "path": "internal/plugin/host_port_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/issue_actions.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/references.go"
+    },
+    {
+      "path": "internal/plugin/references_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/plugin/runtime_u3_test.go"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/index.ts"
+    },
+    {
+      "path": "ui/src/issues/i18n.test.ts"
+    },
+    {
+      "path": "ui/src/issues/i18n.ts"
+    },
+    {
+      "path": "ui/src/issues/issue-badge.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-badge.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-panel.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-page.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-page.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-state.test.ts"
+    },
+    {
+      "path": "ui/src/issues/issues-state.ts"
+    },
+    {
+      "path": "ui/src/issues/link-task-dialog.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/link-task-dialog.tsx"
+    },
+    {
+      "path": "ui/src/issues/links-store.test.ts"
+    },
+    {
+      "path": "ui/src/issues/links-store.ts"
+    },
+    {
+      "path": "ui/src/issues/poll-interval.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/poll-interval.tsx"
+    },
+    {
+      "path": "ui/src/issues/task-menu.test.ts"
+    },
+    {
+      "path": "ui/src/issues/task-menu.ts"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-page.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/confirm-dialog.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    }
+  ]
+}

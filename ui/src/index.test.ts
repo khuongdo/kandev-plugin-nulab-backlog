@@ -26,6 +26,11 @@ function setup(views: Record<string, { enabled: boolean } | Error>) {
     registerRepositoryProvider: vi.fn(),
     registerTaskAction: vi.fn(),
     registerReviewProvider: vi.fn(),
+    // U3
+    registerTranslations: vi.fn(),
+    registerComponent: vi.fn(),
+    registerTaskMenuAction: vi.fn(),
+    registerTaskPanel: vi.fn(),
   };
   let listener: ((ids: readonly string[]) => void) | undefined;
   const unsubscribe = vi.fn();
@@ -50,6 +55,7 @@ function setup(views: Record<string, { enabled: boolean } | Error>) {
       subscribeActiveWorkspace: () => () => undefined,
     },
     setIntegrationEnabled: vi.fn(),
+    i18n: { locale: "en", t: (_key: string, o?: { defaultValue?: string }) => o?.defaultValue ?? "" },
   };
   return {
     registry,
@@ -117,6 +123,28 @@ describe("plugin entry", () => {
         expect.objectContaining({ path, section: "integrations" }),
       );
     }
+  });
+
+  it("registers the U3 catalogue first, the card badge, the task menu and the task panel", async () => {
+    const s = setup({});
+    await s.init();
+    expect(s.registry.registerTranslations).toHaveBeenCalledWith({
+      en: expect.objectContaining({ createTask: "Create task" }),
+    });
+    expect(s.registry.registerTranslations.mock.invocationCallOrder[0]).toBeLessThan(
+      s.registry.registerIntegrationSettings.mock.invocationCallOrder[0]!,
+    );
+    expect(s.registry.registerComponent).toHaveBeenCalledWith("task-card-tags", expect.any(Function));
+    expect(s.registry.registerTaskMenuAction).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "backlog-unlink-issue", group: "primary" }),
+    );
+    expect(s.registry.registerTaskPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "backlog-issue",
+        title: "Backlog issue",
+        Component: expect.any(Function),
+      }),
+    );
   });
 
   it("publishes each workspace's switch at start, only after a successful load (BR7.5)", async () => {

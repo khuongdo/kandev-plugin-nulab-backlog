@@ -93,13 +93,47 @@ export function FakeChangeRequestDetail(props: {
   );
 }
 
+/** U3: the host's Skeleton, a placeholder block. */
+export function FakeSkeleton(props: Record<string, unknown>) {
+  return React.createElement("div", { "data-testid": "fake-skeleton", ...props });
+}
+
+/** U3: host.i18n with an optional catalogue of the active locale. */
+export function fakeI18n(locale = "en", catalogue: Record<string, string> = {}) {
+  const t = (key: string, options?: { defaultValue?: string }) =>
+    catalogue[key] ?? options?.defaultValue ?? key;
+  return { locale, t, useTranslation: () => ({ locale, t }) };
+}
+
+/** U3: a registry that records every registration. */
+export function fakeRegistry() {
+  return {
+    registerTranslations: vi.fn(),
+    registerIntegrationSettings: vi.fn(),
+    registerNavItem: vi.fn(),
+    registerRoute: vi.fn(),
+    registerRepositoryProvider: vi.fn(),
+    registerTaskAction: vi.fn(),
+    registerReviewProvider: vi.fn(),
+    registerComponent: vi.fn(),
+    registerTaskMenuAction: vi.fn(),
+    registerTaskPanel: vi.fn(),
+  };
+}
+
 /** A fake host: React from the test, plain elements for the UI kit, scripted actions. */
 export function fakeHost(invoke: Invoke, overrides: Record<string, unknown> = {}): PluginHostApi {
   return {
     pluginId: "nulab-backlog",
     React,
     jsx: React.createElement,
-    ui: { Button: "button", Input: "input", Label: "label", ChangeRequestDetail: FakeChangeRequestDetail },
+    ui: {
+      Button: "button",
+      Input: "input",
+      Label: "label",
+      ChangeRequestDetail: FakeChangeRequestDetail,
+      Skeleton: FakeSkeleton, // U3
+    },
     api: { baseUrl: "", fetch: vi.fn(), invokeAction: vi.fn(invoke) },
     context: {
       getActiveWorkspaceId: () => "ws-1",
@@ -118,6 +152,17 @@ export function fakeHost(invoke: Invoke, overrides: Record<string, unknown> = {}
     // U4: Kandev-owned dialogs; tests read the options they were opened with.
     openTaskLinkDialog: vi.fn(() => ({ close: vi.fn() })),
     openModal: vi.fn(() => ({ close: vi.fn() })),
+    // U3: English unless a test gives a catalogue; the fallback is the default value.
+    i18n: fakeI18n(),
+    useResponsiveBreakpoint: () => ({ isMobile: false }),
+    toast: Object.assign(vi.fn(), {
+      success: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warning: vi.fn(),
+      dismiss: vi.fn(),
+    }),
+    utils: { formatRelativeTime: (v: string) => `rel:${v}` },
     ...overrides,
   } as unknown as PluginHostApi;
 }

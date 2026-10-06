@@ -93,6 +93,30 @@ in a selected project. Never write the Git password into this file.
 | Watch creates one task | pass / fail |
 | Disconnect and restore (watches Paused) | pass / fail |
 
+### Backlog issues (U3, B4 demo) steps
+
+These steps need at least one selected project with issues. Never write the API key into this file.
+
+21. Open **Integrations > Backlog**, search `PROJ-12` (a key of your project), and click **Create task**
+    in the issue's **…** menu. Confirm `Created <task key>` and that the row lists the task.
+22. Open the Kanban board and confirm the task card shows the badge `<KEY> · <status>`.
+23. Change the issue's status in Backlog. Wait one sync cycle (5 minutes, or click **Refresh** on
+    the Issues page) and confirm the badge shows the new status.
+24. Delete the task in Kandev and confirm the link disappears from the issue's row.
+25. Load the Issues page with 20 rows 20 times and record the slowest time (AC8.1.2: at most 3 s).
+26. Use the Issues page, the Link to task dialog and the Backlog issue panel with the keyboard only
+    and with a screen reader, then at 320 px width (AC8.2.1, AC8.2.4). Every control must be
+    reachable, named, and usable without horizontal page scroll.
+
+| U3 field | Value |
+|----------|-------|
+| Create task from an issue | pass / fail |
+| Badge on the card | pass / fail |
+| Status change within one cycle | pass / fail |
+| Deleted task removes the link | pass / fail |
+| Slowest 20-row list (seconds, of 20) | |
+| Keyboard, screen reader and 320 px | pass / fail |
+
 ## Notes
 
 <!-- Anything unexpected. No keys, no URLs with a query string. -->

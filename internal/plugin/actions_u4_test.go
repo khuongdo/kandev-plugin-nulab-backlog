@@ -159,7 +159,9 @@ func (f fakeTasks) Create(_ context.Context, in pluginsdk.CreateTaskInput) (*plu
 		return nil, fmt.Errorf("rpc error: code = PermissionDenied")
 	}
 	f.d.creates = append(f.d.creates, in)
-	t := pluginsdk.Task{ID: fmt.Sprintf("task-%d", len(f.d.tasks)+1), WorkspaceID: in.WorkspaceID, Title: in.Title, Metadata: kandevMetadata(in.Metadata)}
+	n := len(f.d.tasks) + 1 // U3: Kandev returns the task's human key as Identifier
+	t := pluginsdk.Task{ID: fmt.Sprintf("task-%d", n), Identifier: fmt.Sprintf("T-%d", n), WorkspaceID: in.WorkspaceID,
+		Title: in.Title, Metadata: kandevMetadata(in.Metadata)}
 	f.d.tasks = append(f.d.tasks, t)
 	f.d.crashed = f.d.crashAfterCreate
 	return &t, nil
