@@ -1,0 +1,236 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "walking-skeleton",
+  "upstream_ids": [
+    "NFR1.1",
+    "NFR1.2",
+    "NFR2.1",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR3.3",
+    "NFR3.4",
+    "NFR3.5",
+    "NFR3.6",
+    "NFR3.7",
+    "NFR4.1",
+    "NFR4.2",
+    "NFR5.1",
+    "NFR5.2",
+    "NFR5.3",
+    "NFR5.4",
+    "NFR5.5",
+    "NFR5.6",
+    "NFR5.7",
+    "NFR5.8",
+    "NFR6.1",
+    "NFR7.1",
+    "NFR8.1",
+    "NFR9.1",
+    "NFR10.1",
+    "NFR11.1",
+    "NFR11.2",
+    "NFR11.3",
+    "NFR11.4",
+    "NFR11.5",
+    "NFR1.3",
+    "NFR1.4",
+    "NFR3.8",
+    "NFR3.9",
+    "NFR3.10",
+    "NFR5.9",
+    "NFR5.10",
+    "NFR11.6"
+  ],
+  "coverage": [
+    {
+      "id": "NFR1.1",
+      "status": "N/A",
+      "target": "application-level timing; no infrastructure resource involved"
+    },
+    {
+      "id": "NFR1.2",
+      "status": "N/A",
+      "target": "application-level p95 response-time target (3 s), checked by tests; no infrastructure resource involved"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "N/A",
+      "target": "application-level rate-limit handling; no infrastructure resource involved"
+    },
+    {
+      "id": "NFR3.1",
+      "status": "OK",
+      "target": "Kandev secret store key backlog.connection.<workspaceId>"
+    },
+    {
+      "id": "NFR3.2",
+      "status": "N/A",
+      "target": "application-level response shaping"
+    },
+    {
+      "id": "NFR3.3",
+      "status": "N/A",
+      "target": "application-level redaction"
+    },
+    {
+      "id": "NFR3.4",
+      "status": "OK",
+      "target": "egress HTTPS 443 to the connected Backlog host only"
+    },
+    {
+      "id": "NFR3.5",
+      "status": "OK",
+      "target": "Kandev plugin host enforces access admin from the manifest"
+    },
+    {
+      "id": "NFR3.6",
+      "status": "N/A",
+      "target": "application-level body handling"
+    },
+    {
+      "id": "NFR3.7",
+      "status": "N/A",
+      "target": "application-level input validation"
+    },
+    {
+      "id": "NFR4.1",
+      "status": "OK",
+      "target": "CI uses no secrets; random per-run test keys"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "N/A",
+      "target": "repository document template, no infrastructure"
+    },
+    {
+      "id": "NFR5.1",
+      "status": "N/A",
+      "target": "application-level call deadline"
+    },
+    {
+      "id": "NFR5.2",
+      "status": "N/A",
+      "target": "application-level response size limit"
+    },
+    {
+      "id": "NFR5.3",
+      "status": "N/A",
+      "target": "application-level error mapping"
+    },
+    {
+      "id": "NFR5.4",
+      "status": "N/A",
+      "target": "application-level rollback across Kandev stores"
+    },
+    {
+      "id": "NFR5.5",
+      "status": "OK",
+      "target": "Kandev state store scope workspace, key connection"
+    },
+    {
+      "id": "NFR5.6",
+      "status": "N/A",
+      "target": "in-process lock map; one plugin process per Kandev server"
+    },
+    {
+      "id": "NFR5.7",
+      "status": "OK",
+      "target": "all connection data in Kandev state and secret stores; process restart by Kandev"
+    },
+    {
+      "id": "NFR5.8",
+      "status": "N/A",
+      "target": "application-level write ordering"
+    },
+    {
+      "id": "NFR6.1",
+      "status": "OK",
+      "target": "existing self-hosted Kandev 0.96.0 server for the manual check"
+    },
+    {
+      "id": "NFR7.1",
+      "status": "OK",
+      "target": "CI job checks runs make build and verify-package for 5 targets"
+    },
+    {
+      "id": "NFR8.1",
+      "status": "OK",
+      "target": "CI job checks runs make test and coverage with -race as a required check"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "N/A",
+      "target": "UI accessibility, checked by tests in CI job checks; no infrastructure resource"
+    },
+    {
+      "id": "NFR10.1",
+      "status": "N/A",
+      "target": "UI message catalogue; no infrastructure resource"
+    },
+    {
+      "id": "NFR11.1",
+      "status": "OK",
+      "target": "JSON logs on standard error collected by Kandev"
+    },
+    {
+      "id": "NFR11.2",
+      "status": "OK",
+      "target": "Connect outcome events in Kandev logs (monitoring-design)"
+    },
+    {
+      "id": "NFR11.3",
+      "status": "OK",
+      "target": "backlog_call events in Kandev logs at DEBUG via KANDEV_PLUGIN_LOG_LEVEL"
+    },
+    {
+      "id": "NFR11.4",
+      "status": "OK",
+      "target": "connection_inconsistent events in Kandev logs (monitoring-design)"
+    },
+    {
+      "id": "NFR11.5",
+      "status": "N/A",
+      "target": "application-level log field design"
+    },
+    {
+      "id": "NFR1.3",
+      "status": "N/A",
+      "target": "application-level timing; no infrastructure resource involved"
+    },
+    {
+      "id": "NFR1.4",
+      "status": "N/A",
+      "target": "application-level Connect budget inside Kandev's 15 s action limit"
+    },
+    {
+      "id": "NFR3.8",
+      "status": "OK",
+      "target": "manifest scope workspace for all actions; Kandev verifies the workspace context"
+    },
+    {
+      "id": "NFR3.9",
+      "status": "N/A",
+      "target": "application-level guard over the state key integration"
+    },
+    {
+      "id": "NFR3.10",
+      "status": "OK",
+      "target": "CI verify-package bundle URL check; inline logo with docs/brand/backlog-logo.md"
+    },
+    {
+      "id": "NFR5.9",
+      "status": "OK",
+      "target": "Kandev state store key integration, separate from connection"
+    },
+    {
+      "id": "NFR5.10",
+      "status": "OK",
+      "target": "state store scope workspace for key integration"
+    },
+    {
+      "id": "NFR11.6",
+      "status": "OK",
+      "target": "integration_switched and action_refused_disabled events in Kandev logs (monitoring-design)"
+    }
+  ]
+}

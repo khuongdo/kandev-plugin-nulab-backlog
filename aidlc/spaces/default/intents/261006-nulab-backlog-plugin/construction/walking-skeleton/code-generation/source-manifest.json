@@ -1,0 +1,214 @@
+{
+  "stage": "code-generation",
+  "unit": "walking-skeleton",
+  "version": 1,
+  "writes": [
+    {
+      "path": ".github/workflows/ci.yml"
+    },
+    {
+      "path": ".gitignore"
+    },
+    {
+      "path": ".golangci.yml"
+    },
+    {
+      "path": ".kandev-sdk-ref"
+    },
+    {
+      "path": ".nvmrc"
+    },
+    {
+      "path": "LICENSE"
+    },
+    {
+      "path": "Makefile"
+    },
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "cmd/verifypkg/main.go"
+    },
+    {
+      "path": "docs/brand/backlog-logo.md"
+    },
+    {
+      "path": "docs/manual-checks/TEMPLATE.md"
+    },
+    {
+      "path": "go.mod"
+    },
+    {
+      "path": "go.sum"
+    },
+    {
+      "path": "internal/backlog/client.go"
+    },
+    {
+      "path": "internal/backlog/client_test.go"
+    },
+    {
+      "path": "internal/backlog/doc.go"
+    },
+    {
+      "path": "internal/backlog/testdata/error_401.json"
+    },
+    {
+      "path": "internal/backlog/testdata/error_429.json"
+    },
+    {
+      "path": "internal/backlog/testdata/myself_empty_name.json"
+    },
+    {
+      "path": "internal/backlog/testdata/myself_missing_id.json"
+    },
+    {
+      "path": "internal/backlog/testdata/myself_ok.json"
+    },
+    {
+      "path": "internal/backlog/testdata/myself_string_id.json"
+    },
+    {
+      "path": "internal/backlog/types.go"
+    },
+    {
+      "path": "internal/backlog/types_test.go"
+    },
+    {
+      "path": "internal/connection/address.go"
+    },
+    {
+      "path": "internal/connection/address_test.go"
+    },
+    {
+      "path": "internal/connection/apikey.go"
+    },
+    {
+      "path": "internal/connection/apikey_test.go"
+    },
+    {
+      "path": "internal/connection/doc.go"
+    },
+    {
+      "path": "internal/connection/fakes_test.go"
+    },
+    {
+      "path": "internal/connection/service.go"
+    },
+    {
+      "path": "internal/connection/service_test.go"
+    },
+    {
+      "path": "internal/connection/store.go"
+    },
+    {
+      "path": "internal/connection/store_test.go"
+    },
+    {
+      "path": "internal/pkgverify/pkgverify.go"
+    },
+    {
+      "path": "internal/pkgverify/pkgverify_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_test.go"
+    },
+    {
+      "path": "internal/plugin/doc.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/redact/doc.go"
+    },
+    {
+      "path": "internal/redact/redact.go"
+    },
+    {
+      "path": "internal/redact/redact_test.go"
+    },
+    {
+      "path": "internal/testutil/testutil.go"
+    },
+    {
+      "path": "internal/testutil/testutil_test.go"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "server/main.go"
+    },
+    {
+      "path": "ui/.prettierignore"
+    },
+    {
+      "path": "ui/.prettierrc"
+    },
+    {
+      "path": "ui/eslint.config.js"
+    },
+    {
+      "path": "ui/package-lock.json"
+    },
+    {
+      "path": "ui/package.json"
+    },
+    {
+      "path": "ui/src/brand/backlog-logo.test.tsx"
+    },
+    {
+      "path": "ui/src/brand/backlog-logo.tsx"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/index.ts"
+    },
+    {
+      "path": "ui/src/jsx.d.ts"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-page.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/state.ts"
+    },
+    {
+      "path": "ui/src/switch/enabled-events.ts"
+    },
+    {
+      "path": "ui/src/switch/integration-switch.tsx"
+    },
+    {
+      "path": "ui/src/switch/switch.test.tsx"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    },
+    {
+      "path": "ui/tsconfig.json"
+    },
+    {
+      "path": "ui/vitest.config.ts"
+    }
+  ]
+}

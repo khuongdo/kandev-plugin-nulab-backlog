@@ -1,0 +1,236 @@
+{
+  "stage": "nfr-design",
+  "unit": "walking-skeleton",
+  "upstream_ids": [
+    "NFR1.1",
+    "NFR1.2",
+    "NFR2.1",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR3.3",
+    "NFR3.4",
+    "NFR3.5",
+    "NFR3.6",
+    "NFR3.7",
+    "NFR4.1",
+    "NFR4.2",
+    "NFR5.1",
+    "NFR5.2",
+    "NFR5.3",
+    "NFR5.4",
+    "NFR5.5",
+    "NFR5.6",
+    "NFR5.7",
+    "NFR5.8",
+    "NFR6.1",
+    "NFR7.1",
+    "NFR8.1",
+    "NFR9.1",
+    "NFR10.1",
+    "NFR11.1",
+    "NFR11.2",
+    "NFR11.3",
+    "NFR11.4",
+    "NFR11.5",
+    "NFR1.3",
+    "NFR1.4",
+    "NFR3.8",
+    "NFR3.9",
+    "NFR3.10",
+    "NFR5.9",
+    "NFR5.10",
+    "NFR11.6"
+  ],
+  "coverage": [
+    {
+      "id": "NFR1.1",
+      "status": "OK",
+      "target": "performance-design: two store reads, no network call"
+    },
+    {
+      "id": "NFR1.2",
+      "status": "OK",
+      "target": "performance-design: 12 s Connect deadline with 10 s Myself sub-deadline, plus 2 s rollback"
+    },
+    {
+      "id": "NFR2.1",
+      "status": "OK",
+      "target": "performance-design: immediate rate_limited with wait >= 1 s"
+    },
+    {
+      "id": "NFR3.1",
+      "status": "OK",
+      "target": "security-design: single SetSecret write path"
+    },
+    {
+      "id": "NFR3.2",
+      "status": "OK",
+      "target": "security-design: view type has no key field"
+    },
+    {
+      "id": "NFR3.3",
+      "status": "OK",
+      "target": "security-design: redact package, no url.Error, redacting slog handler"
+    },
+    {
+      "id": "NFR3.4",
+      "status": "OK",
+      "target": "security-design: fixed base URL, CheckRedirect error, https-only transport"
+    },
+    {
+      "id": "NFR3.5",
+      "status": "OK",
+      "target": "security-design: manifest access values asserted by unit test"
+    },
+    {
+      "id": "NFR3.6",
+      "status": "OK",
+      "target": "security-design: non-200 bodies drained and discarded"
+    },
+    {
+      "id": "NFR3.7",
+      "status": "OK",
+      "target": "security-design: validation before lock and request"
+    },
+    {
+      "id": "NFR4.1",
+      "status": "OK",
+      "target": "security-design: random per-run test keys"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "OK",
+      "target": "security-design: template without key field"
+    },
+    {
+      "id": "NFR5.1",
+      "status": "OK",
+      "target": "performance-design: context sub-deadlines"
+    },
+    {
+      "id": "NFR5.2",
+      "status": "OK",
+      "target": "performance-design and reliability-design: 1 MiB limited reader"
+    },
+    {
+      "id": "NFR5.3",
+      "status": "OK",
+      "target": "reliability-design: single error-code mapping table"
+    },
+    {
+      "id": "NFR5.4",
+      "status": "OK",
+      "target": "reliability-design: fresh-context rollback and epoch reconciliation"
+    },
+    {
+      "id": "NFR5.5",
+      "status": "OK",
+      "target": "scalability-design: workspace-keyed storage"
+    },
+    {
+      "id": "NFR5.6",
+      "status": "OK",
+      "target": "scalability-design: per-workspace try-lock map"
+    },
+    {
+      "id": "NFR5.7",
+      "status": "OK",
+      "target": "scalability-design: stateless process"
+    },
+    {
+      "id": "NFR5.8",
+      "status": "OK",
+      "target": "reliability-design: no write before a valid 200"
+    },
+    {
+      "id": "NFR6.1",
+      "status": "OK",
+      "target": "reliability-design: manifest min_kandev_version asserted"
+    },
+    {
+      "id": "NFR7.1",
+      "status": "OK",
+      "target": "reliability-design: five-target cross-compile and verification"
+    },
+    {
+      "id": "NFR8.1",
+      "status": "OK",
+      "target": "logical-components: coverage over internal and server, main excluded"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "OK",
+      "target": "logical-components: PluginUI with host.ui components"
+    },
+    {
+      "id": "NFR10.1",
+      "status": "OK",
+      "target": "logical-components: English message catalogue"
+    },
+    {
+      "id": "NFR11.1",
+      "status": "OK",
+      "target": "observability-design: slog JSON with requestId"
+    },
+    {
+      "id": "NFR11.2",
+      "status": "OK",
+      "target": "observability-design: connect_succeeded and connect_failed events"
+    },
+    {
+      "id": "NFR11.3",
+      "status": "OK",
+      "target": "observability-design: backlog_call event without query"
+    },
+    {
+      "id": "NFR11.4",
+      "status": "OK",
+      "target": "observability-design: connection_inconsistent event"
+    },
+    {
+      "id": "NFR11.5",
+      "status": "OK",
+      "target": "observability-design: no key, URL, body or name fields"
+    },
+    {
+      "id": "NFR1.3",
+      "status": "OK",
+      "target": "performance-design: one state read and one write, no network"
+    },
+    {
+      "id": "NFR1.4",
+      "status": "OK",
+      "target": "performance-design: Connect budget table, total 14 s"
+    },
+    {
+      "id": "NFR3.8",
+      "status": "OK",
+      "target": "security-design: scope workspace, workspace from verified context only"
+    },
+    {
+      "id": "NFR3.9",
+      "status": "OK",
+      "target": "security-design: disabled-switch guard and second read before storing"
+    },
+    {
+      "id": "NFR3.10",
+      "status": "OK",
+      "target": "security-design: inline script-free SVG component, render test and bundle check"
+    },
+    {
+      "id": "NFR5.9",
+      "status": "OK",
+      "target": "reliability-design: switch in its own state key"
+    },
+    {
+      "id": "NFR5.10",
+      "status": "OK",
+      "target": "scalability-design: workspace-keyed switch"
+    },
+    {
+      "id": "NFR11.6",
+      "status": "OK",
+      "target": "observability-design: integration_switched and action_refused_disabled events"
+    }
+  ]
+}

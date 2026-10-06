@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: plugin
+
+      - name: Read the pinned Kandev SDK commit
+        id: sdk
+        run: echo "ref=$(cat plugin/.kandev-sdk-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Kandev at the pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kdlbs/kandev
+          ref: ${{ steps.sdk.outputs.ref }}
+          path: kandev
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: plugin/go.mod
+          cache-dependency-path: plugin/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: plugin/.nvmrc
+          cache: npm
+          cache-dependency-path: plugin/ui/package-lock.json
+
+      - name: Install UI dependencies
+        working-directory: plugin/ui
+        run: npm ci
+
+      - name: Check go mod tidy
+        working-directory: plugin
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Run the standard targets
+        working-directory: plugin
+        run: make check-format vet lint test coverage build package verify-package
+
+      - name: Upload the package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: plugin-package
+          path: plugin/dist/
+          if-no-files-found: error

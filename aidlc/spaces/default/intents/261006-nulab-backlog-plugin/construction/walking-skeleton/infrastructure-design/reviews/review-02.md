@@ -1,0 +1,26 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-10-06T07:35:59Z
+**Iteration:** 1
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Major | aidlc/spaces/default/intents/261006-nulab-backlog-plugin/construction/walking-skeleton/infrastructure-design/cicd-pipeline.md > Job `checks` step 6 (`verify-package` bullet); traceability.json > NFR3.10 | The new bundle check "no Nulab URL that would be fetched at runtime" has no defined pattern, and a static grep cannot tell fetched from merely present. The repo's own `ui/src/messages/en.ts` ships strings such as `myteam.backlog.com`, `myteam.backlog.jp` and `myteam.backlogtool.com` (placeholder and help text), and the allowlisted hosts are legitimate in the bundle. A naive match on `backlog.com` or `nulab` would fail every build. The check is also placed inconsistently: `security-design.md` NFR3.10 says "a build check greps the bundle" (the `ui-build` stage), while CI says `verify-package`. Today `cmd/verifypkg` and `internal/pkgverify` only verify the archive, checksums, contents and manifest, and nothing reads `ui/bundle.js` | State the exact rule, for example: reject any `http(s)://` or protocol-relative `//` literal whose host is not on a short allowlist (SVG `xmlns` etc.), or reject any `Nulab`/`backlog` URL with a scheme, and say that bare hostnames in message text are allowed. Name one owner (`verifypkg` reading `ui/bundle.js` from the archive) and update `security-design.md` NFR3.10 or the CI text so both agree. Add a test with a bundle containing the placeholder text (must pass) and one with an `https://` logo URL (must fail) | New |
+| R-02 | Minor | aidlc/spaces/default/intents/261006-nulab-backlog-plugin/construction/walking-skeleton/infrastructure-design/traceability.json > coverage NFR1.2 | NFR1.2 is the p95 under 3 s Connect target (performance-design row NFR1.2, monitoring-design Metrics row), tested with a delayed fake Backlog. The N/A target text says "Kandev host enforces the 15 s action limit already", which describes NFR1.4/the host limit, not NFR1.2. Status N/A is acceptable, the rationale is wrong | Replace the target text with "application-level p95 target, verified by tests in CI job checks; no infrastructure resource" (and keep the 15 s statement on NFR1.4 only) | New |
+| R-03 | Minor | aidlc/spaces/default/intents/261006-nulab-backlog-plugin/construction/walking-skeleton/infrastructure-design/infrastructure-specification.md > Infrastructure Services table, row "Kandev web app (plugin UI host)" | The row is separated from the table by a blank line, so Markdown renders it as a stray paragraph, not as a table row. The UI-host service (settings card, nav item, `/backlog` route, inline logo) therefore looks missing in rendered form | Remove the blank line so the row joins the table | New |
+| R-04 | Minor | aidlc/spaces/default/intents/261006-nulab-backlog-plugin/construction/walking-skeleton/infrastructure-design/infrastructure-specification.md > Backlog API v2 row ("at most 10 s per call inside the 12 s Connect deadline") | The performance-design budget gives 1 s to the pre-steps and caps the Backlog call at "deadline minus 2 s", so the call can run at most about 9 s from the Connect start, not 10 s. Pre-steps 1 s + call 10 s + store 2 s would be 13 s, above the 12 s deadline. The infra statement is only an upper bound and reads as a guarantee | Reword to "client default 10 s, capped by the remaining Connect deadline minus 2 s (performance-design, NFR1.4)" | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| required-sections / upstream-coverage / linter / type-check / traceability | Not run by this reviewer (the review scope hook blocks shell variables and engine tooling outside the unit path). Manual check instead: all 38 `upstream_ids` in traceability.json appear once in `coverage`; every NFR ID found in the six U1 NFR design files (NFR1.1-1.4, 2.1, 3.1-3.10, 4.1-4.2, 5.1-5.10, 6.1, 7.1, 8.1, 9.1, 10.1, 11.1-11.6) is present; `## Sources` and `## Assumptions & Open Questions` exist in all three documents | Statuses OK/N/A are correct except for the wrong rationale text on NFR1.2 (R-02). The orchestrator should run the engine sensors at the gate |
+| Feasibility spot-checks (Kandev v0.96.0 checkout) | Manifest validator accepts `scope: workspace`; `registerNavItem` exists in `apps/web/lib/plugins/registry.ts`; host action timeout is `15 * time.Second` (`internal/plugins/handlers.go`) | The scope, nav item and 15 s limit claims hold. The 12 s plus 2 s rollback budget stays 1 s under the host limit |
+
+### Summary
+
+The infrastructure design matches the NFR design and functional spec for the change request: the switch action and `integration` key, `scope: workspace` on all actions, the nav item and route, the 12 s plus 2 s Connect budget, the new log events and the second manual check scope. The traceability statuses and targets are correct apart from the NFR1.2 rationale. The only real concern is the bundle URL check (R-01): its pattern and owning stage are undefined, and the repo's own placeholder strings would trip a naive grep, so it needs a concrete rule before code generation. One Major is within the READY limit.
