@@ -188,3 +188,56 @@ func TestU4_Watcher_BackgroundCallsAndOneLogLine(t *testing.T) {
 		require.Contains(t, lines[0], "durationMs")
 	})
 }
+
+func TestU4_Watcher_SwitchOffSkipsWorkspace(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.gw.setPRs("PROJ/web-app", prs(2))
+		w := r.saveWatch(t, nil)
+		r.conn.update(func(c *fakeConn) { c.disabled = true })
+		watcher := r.startWatcher(t)
+		calls := r.gw.total()
+		for range 3 {
+			cycle(watcher)
+		}
+		require.NoError(t, watcher.Run(context.Background(), ws, w.ID))
+		synctest.Wait()
+		require.Equal(t, calls, r.gw.total(), "no Backlog call while the switch is off (BR7.3)")
+		require.Zero(t, r.host.taskCount())
+		for _, line := range r.events(t, "watch_cycle") {
+			require.EqualValues(t, 0, line["errors"], "a disabled workspace is skipped, not failed")
+		}
+		r.conn.update(func(c *fakeConn) { c.disabled = false })
+		cycle(watcher)
+		require.Equal(t, 2, r.host.taskCount(), "switched back on, it resumes")
+	})
+}
+
+func TestU4_Watcher_SwitchReadFailsClosed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.gw.setPRs("PROJ/web-app", prs(2))
+		r.saveWatch(t, nil)
+		r.conn.update(func(c *fakeConn) { c.switchErr = errInjected })
+		watcher := r.startWatcher(t)
+		calls := r.gw.total()
+		cycle(watcher)
+		require.Equal(t, calls, r.gw.total(), "no Backlog call when the switch cannot be read (NFR3.9)")
+		require.Zero(t, r.host.taskCount())
+		require.EqualValues(t, 1, r.events(t, "watch_cycle")[0]["errors"])
+	})
+}
+
+func TestU4_Watcher_SwitchOffMidCycleStops(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.gw.setPRs("PROJ/web-app", prs(3))
+		r.saveWatch(t, nil)
+		r.gw.onPRs = func() { r.conn.update(func(c *fakeConn) { c.disabled = true }) }
+		watcher := r.startWatcher(t)
+		cycle(watcher)
+		require.Zero(t, r.host.taskCount(), "no task is created after the switch turns off")
+		ledger, _ := r.store.Ledger(r.ctx, ws)
+		require.Empty(t, ledger)
+	})
+}

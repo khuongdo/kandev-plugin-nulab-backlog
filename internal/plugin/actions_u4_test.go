@@ -50,15 +50,27 @@ type u4Gateway struct {
 	prs     []backlog.PullRequest // PROJ/web-app
 	prsErr  error
 	created []backlog.NewPullRequest
+	paths   []string // "project/repo" of every PR call, in order
+}
+
+func (g *u4Gateway) hitPath(project, repo string) {
+	g.paths = append(g.paths, project+"/"+repo)
+}
+
+func (g *u4Gateway) pathLog() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.paths)
 }
 
 func (g *u4Gateway) Repositories(context.Context, backlog.Credentials, string) ([]backlog.Repository, error) {
 	return []backlog.Repository{{ID: 11, ProjectID: 101, Name: "web-app", HTTPURL: "https://" + spaceHost + "/git/PROJ/web-app.git"}}, nil
 }
 
-func (g *u4Gateway) PullRequests(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, _, _ string, q backlog.PullRequestQuery) ([]backlog.PullRequest, error) {
+func (g *u4Gateway) PullRequests(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, project, repo string, q backlog.PullRequestQuery) ([]backlog.PullRequest, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.hitPath(project, repo)
 	if g.prsErr != nil {
 		return nil, g.prsErr
 	}
@@ -71,9 +83,10 @@ func (g *u4Gateway) PullRequests(_ context.Context, _ backlog.Credentials, _ bac
 	return out, nil
 }
 
-func (g *u4Gateway) PullRequest(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, _, _ string, n int) (backlog.PullRequest, error) {
+func (g *u4Gateway) PullRequest(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, project, repo string, n int) (backlog.PullRequest, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.hitPath(project, repo)
 	for _, pr := range g.prs {
 		if pr.Number == n {
 			return pr, nil
@@ -82,9 +95,10 @@ func (g *u4Gateway) PullRequest(_ context.Context, _ backlog.Credentials, _ back
 	return backlog.PullRequest{}, &backlog.Error{Kind: backlog.KindNotFound, Status: 404}
 }
 
-func (g *u4Gateway) CreatePullRequest(_ context.Context, _ backlog.Credentials, _, _ string, in backlog.NewPullRequest) (backlog.PullRequest, error) {
+func (g *u4Gateway) CreatePullRequest(_ context.Context, _ backlog.Credentials, project, repo string, in backlog.NewPullRequest) (backlog.PullRequest, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.hitPath(project, repo)
 	g.created = append(g.created, in)
 	return backlog.PullRequest{RepositoryID: 11, Number: 50, Summary: in.Summary, Branch: in.Branch, StatusID: 1}, nil
 }
@@ -103,6 +117,31 @@ type hostData struct {
 	repos      []pluginsdk.Repository
 	repoPages  []pluginsdk.Page
 	failCreate bool
+	// crashAfterCreate makes every ledger write fail once a task is created,
+	// like a crash between Tasks().Create and storing the task id.
+	crashAfterCreate bool
+	crashed          bool
+}
+
+// SetState fails ledger writes after a crash.
+func (h *u4Host) SetState(ctx context.Context, scope, scopeID, key string, value map[string]any) error {
+	h.data.mu.Lock()
+	crashed := h.data.crashed
+	h.data.mu.Unlock()
+	if crashed && key == "git.ledger" {
+		return fmt.Errorf("state unavailable")
+	}
+	return h.fakeHost.SetState(ctx, scope, scopeID, key, value)
+}
+
+// kandevMetadata stores plugin metadata the way Kandev v0.96.0 does
+// (pluginTaskMetadata): nested under "plugin:<id>" next to "source".
+func kandevMetadata(in map[string]any) map[string]any {
+	md := map[string]any{"source": "plugin:nulab-backlog"}
+	if len(in) > 0 {
+		md["plugin:nulab-backlog"] = in
+	}
+	return md
 }
 
 func (h *u4Host) Tasks() pluginsdk.TaskReader              { return fakeTasks{d: h.data} }
@@ -120,8 +159,9 @@ func (f fakeTasks) Create(_ context.Context, in pluginsdk.CreateTaskInput) (*plu
 		return nil, fmt.Errorf("rpc error: code = PermissionDenied")
 	}
 	f.d.creates = append(f.d.creates, in)
-	t := pluginsdk.Task{ID: fmt.Sprintf("task-%d", len(f.d.tasks)+1), WorkspaceID: in.WorkspaceID, Title: in.Title, Metadata: in.Metadata}
+	t := pluginsdk.Task{ID: fmt.Sprintf("task-%d", len(f.d.tasks)+1), WorkspaceID: in.WorkspaceID, Title: in.Title, Metadata: kandevMetadata(in.Metadata)}
 	f.d.tasks = append(f.d.tasks, t)
+	f.d.crashed = f.d.crashAfterCreate
 	return &t, nil
 }
 
@@ -163,10 +203,12 @@ type u4rig struct {
 	data *hostData
 }
 
+// backlogRepo is shaped like Kandev v0.96.0 returns a provider repository:
+// Name is "<owner>/<providerName>", the Backlog name is ProviderName.
 func backlogRepo() pluginsdk.Repository {
 	main := "main"
-	return pluginsdk.Repository{ID: "repo-k1", WorkspaceID: "ws-1", Name: "web-app", DefaultBranch: &main, ProviderID: "nulab-backlog",
-		ProviderRepositoryID: "11", ProviderHost: "https://" + spaceHost, ProviderScope: spaceHost, OwnerOrProject: "PROJ",
+	return pluginsdk.Repository{ID: "repo-k1", WorkspaceID: "ws-1", Name: "PROJ/web-app", DefaultBranch: &main, ProviderID: "nulab-backlog",
+		ProviderRepositoryID: "11", ProviderHost: "https://" + spaceHost, ProviderScope: spaceHost, OwnerOrProject: "PROJ", ProviderName: "web-app",
 		RemoteURL: "https://" + spaceHost + "/git/PROJ/web-app.git"}
 }
 
@@ -280,6 +322,7 @@ func TestU4_Actions_CreateUsesTheVerifiedContext(t *testing.T) {
 	require.Equal(t, true, out["linked"])
 	require.Equal(t, "feature/search", r.gw4.created[0].Branch, "HeadBranch comes from the verified context, never the body")
 	require.Equal(t, "main", r.gw4.created[0].Base)
+	require.Equal(t, []string{"PROJ/web-app", "PROJ/web-app"}, r.gw4.pathLog(), "the Backlog repo is ProviderName, not Kandev's owner/name")
 
 	r.gw4.prs = []backlog.PullRequest{{RepositoryID: 11, Number: 7, Branch: "feature/search", StatusID: 1}}
 	resp, out = r.taskCall(t, actionPRCreate, map[string]any{"title": "Again"})

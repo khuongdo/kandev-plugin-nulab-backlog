@@ -71,6 +71,9 @@ type Connection interface {
 	Credentials(ctx context.Context, workspaceID string) (backlog.Credentials, int, error)
 	GitCredential(ctx context.Context, workspaceID string) (connection.GitCredential, string, error)
 	Subscribe(fn func(connection.ConnectionChanged)) (unsubscribe func())
+	// RequireEnabled returns connection.ErrIntegrationDisabled while the
+	// workspace's Backlog switch is off, or the store error (fail closed).
+	RequireEnabled(ctx context.Context, workspaceID string) error
 }
 
 // Service is the GitIntegration component.

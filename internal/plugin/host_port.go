@@ -3,6 +3,9 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"path"
+	"strings"
 
 	"github.com/kandev/kandev/pkg/pluginsdk"
 
@@ -16,6 +19,11 @@ type hostPort struct {
 }
 
 const hostPageSize = 100
+
+// metadataNamespace is where Kandev v0.96.0 keeps this plugin's task
+// metadata: Tasks().Create nests it under "plugin:<plugin id>" next to
+// "source" (pluginTaskMetadata), and List returns it nested.
+const metadataNamespace = "plugin:nulab-backlog"
 
 func (p hostPort) get() (pluginsdk.Host, error) {
 	if h := p.host(); h != nil {
@@ -56,7 +64,8 @@ func (p hostPort) FindTaskByMetadata(ctx context.Context, ws, key, value string)
 			return "", false, fmt.Errorf("list tasks: %w", err)
 		}
 		for _, t := range tasks {
-			if v, _ := t.Metadata[key].(string); v == value {
+			ns, _ := t.Metadata[metadataNamespace].(map[string]any)
+			if v, _ := ns[key].(string); v == value {
 				return t.ID, true, nil
 			}
 		}
@@ -82,7 +91,10 @@ func (p hostPort) Repository(ctx context.Context, ws, id string) (git.KandevRepo
 		for _, r := range repos {
 			if r.ID == id {
 				out := git.KandevRepository{ID: r.ID, ProviderID: r.ProviderID, ProviderRepositoryID: r.ProviderRepositoryID,
-					ProviderHost: r.ProviderHost, ProviderScope: r.ProviderScope, OwnerOrProject: r.OwnerOrProject, Name: r.Name}
+					ProviderHost: r.ProviderHost, ProviderScope: r.ProviderScope, OwnerOrProject: r.OwnerOrProject, Name: repoName(r)}
+				if out.ProviderID == git.ProviderID && !git.ValidRepoName(out.Name) {
+					return git.KandevRepository{}, fmt.Errorf("repository has no valid Backlog name: %w", git.ErrRepositoryNotFound)
+				}
 				if r.DefaultBranch != nil {
 					out.DefaultBranch = *r.DefaultBranch
 				}
@@ -94,4 +106,18 @@ func (p hostPort) Repository(ctx context.Context, ws, id string) (git.KandevRepo
 		}
 		page.Cursor = info.NextCursor
 	}
+}
+
+// repoName is the Backlog repository name. Kandev sets Name to
+// "<owner>/<providerName>" for provider repositories, so it is never used:
+// ProviderName first, else the clone URL's last path segment.
+func repoName(r pluginsdk.Repository) string {
+	if r.ProviderName != "" {
+		return r.ProviderName
+	}
+	u, err := url.Parse(r.RemoteURL)
+	if err != nil || u.Path == "" {
+		return ""
+	}
+	return strings.TrimSuffix(path.Base(u.Path), ".git")
 }

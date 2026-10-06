@@ -191,6 +191,22 @@ type fakeConn struct {
 	binding string
 	gitErr  error
 	subs    []func(connection.ConnectionChanged)
+	// disabled is the workspace's Backlog switch turned off; switchErr is
+	// the switch store failing.
+	disabled  bool
+	switchErr error
+}
+
+func (c *fakeConn) RequireEnabled(context.Context, string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.switchErr != nil {
+		return c.switchErr
+	}
+	if c.disabled {
+		return connection.ErrIntegrationDisabled
+	}
+	return nil
 }
 
 func newFakeConn(t *testing.T) *fakeConn {

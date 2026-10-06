@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/backlog"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/redact"
 )
 
@@ -195,8 +196,16 @@ func (s *Service) runWatch(ctx context.Context, ws, id string, st *cycleStats) {
 // LinkKey in the task metadata, then its id is stored, so it is created at
 // most once even across a crash (AC6.2.3). A reserved entry without a task
 // id is found again by its metadata. If the connection epoch moves, the
-// cycle writes nothing more (AC1.8.3).
+// cycle writes nothing more (AC1.8.3). A workspace with the Backlog switch
+// off is skipped before any Backlog call; an unreadable switch is an error
+// (BR7.3, NFR3.9).
 func (s *Service) cycleWatch(ctx context.Context, ws, id string) (int, error) {
+	if err := s.conn.RequireEnabled(ctx, ws); err != nil {
+		if errors.Is(err, connection.ErrIntegrationDisabled) {
+			return 0, nil
+		}
+		return 0, err
+	}
 	watch, err := s.findWatch(ctx, ws, id)
 	if err != nil || watch.State != StatusActive {
 		return 0, nil // deleted or paused meanwhile
@@ -239,8 +248,8 @@ func (s *Service) cycleWatch(ctx context.Context, ws, id string) (int, error) {
 		}
 		n++
 	}
-	if errors.Is(failed, ErrStale) {
-		failed = nil // a late result is dropped, not an error
+	if errors.Is(failed, ErrStale) || errors.Is(failed, connection.ErrIntegrationDisabled) {
+		failed = nil // a late result, or the switch turned off, is dropped, not an error
 	}
 	err = s.store.UpdateWatches(ctx, ws, func(list []Watch) ([]Watch, error) {
 		i := slices.IndexFunc(list, func(w Watch) bool { return w.ID == watch.ID })
@@ -289,6 +298,9 @@ func (s *Service) resolveReserved(ctx context.Context, ws, host string, watch Wa
 
 func (s *Service) createOne(ctx context.Context, ws, host string, epoch int, watch Watch, pr backlog.PullRequest) error {
 	if err := s.unchanged(ctx, ws, epoch); err != nil {
+		return err
+	}
+	if err := s.conn.RequireEnabled(ctx, ws); err != nil {
 		return err
 	}
 	key := LinkKey(host, pr.RepositoryID, pr.Number)

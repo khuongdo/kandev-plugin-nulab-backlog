@@ -102,6 +102,9 @@ func ParseReference(raw, spaceHost string, def *RepoRef) (Reference, error) {
 	return Reference{ProjectKey: def.ProjectKey, Repo: repo, Number: n}, nil
 }
 
+// ValidRepoName reports whether name is a valid Backlog repository name.
+func ValidRepoName(name string) bool { return repoNameRe.MatchString(name) }
+
 // ParseClonePath reads /git/<PROJ>/<repo>.git or /git/<PROJ>/<repo>.
 func ParseClonePath(path string) (project, repo string, ok bool) {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")

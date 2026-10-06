@@ -150,6 +150,16 @@ Each Green step then made its layer pass, and each Refactor kept it green (for e
 - **`go mod tidy`:** no diff.
 - **Contract:** `make contract-test KANDEV_MIN_DIR=../kandev-min` → `ci contract: OK nulab-backlog on Kandev v0.96.0` (ports 38529/39529; the user's Kandev on 38429/39429 was not touched).
 
+## Review iteration 1 repairs
+
+Each fix was written test first (the new tests failed against the old code, then passed).
+
+- **R-01 (nested task metadata).** Kandev v0.96.0 stores plugin task metadata under `"plugin:nulab-backlog"` next to `source` (`pluginTaskMetadata`, host_write.go). `hostPort.FindTaskByMetadata` now reads that namespace only; flat keys and other plugins' namespaces never match. The fake `Tasks().Create` nests metadata the same way. Tests: `TestU4_HostPort_ReadsNestedMetadata`, `TestU4_Watcher_CrashAfterCreateNoDuplicate` (task created, ledger write fails, fresh runtime over the same host and storage, still one task).
+- **R-02 (repository name).** Kandev sets `Repository.Name` to `<owner>/<providerName>`. `hostPort.Repository` now maps `ProviderName`, else the clone URL's last path segment without `.git`, never `Name`. A Backlog repository whose derived name fails the repo-name regex (new `git.ValidRepoName`) returns `ErrRepositoryNotFound` (fail closed: short refs are refused, Create PR answers invalid repository). The fake returns `Name: "PROJ/web-app"`, `ProviderName: "web-app"`, and the fake gateway records the project/repo path of every PR call. Tests: `TestU4_HostPort_RepoNameFromProvider` (table), `TestU4_HostPort_OtherProviderKeepsWorking`, `TestU4_Actions_ShortRefsUseProviderName` (`42`, `#42`, `web-app#42`), and a path assertion in `TestU4_Actions_CreateUsesTheVerifiedContext`.
+- **R-03 (Backlog switch in the watcher).** `git.Connection` gains `RequireEnabled` (implemented by `connection.Service`, unchanged). `cycleWatch` checks it first: switch off skips the watch with no Backlog call and no error; a switch-store error is a cycle error with no Backlog call (fail closed). `createOne` checks it again before each task, so a switch turned off mid-cycle stops creation (dropped like a stale result). `Watcher.Run` is unchanged: the plugin guard already refuses `watches.run` while off. Tests: `TestU4_Watcher_SwitchOffSkipsWorkspace` (3 virtual cycles plus a Run: 0 gateway calls, 0 tasks; back on: resumes), `TestU4_Watcher_SwitchReadFailsClosed`, `TestU4_Watcher_SwitchOffMidCycleStops`, `TestU4_Runtime_WatcherObeysTheSwitch` (real `connection.Service` switch through the runtime).
+- R-04 to R-07 are deferred to Build and Test, as agreed.
+- `make check-format vet lint test coverage`: pass; total coverage 92.9% (git 90.8%, plugin 93.3%). No shared-with-other-units file was changed.
+
 ## Deviations
 
 1. **`default_branch` is required.** Kandev v0.96.0 (`validateRepositoryProviderInspection`) rejects a `repositories.inspect` descriptor with an empty `default_branch`, and Backlog has no such field. `Inspect` uses the most used base branch of the newest 100 pull requests, else `master`, which costs one extra Read call per inspect.
