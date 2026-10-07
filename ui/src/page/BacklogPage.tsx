@@ -377,6 +377,7 @@ export function createBacklogPage(
               selection={selection("prs", saved.prs)}
               onSavedQuery={addSaved("prs")}
               saveRequest={saveRequest.prs}
+              selectedProjects={selectedProjects}
             />
           ) : null}
         </div>

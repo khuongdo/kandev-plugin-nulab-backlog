@@ -2,51 +2,42 @@
 
 ## Kandev Plugin Actions
 
-Declared in `manifest.yaml`, routed in `internal/plugin/` (`runtime.go` `handlers` map, merged from `git_actions.go` and `issue_actions.go` in `init()`). 48 actions, all workspace-scoped (some task-scoped); 7 `admin`, 41 `authenticated`. Keys must match `^[a-z0-9][a-z0-9._-]*$`; `internal/plugin/manifest_test.go` asserts the action list and access.
+Declared in `manifest.yaml`, routed in `internal/plugin/` (`handlers` map). 55 actions, all workspace-scoped (some task-scoped); 7 `admin`, 48 `authenticated`. Keys must match `^[a-z0-9][a-z0-9._-]*$`; `internal/plugin/manifest_test.go` asserts the list and access. Every action except `connection.get` and `connection.set_enabled` is refused while Backlog is off (`runtime.go` `guarded`).
 
 | Group | Actions | Access |
 |---|---|---|
 | `connection.*` (9) | `get`, `test`, `list_projects`; `connect_api_key`, `set_enabled`, `start_oauth`, `disconnect`, `set_projects`, `set_git_credential` | first three `authenticated`; the rest `admin` |
-| `repositories.*` (2) | `inspect`, `branches` | `authenticated` |
-| `git.*` (18) | `repositories.list`; `prs.link`, `prs.unlink`, `prs.create`, `prs.status`, `prs.list`; `links.list`; `impact`; `watches.list`, `watches.save`, `watches.delete`, `watches.run`, `watches.pause`, `watches.resume`; `queries.list`, `queries.save`, `queries.delete`, `queries.run` | `authenticated` |
-| `issues.*` (19) | `list`, `filters`, `create_task`, `tasks.search`, `links.list`, `refresh`, `impact`, `settings.get`, `link`, `unlink`, `get`, `comments`; `watches.list`, `watches.save`, `watches.delete`, `watches.run`, `watches.pause`, `watches.resume`; `set_poll_interval` | `authenticated`; `set_poll_interval` `admin` |
+| `repositories.*` (2) | `inspect`, `branches` — fixed names Kandev calls for this plugin's repository provider; descriptor carries `provider_id` | `authenticated` |
+| `git.*` (19) | `repositories.list`; `prs.link`, `prs.unlink`, `prs.create`, `prs.status`, `prs.list`; `links.list`; `impact`; `watches.list/save/delete/run/pause/resume`; `queries.list/save/delete/run/set_default` | `authenticated` |
+| `issues.*` (25) | `list`, `filters`, `create_task`, `tasks.search`, `links.list`, `refresh`, `impact`, `settings.get`, `link`, `unlink`, `get`, `comments`, `set_poll_interval`; `watches.*` (6); `quick_actions.get/save`; `queries.list/save/delete/set_default` | `authenticated`; `set_poll_interval` `admin` |
 
-Contracts relevant to intent 261007-github-parity-actions:
-- `git.queries.save` takes `QueryInput{ID, Name, ProjectKey, RepoName, Statuses, Assignee, Creator}`; no id = create (`newID()`), id = replace. Validation in [business-overview.md](business-overview.md#business-rules-locked-by-code-and-tests). No default flag, no ordering field.
-- `git.prs.list` lists PRs of ONE repository with filters (Backlog's PR API is per repository).
-- `issues.list` filters by project, status, keyword and numeric assignee ids (`issues.Query.AssigneeIDs`); no "me" value. `issues.watches.*` does have `assignee: anyone|me`.
-- `issues.create_task {issueKey, workflowId, workflowStepId, force?}` builds the task with `NewTaskFor` (`internal/issues/types.go:151-160`); no prompt or preset field.
-- Missing: any action for quick actions (task prompt presets), saved issue queries, or a default query.
+Source-control relevant contracts (intent 261007-source-control-agnostic):
+- No `git.*` or `repositories.*` action takes a provider argument; all assume Backlog Git of the connected space. A second provider needs payload-level dispatch on `provider_id` or new action keys (existing keys must stay unchanged).
+- `connection.set_git_credential` (admin) stores `{username, password}` for the connected Backlog host only; there is no per-provider credential, owner/workspace or repository allowlist setting.
+- `git.repositories.list` and the repository picker list repositories of the Backlog selected projects only.
+
+## Git Credential Extension (gRPC)
+
+`internal/plugin/credential.go` implements `pluginsdk.GitCredentialHandler`:
+- `ResolveGitCredential(ProviderID, Host, Path, TaskID, workspace)` → username/password lease and binding; refused unless Backlog is on, `ProviderID == "nulab-backlog"`, host = connected space host, path `/git/<PROJ>/<repo>` in a selected project.
+- `GetGitCredentialBinding` → `<connectionEpoch>.<revision>` only.
 
 ## Webhook, Events, Manifest Surfaces
 
-- Webhook `oauth-callback` — GET, `public`, 1024 bytes; redirect `<public_base_url>/api/plugins/nulab-backlog/webhooks/oauth-callback`.
+- Webhook `oauth-callback` — GET, `public`; redirect `<public_base_url>/api/plugins/nulab-backlog/webhooks/oauth-callback`.
 - Events: `task.deleted`.
-- `repository_providers: ["nulab-backlog"]`; `reference_sources`: Backlog issues on `#`.
+- `repository_providers: ["nulab-backlog"]` (one entry, `manifest.yaml:31`); `reference_sources`: Backlog issues on `#`.
 - `capabilities`: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`.
-- `config_schema`: OAuth client id, OAuth client secret (secret), public base URL. `ui.bundle`.
+- `config_schema` (operator-level): `oauth_client_id`, `oauth_client_secret` (secret), `public_base_url`. New providers' app credentials would go here; per-workspace secrets need no manifest change.
 
-## Kandev Host Data API (Go, used through the host port)
+## Kandev Host Data API (Go, through the host port)
 
-`Tasks().Create` with `pluginsdk.CreateTaskInput{Title, Description, Priority, Metadata, WorkflowStepID}` and `Tasks().List`. At v0.96.0 `CreateTaskInput` also offers `StartAgent bool` and `Launch *PluginTaskLaunchOptions{AgentProfileID, ExecutorProfileID, Prompt, PlanMode}` (`apps/backend/pkg/pluginsdk/data_types.go:1120-1136, 1264-1269` in the Kandev checkout); the plugin uses neither.
+`Tasks().Create` / `Tasks().List`, task metadata (`nulab_backlog_pr`), and `Repositories` (`host_port.go`). `CreateTaskInput.StartAgent` / `Launch` exist at v0.96.0.
 
 ## Kandev UI Extension Points
 
-Registered in `ui/src/index.ts` (10 calls):
+Registered in `ui/src/index.ts`: `registerTranslations`, `registerIntegrationSettings` (card `nulab-backlog`, `SettingsScreen`, switch action), `registerNavItem` / `registerRoute` (`/backlog`), `registerRepositoryProvider` and `registerReviewProvider` (id `PLUGIN_ID = "nulab-backlog"`, URL matcher `BACKLOG_GIT_URL` for `*.backlog.com|backlog.jp|backlogtool.com/git/`), `registerTaskAction` (PR link), issue badge/menu/panel. At v0.96.0 a plugin may register one repository and one review provider per declared `repository_providers` id (`apps/web/lib/plugins/registry.ts:481,504`, external).
 
-| Extension point | Use today |
-|---|---|
-| `registerTranslations` | `messages/en.ts` (via `issues/i18n.ts`) |
-| `registerIntegrationSettings` | Card `nulab-backlog`, `Component` = `SettingsScreen`, `action` = switch; independent of enabled state (BR5.4/BR7.6/BR7.8); `settingsHref()` = `/settings/workspaces/{ws}/integrations/nulab-backlog` |
-| `registerNavItem` x1 | `backlog` → `/backlog`, section `integrations` |
-| `registerRoute` x1 | `/backlog` (Issues / Pull requests tabs, `?scope=prs`), `topbar: { title, icon }` |
-| `registerRepositoryProvider`, `registerTaskAction` (PR link), `registerReviewProvider` | Git / PR |
-| `registerComponent("task-card-tags")`, `registerTaskMenuAction` (Unlink only, `group: "primary"`), `registerTaskPanel` | Issue badge, menu, panel |
+## Backlog Outbound APIs
 
-Host API used: `api.invokeAction`, `context.getActiveWorkspaceId/subscribeActiveWorkspace/getWorkspaceIds/subscribeWorkspaces/getTaskCreationContext`, `navigate`, `toast`, `i18n.t`, `setIntegrationEnabled`, `useResponsiveBreakpoint`, `utils.formatRelativeTime`.
-
-`host.ui` used: Tabs, Table, Select, Dialog, DropdownMenu, Pagination, Empty, Alert, Skeleton, Checkbox, Label, Input, Button, Card, SettingsSection, ChangeRequestList, ChangeRequestRow (no `action`), ChangeRequestDetail, IntegrationIcon, IntegrationRepositoryFilter, IntegrationEnabledControl. Offered at v0.96.0 but unused: `IntegrationStartTaskMenu`, `IntegrationListToolbar`, `IntegrationScopeBar`, `IntegrationSaveQueryDialog`, `TaskCreateDialog`, `IntegrationCursorPagination`, `TaskRowIndicator`, `Combobox`, `Textarea`, `PageTopbar`. How GitHub uses them (external reference): [architecture.md](architecture.md#external-reference-kandev-github-integration-v0960).
-
-## Backlog API v2 (outbound)
-
-`internal/backlog` — 16 `Client` methods: users/myself, projects, project statuses, project users, issues, issue count, issue, issue comments, issue attachments, Git repositories, pull requests list/get/create, Git access check, OAuth token exchange and refresh. Credentials passed per call; HTTP errors become a typed error with `Status` and `Retry-After`; responses capped with `io.LimitReader`.
+`internal/backlog` (skimmed this run): REST v2 users/myself, projects, statuses, users, issues, comments, attachments, `/projects/{key}/git/repositories[/{repo}/pullRequests[/count|/{n}]]`, PR create, OAuth exchange/refresh; Git smart-HTTP probe `/git/{PROJ}/{repo}.git/info/refs?service=git-upload-pack` (Basic auth). Credentials passed per call; HTTP errors become `*backlog.Error` with `Status`/`Retry-After`; responses capped with `io.LimitReader`. No GitHub, Bitbucket or other vendor client exists.

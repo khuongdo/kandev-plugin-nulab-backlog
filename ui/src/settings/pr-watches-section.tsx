@@ -1,6 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { gitNotice, noticeText, watchStatusKey } from "../git/git-state";
+import { gitNotice, noticeText, providerName, scmNotice, watchStatusKey } from "../git/git-state";
+import type { ScmWatch } from "../git/scm-watch-form";
 import { createWatchForm, type Watch } from "../git/watch-form";
 import { hostUi } from "../host-ui";
 import { icon } from "../icons";
@@ -10,6 +11,13 @@ import { createConfirmDialog } from "./confirm-dialog";
 import { createSectionParts } from "./section-parts";
 import type { Notice } from "./state";
 import { useActionList } from "./use-list";
+
+type AnyWatch = Watch | ScmWatch;
+
+/** A GitHub, GitLab or Bitbucket watch (they carry a provider). */
+const isScm = (w: AnyWatch): w is ScmWatch => "provider" in w && Boolean(w.provider);
+/** The action family of a watch. */
+const family = (w: AnyWatch) => (isScm(w) ? "scm.watches" : "git.watches");
 
 /** The anchor the restore notice scrolls to (BR1.5). */
 export const PR_WATCHES_ANCHOR = "backlog-pr-watches";
@@ -22,7 +30,7 @@ export const PR_WATCHES_ANCHOR = "backlog-pr-watches";
 export function createPrWatchesSection(
   host: PluginHostApi,
   messages: Messages = en,
-): Component<{ workspaceId: string }> {
+): Component<{ workspaceId: string; selectedProjects?: string[] }> {
   const h = host.jsx;
   const { useState } = host.React;
   const ui = hostUi(host);
@@ -43,22 +51,35 @@ export function createPrWatchesSection(
   const WatchForm = createWatchForm(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
 
-  return function PrWatchesSection({ workspaceId }: { workspaceId: string }) {
+  return function PrWatchesSection({
+    workspaceId,
+    selectedProjects = [],
+  }: {
+    workspaceId: string;
+    selectedProjects?: string[];
+  }) {
     const list = useActionList<Watch>(host, workspaceId, "git.watches.list", "watches");
-    const [editing, setEditing] = useState<Partial<Watch> | undefined>(undefined);
-    const [deleting, setDeleting] = useState<Watch | undefined>(undefined);
+    // Intent 261007-source-control-agnostic (FR4.3): GitHub, GitLab and Bitbucket watches in the same table.
+    const scmList = useActionList<ScmWatch>(host, workspaceId, "scm.watches.list", "watches");
+    const [editing, setEditing] = useState<Partial<Watch> | Partial<ScmWatch> | undefined>(undefined);
+    const [deleting, setDeleting] = useState<AnyWatch | undefined>(undefined);
     const [notice, setNotice] = useState<Notice | undefined>(undefined);
+    const all: AnyWatch[] = [...list.items, ...scmList.items];
 
-    const replace = (w: Watch) =>
-      list.setItems((items) =>
-        items.some((x) => x.id === w.id) ? items.map((x) => (x.id === w.id ? w : x)) : [...items, w],
-      );
-    const act = async (key: string, id: string, done: (reply: unknown) => void) => {
+    const replace = (w: AnyWatch) => {
+      const put = <T extends { id: string }>(items: T[]) =>
+        items.some((x) => x.id === w.id)
+          ? items.map((x) => (x.id === w.id ? (w as unknown as T) : x))
+          : [...items, w as unknown as T];
+      if (isScm(w)) scmList.setItems(put);
+      else list.setItems(put);
+    };
+    const act = async (w: AnyWatch, verb: string, done: (reply: unknown) => void) => {
       setNotice(undefined);
       try {
-        done(await host.api.invokeAction(key, { workspaceId, body: { id } }));
+        done(await host.api.invokeAction(`${family(w)}.${verb}`, { workspaceId, body: { id: w.id } }));
       } catch (e) {
-        setNotice(gitNotice(e));
+        setNotice(isScm(w) ? scmNotice(e) : gitNotice(e));
       }
     };
 
@@ -69,15 +90,31 @@ export function createPrWatchesSection(
       </Button>
     );
 
-    const rows = list.items.map((w) => (
+    const rows = all.map((w) => (
       <TableRow key={w.id} data-testid={`backlog-pr-watch-row-${w.id}`}>
         <TableCell>{w.name}</TableCell>
-        <TableCell>{format(messages.watchRepo, { project: w.projectKey, repo: w.repoName })}</TableCell>
         <TableCell>
-          <Badge variant="outline">{messages[watchStatusKey(w.state)]}</Badge>
+          {isScm(w)
+            ? format(messages.scmWatchRepo, {
+                provider: providerName(w.provider, messages),
+                project: w.projectKey,
+                repo: w.repo,
+              })
+            : format(messages.watchRepo, { project: w.projectKey, repo: w.repoName })}
         </TableCell>
         <TableCell>
-          {format(messages.progressValue, { created: w.createdCount, pending: w.pendingCount })}
+          <Badge variant="outline">{messages[watchStatusKey(w.state)]}</Badge>
+          {isScm(w) && w.unmapped ? (
+            <Badge variant="secondary" data-testid={`backlog-pr-watch-unmapped-${w.id}`}>
+              {messages.scmUnmapped}
+            </Badge>
+          ) : null}
+        </TableCell>
+        <TableCell>
+          {format(messages.progressValue, {
+            created: w.createdCount,
+            pending: isScm(w) ? 0 : w.pendingCount,
+          })}
         </TableCell>
         <TableCell>{w.lastRunAt ? relative(w.lastRunAt) : messages.neverRun}</TableCell>
         <TableCell>
@@ -96,12 +133,21 @@ export function createPrWatchesSection(
                       testId: `backlog-pr-watch-run-${w.id}`,
                       label: messages.runNow,
                       onSelect: () =>
-                        void act("git.watches.run", w.id, () => setNotice({ key: "runQueued" })),
+                        void act(w, "run", (r) =>
+                          setNotice(
+                            isScm(w)
+                              ? {
+                                  key: "scmRunDone",
+                                  params: { count: (r as { created?: number })?.created ?? 0 },
+                                }
+                              : { key: "runQueued" },
+                          ),
+                        ),
                     },
                     {
                       testId: `backlog-pr-watch-pause-${w.id}`,
                       label: messages.pause,
-                      onSelect: () => void act("git.watches.pause", w.id, (r) => replace(r as Watch)),
+                      onSelect: () => void act(w, "pause", (r) => replace(r as AnyWatch)),
                     },
                   ]
                 : []),
@@ -110,7 +156,7 @@ export function createPrWatchesSection(
                     {
                       testId: `backlog-pr-watch-resume-${w.id}`,
                       label: messages.resume,
-                      onSelect: () => void act("git.watches.resume", w.id, (r) => replace(r as Watch)),
+                      onSelect: () => void act(w, "resume", (r) => replace(r as AnyWatch)),
                     },
                   ]
                 : []),
@@ -127,7 +173,7 @@ export function createPrWatchesSection(
 
     const body = list.error ? (
       <ListError testId="backlog-pr-watches" notice={list.error} onRetry={list.reload} />
-    ) : !list.loading && list.items.length === 0 ? (
+    ) : !list.loading && !scmList.loading && all.length === 0 ? (
       <ListEmpty testId="backlog-pr-watches" title={messages.watchesEmpty}>
         {add("backlog-pr-watches-empty-add")}
       </ListEmpty>
@@ -159,6 +205,9 @@ export function createPrWatchesSection(
           action={add("backlog-pr-watches-add")}
         >
           {body}
+          {scmList.error ? (
+            <ListError testId="backlog-scm-watches" notice={scmList.error} onRetry={scmList.reload} />
+          ) : null}
           <p role="status" data-testid="backlog-pr-watches-notice">
             {notice ? noticeText(notice, messages) : ""}
           </p>
@@ -177,7 +226,8 @@ export function createPrWatchesSection(
               <WatchForm
                 workspaceId={workspaceId}
                 watch={editing}
-                onSaved={(w: Watch) => {
+                selectedProjects={selectedProjects}
+                onSaved={(w: AnyWatch) => {
                   replace(w);
                   setEditing(undefined);
                 }}
@@ -194,8 +244,12 @@ export function createPrWatchesSection(
             confirmLabel={messages.delete}
             destructive
             onConfirm={async () => {
-              await host.api.invokeAction("git.watches.delete", { workspaceId, body: { id: deleting.id } });
-              list.setItems((items) => items.filter((x) => x.id !== deleting.id));
+              await host.api.invokeAction(`${family(deleting)}.delete`, {
+                workspaceId,
+                body: { id: deleting.id },
+              });
+              if (isScm(deleting)) scmList.setItems((items) => items.filter((x) => x.id !== deleting.id));
+              else list.setItems((items) => items.filter((x) => x.id !== deleting.id));
             }}
             onClose={() => setDeleting(undefined)}
           />

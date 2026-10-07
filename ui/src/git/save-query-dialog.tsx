@@ -5,7 +5,7 @@ import { BUTTON, FIELD, STACK } from "../layout";
 import type { IssueQuery } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
-import { gitNotice, noticeText, stateText } from "./git-state";
+import { gitNotice, noticeText, providerName, stateText } from "./git-state";
 
 /** A saved PR query (git.queries.*). */
 export interface Query {
@@ -17,6 +17,31 @@ export interface Query {
   assignee: string;
   creator?: string;
   isDefault?: boolean;
+}
+
+/** A saved query of GitHub, GitLab or Bitbucket (scm.queries.*, FR4.2). */
+export interface ScmQuery {
+  id?: string;
+  name: string;
+  provider: string;
+  projectKey: string;
+  repo: string;
+  statuses: string[];
+  author: string;
+  isDefault?: boolean;
+  /** The repository is no longer mapped (FR3.4). */
+  unmapped?: boolean;
+}
+
+/** "GitHub · PROJ · acme/web · Open · author Me". */
+export function scmQueryFilters(q: ScmQuery, messages: Messages = en): string {
+  return format(messages.scmQueryFilters, {
+    provider: providerName(q.provider, messages),
+    project: q.projectKey,
+    repo: q.repo,
+    statuses: q.statuses.map((s) => stateText(s, messages)).join(", "),
+    author: q.author === "me" ? messages.whoMe : messages.whoAnyone,
+  });
 }
 
 /** "PROJ / web-app · Open, Merged · assignee Me · creator Anyone". */
@@ -35,13 +60,13 @@ export function queryFilters(q: Query, messages: Messages = en): string {
 export interface SaveQueryDialogProps {
   workspaceId: string;
   /** The filters to save; with an id the query is renamed (Settings, WF6). */
-  query: Query | IssueQuery;
-  /** The save action: git.queries.save (default) or issues.queries.save (FR4.3). */
+  query: Query | IssueQuery | ScmQuery;
+  /** The save action: git.queries.save (default), issues.queries.save (FR4.3) or scm.queries.save. */
   action?: string;
   /** The filter summary; a PR query's by default. */
   description?: string;
   // Method syntax: callers handle the query type of their own action.
-  onSaved(query: Query | IssueQuery): void;
+  onSaved(query: Query | IssueQuery | ScmQuery): void;
   onClose: () => void;
 }
 
@@ -86,7 +111,7 @@ export function createSaveQueryDialog(
       setSaving(true);
       try {
         onSaved(
-          await host.api.invokeAction<Query | IssueQuery>(action, {
+          await host.api.invokeAction<Query | IssueQuery | ScmQuery>(action, {
             workspaceId,
             body: { ...query, name: trimmed },
           }),

@@ -26,5 +26,12 @@
     "dirName": "261007-opt-in-default",
     "scope": "bugfix",
     "status": "complete"
+  },
+  {
+    "uuid": "01a11636-2212-76f6-bef2-de0748c5f40d",
+    "slug": "source-control-agnostic",
+    "dirName": "261007-source-control-agnostic",
+    "scope": "express",
+    "status": "in-flight"
   }
 ]

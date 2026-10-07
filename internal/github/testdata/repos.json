@@ -1,0 +1,5 @@
+[
+  {"id": 1, "full_name": "acme/web-app", "html_url": "https://github.com/acme/web-app", "private": true},
+  {"id": 2, "full_name": "acme/api", "html_url": "https://github.com/acme/api", "private": false},
+  {"id": 3, "full_name": "other/Web-Docs", "html_url": "https://github.com/other/Web-Docs", "private": false}
+]

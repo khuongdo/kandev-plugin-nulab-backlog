@@ -1,0 +1,3 @@
+{"number": 42, "title": "PROJ-12 Add login page", "state": "open", "draft": false, "merged_at": null,
+ "user": {"login": "lan-dev"}, "head": {"ref": "feature/PROJ-12-login"}, "base": {"ref": "main"},
+ "updated_at": "2026-10-06T09:00:00Z", "html_url": "https://github.com/acme/web-app/pull/42"}

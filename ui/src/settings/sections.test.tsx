@@ -28,7 +28,7 @@ const SECTIONS = [
   "backlog-section-saved-queries",
   "backlog-section-quick-actions",
   "backlog-section-issue-sync",
-  "backlog-section-git-access",
+  "backlog-section-source-control",
   "backlog-section-projects",
 ];
 
@@ -106,6 +106,40 @@ const ISSUE_QUERY = {
   keyword: "login",
 };
 
+const SCM_PROVIDERS = [
+  {
+    provider: "github",
+    state: "connected",
+    account: "Lan",
+    mappings: [{ projectKey: "PROJ", repos: ["acme/web"] }],
+  },
+  { provider: "gitlab", state: "not_configured", mappings: [] },
+  { provider: "bitbucket", state: "not_configured", mappings: [] },
+];
+const SCM_WATCH = {
+  id: "s1",
+  name: "GitHub reviews",
+  provider: "github",
+  projectKey: "PROJ",
+  repo: "acme/web",
+  statuses: ["open"],
+  author: "anyone",
+  intervalMinutes: 5,
+  state: "active",
+  createdCount: 1,
+  unmapped: true,
+};
+const SCM_QUERY = {
+  id: "sq1",
+  name: "GitHub open",
+  provider: "github",
+  projectKey: "PROJ",
+  repo: "acme/web",
+  statuses: ["open"],
+  author: "me",
+  isDefault: true,
+};
+
 type Handler = (body: Record<string, unknown>) => Promise<unknown>;
 
 function scripted(view: View, handlers: Record<string, Handler> = {}, lists: Record<string, unknown[]> = {}) {
@@ -146,6 +180,12 @@ function scripted(view: View, handlers: Record<string, Handler> = {}, lists: Rec
         return DEFAULT_ACTIONS;
       case "issues.queries.list":
         return { queries: lists.issueQueries ?? [ISSUE_QUERY] };
+      case "scm.providers.list":
+        return { providers: SCM_PROVIDERS };
+      case "scm.watches.list":
+        return { watches: lists.scmWatches ?? [] };
+      case "scm.queries.list":
+        return { queries: lists.scmQueries ?? [] };
     }
     throw new Error(`unexpected ${key}`);
   });
@@ -195,7 +235,9 @@ describe("Settings sections (FR1, BR1.1, BR1.2)", () => {
       "backlog-section-saved-queries",
       "backlog-section-quick-actions",
       "backlog-section-issue-sync",
-    ]);
+      "backlog-section-source-control",
+    ]); // FR2.6: members see the source control settings read-only
+    expect(byTestId(c, "backlog-scm-github-save")).toBeNull();
     expect(byTestId(c, "backlog-pr-watches-add")).not.toBeNull();
     expect(byTestId(c, "backlog-poll-save")).toBeNull();
     expect(byTestId(c, "backlog-disconnect")).toBeNull();
@@ -229,6 +271,34 @@ describe("Settings sections (FR1, BR1.1, BR1.2)", () => {
       document.getElementById("backlog-pr-watches"),
     );
     expect(host.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Source control watches and queries (FR3.4, FR4.2, FR4.3)", () => {
+  it("lists provider watches with their provider and the unmapped state, acting through scm.watches", async () => {
+    const host = scripted(
+      connected,
+      { "scm.watches.pause": async () => ({ ...SCM_WATCH, state: "paused" }) },
+      {
+        scmWatches: [SCM_WATCH],
+      },
+    );
+    const c = await render(host);
+    const row = byTestId(c, "backlog-pr-watch-row-s1")!;
+    expect(text(row)).toContain("GitHub · PROJ · acme/web");
+    expect(byTestId(row, "backlog-pr-watch-unmapped-s1")!.textContent).toBe(en.scmUnmapped);
+    expect(byTestId(c, "backlog-pr-watch-row-w1"), "Backlog Git watches stay").not.toBeNull();
+    await act(async () => byTestId(c, "backlog-pr-watch-pause-s1")!.click());
+    expect(calls(host, "scm.watches.pause")[0]![1]).toEqual({ workspaceId: "ws-1", body: { id: "s1" } });
+  });
+
+  it("lists provider saved queries in their own table with the provider (FR4.2)", async () => {
+    const host = scripted(connected, {}, { scmQueries: [SCM_QUERY] });
+    const c = await render(host);
+    const row = byTestId(c, "backlog-saved-scm-query-row-sq1")!;
+    expect(text(row)).toContain("GitHub open");
+    expect(text(row)).toContain("GitHub · PROJ · acme/web · Open · author Me");
+    expect(text(row)).toContain(en.defaultQuery);
   });
 });
 

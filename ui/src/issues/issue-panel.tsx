@@ -5,6 +5,7 @@ import { hostUi } from "../host-ui";
 import { BUTTON, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
+import { createIssuePullRequests } from "./issue-prs";
 import { issueNotice } from "./issues-state";
 import type { LinksStore } from "./links-store";
 
@@ -65,7 +66,8 @@ function useSection(host: PluginHostApi, name: string): [boolean, () => void] {
  * The Backlog issue panel of a task (M8, US3.2, US3.5), opened from the
  * task's panel menu of a linked task. It reads the issue live on every open and never writes
  * to it: key, title, status, assignee, priority, due date, comments (newest
- * first, 20 at a time) and attachments, which link to Backlog.
+ * first, 20 at a time) and attachments, which link to Backlog, and the
+ * issue's pull requests of every provider (intent 261007-source-control-agnostic, FR5).
  */
 export function createIssuePanel(
   host: PluginHostApi,
@@ -77,6 +79,7 @@ export function createIssuePanel(
   const { Button } = hostUi(host);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
+  const PullRequests = createIssuePullRequests(host, messages);
 
   function Comments({ workspaceId, taskId }: { workspaceId: string; taskId: string }) {
     const [open, toggle] = useSection(host, "comments");
@@ -315,6 +318,7 @@ export function createIssuePanel(
         </a>
         <Comments workspaceId={workspaceId} taskId={taskId} />
         <Attachments detail={detail} />
+        <PullRequests workspaceId={workspaceId} taskId={taskId} issueKey={detail.issueKey} />
       </div>
     );
   }

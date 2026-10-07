@@ -97,8 +97,8 @@ func TestManifestActionsAndAccess(t *testing.T) {
 	access := map[string]string{}
 	for _, a := range m.Actions {
 		require.Regexp(t, `^[a-z0-9][a-z0-9._-]*$`, a.Key, "Kandev's action key rule")
-		if slices.Contains(u4Actions, a.Key) || slices.Contains(u3Actions, a.Key) {
-			continue // TestU4_Manifest_ActionsAndProvider, TestU3_Manifest_Actions
+		if slices.Contains(u4Actions, a.Key) || slices.Contains(u3Actions, a.Key) || slices.Contains(scmActions, a.Key) {
+			continue // TestU4_Manifest_ActionsAndProvider, TestU3_Manifest_Actions, TestSCM_Manifest_Actions
 		}
 		require.Equal(t, "workspace", a.Scope, a.Key)
 		require.Equal(t, 8192, a.MaxBodyBytes, a.Key)

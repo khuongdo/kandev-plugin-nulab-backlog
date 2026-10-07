@@ -1,0 +1,282 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "internal/bitbucket/client.go"
+    },
+    {
+      "path": "internal/bitbucket/client_test.go"
+    },
+    {
+      "path": "internal/bitbucket/doc.go"
+    },
+    {
+      "path": "internal/bitbucket/testdata/error_401.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/error_403.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/error_404.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/error_429.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/pullrequest.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/pullrequests.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/repositories.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/repository.json"
+    },
+    {
+      "path": "internal/bitbucket/testdata/user.json"
+    },
+    {
+      "path": "internal/github/client.go"
+    },
+    {
+      "path": "internal/github/client_test.go"
+    },
+    {
+      "path": "internal/github/doc.go"
+    },
+    {
+      "path": "internal/github/testdata/error_401.json"
+    },
+    {
+      "path": "internal/github/testdata/error_403_rate_limit.json"
+    },
+    {
+      "path": "internal/github/testdata/error_404.json"
+    },
+    {
+      "path": "internal/github/testdata/error_429.json"
+    },
+    {
+      "path": "internal/github/testdata/pull.json"
+    },
+    {
+      "path": "internal/github/testdata/pulls.json"
+    },
+    {
+      "path": "internal/github/testdata/repo.json"
+    },
+    {
+      "path": "internal/github/testdata/repos.json"
+    },
+    {
+      "path": "internal/github/testdata/user.json"
+    },
+    {
+      "path": "internal/gitlab/client.go"
+    },
+    {
+      "path": "internal/gitlab/client_test.go"
+    },
+    {
+      "path": "internal/gitlab/doc.go"
+    },
+    {
+      "path": "internal/gitlab/testdata/error_401.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/error_403.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/error_404.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/error_429.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/merge_request.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/merge_requests.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/project.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/projects.json"
+    },
+    {
+      "path": "internal/gitlab/testdata/user.json"
+    },
+    {
+      "path": "internal/plugin/actions_scm_test.go"
+    },
+    {
+      "path": "internal/plugin/host_port.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/plugin/scm_actions.go"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/backlog.git.ws-1.json"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/git.ledger.json"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/git.links.json"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/git.queries.json"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/git.watches.json"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/manifest.yaml"
+    },
+    {
+      "path": "internal/plugin/testdata/v030/task-metadata.json"
+    },
+    {
+      "path": "internal/plugin/v030_test.go"
+    },
+    {
+      "path": "internal/scm/client.go"
+    },
+    {
+      "path": "internal/scm/doc.go"
+    },
+    {
+      "path": "internal/scm/errors.go"
+    },
+    {
+      "path": "internal/scm/fakes_test.go"
+    },
+    {
+      "path": "internal/scm/harness_test.go"
+    },
+    {
+      "path": "internal/scm/httpx.go"
+    },
+    {
+      "path": "internal/scm/httpx_test.go"
+    },
+    {
+      "path": "internal/scm/links.go"
+    },
+    {
+      "path": "internal/scm/links_test.go"
+    },
+    {
+      "path": "internal/scm/prs.go"
+    },
+    {
+      "path": "internal/scm/queries.go"
+    },
+    {
+      "path": "internal/scm/queries_test.go"
+    },
+    {
+      "path": "internal/scm/service.go"
+    },
+    {
+      "path": "internal/scm/service_test.go"
+    },
+    {
+      "path": "internal/scm/store.go"
+    },
+    {
+      "path": "internal/scm/store_test.go"
+    },
+    {
+      "path": "internal/scm/types.go"
+    },
+    {
+      "path": "internal/scm/types_test.go"
+    },
+    {
+      "path": "internal/scm/watcher.go"
+    },
+    {
+      "path": "internal/scm/watcher_test.go"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "ui/src/git/git-state.test.ts"
+    },
+    {
+      "path": "ui/src/git/git-state.ts"
+    },
+    {
+      "path": "ui/src/git/pr-list.test.tsx"
+    },
+    {
+      "path": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "path": "ui/src/git/save-query-dialog.tsx"
+    },
+    {
+      "path": "ui/src/git/scm-pr-list.tsx"
+    },
+    {
+      "path": "ui/src/git/scm-watch-form.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.test.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-panel.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-prs.tsx"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/start-task.tsx"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/pr-watches-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/saved-queries-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/sections.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/source-control-section.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/source-control-section.tsx"
+    }
+  ]
+}

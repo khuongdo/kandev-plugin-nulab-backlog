@@ -7,7 +7,8 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 - Adds a **Backlog** card under **Settings > Integrations**, with the plugin's outline icon and
   an on/off switch. The card holds every Backlog setting as framed sections: Connection,
-  PR watches, Issue watches, Saved queries, Quick actions, Issue sync, Git access and Projects.
+  PR watches, Issue watches, Saved queries, Quick actions, Issue sync, Source control (with
+  Git access) and Projects.
 - Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
   `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration:
   a scope bar with the two kinds, a built-in preset and a **Saved** menu, a toolbar with the
@@ -30,6 +31,18 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
   browser and never written to logs.
 
 ## Upgrade notes
+
+### 0.4.0: GitHub, GitLab and Bitbucket pull requests
+
+- New: pull requests from GitHub, GitLab and Bitbucket (cloud only) next to Backlog Git: PR
+  list, saved queries, PR watches, PR status, and links to tasks and Backlog issues,
+  including automatic links when a Backlog issue key is in the branch name or PR title.
+- Setup: an admin adds one read-only token per service and maps Backlog projects to
+  repositories in **Source control** on the Backlog settings card. The required token
+  scopes are shown there. See [GitHub, GitLab and Bitbucket](#github-gitlab-and-bitbucket).
+- Moved: the Backlog Git **Git access** form is now inside the **Source control** section.
+- Nothing to do after upgrading: existing Backlog Git links, watches, saved queries and
+  credentials keep working unchanged.
 
 ### 0.3.0: Backlog is now off by default (upgrading from v0.2.0 or earlier)
 
@@ -227,6 +240,54 @@ A1). They only use repositories of the projects selected in the Backlog settings
 - **Saved queries.** **Save query** on the Pull requests list saves the current repository and
   filters; saved queries then appear as presets there. Rename or delete them in the **Saved PR
   queries** section of the settings.
+
+## GitHub, GitLab and Bitbucket
+
+Next to Backlog Git, the plugin reads pull requests from **GitHub**, **GitLab** and **Bitbucket
+Cloud** and links them to Kandev tasks and Backlog issues. Only the cloud services are supported:
+`github.com`, `gitlab.com` and `bitbucket.org` (GitHub Enterprise Server, GitLab self-managed and
+Bitbucket Data Center are not). The plugin calls only `https://api.github.com`,
+`https://gitlab.com/api/v4` and `https://api.bitbucket.org/2.0`, reads only, and never creates,
+merges or comments on pull requests or hands out clone or push credentials for these services.
+
+- **Tokens.** In **Settings > Integrations > Backlog > Source control**, a workspace admin enters
+  one access token per service for the workspace, then can **Test**, replace or **Remove** it. The
+  token is checked with the service's current-user call before it is saved, kept only in Kandev's
+  encrypted secret store, and never shown again or written to logs. Every member sees the same pull
+  requests. Members see the section read-only. Read scopes needed:
+  - GitHub: a fine-grained token with **Metadata: read** and **Pull requests: read**, or a classic
+    token with `repo` (`public_repo` for public repositories only).
+  - GitLab: a personal access token with `read_api`.
+  - Bitbucket: an API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket`, or an
+    app password with **Repositories: Read** and **Pull requests: Read**, together with your
+    Bitbucket user name or email.
+- **Repositories per Backlog project.** For each selected Backlog project, an admin maps the
+  repositories of each service: search the repositories the token can read, or type
+  `owner/name` (GitHub), `group/project` (GitLab) or `workspace/repo` (Bitbucket). Each repository
+  is checked with the service before it is saved. Lists, saved queries, watches and automatic
+  linking only cover mapped repositories. Removing a mapping disables, but never deletes, the
+  saved queries and watches that use it; they show **Repository no longer mapped**.
+- **Pull requests list.** On `/backlog`, **Pull requests** has a **Provider** choice. For a service
+  it lists one mapped repository of a selected project, 20 per page, with status (open, closed,
+  merged; drafts and Bitbucket's declined are shown as such) and author filters, the branches,
+  the last update and a link to the pull request. **Save query** saves the filters with the
+  service; one saved query per service can be the default.
+- **Linking.** Create a task from a row with **+ Task**, or open a task's **Backlog issue** panel and
+  paste a pull request URL with **Link a pull request**; the URL must belong to a mapped
+  repository. When a list refresh or a watch first sees a pull request whose source branch or title
+  contains an issue key of a selected project mapped to that repository (for example
+  `PROJ-123`), the pull request is **auto-linked** to that issue. Removing an auto-link is final:
+  it is not created again. The panel also shows the GitHub and GitLab pull requests Kandev itself
+  attached to the tasks of that issue, without any plugin token.
+- **Watches.** PR watches work for every service: each run creates at most one new task, every
+  N minutes (5 by default) as set in the watch dialog, and never twice for one pull request.
+  Linked pull request states are refreshed every 5 minutes, like Backlog Git watches. A rate limit
+  from one service never holds up another; the plugin does not retry.
+- **Backlog switch and connection.** When Backlog is off for the workspace, every source control
+  action is refused except reading the settings, and watches do not run. Unlike Backlog Git, the
+  tokens, mappings, links, queries and watches of these services stay after a Backlog disconnect,
+  a space change or a project deselection; items of a project that is no longer selected are
+  only hidden from project-based views.
 
 ## Backlog issues
 
