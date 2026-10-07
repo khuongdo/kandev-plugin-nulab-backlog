@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ type fakeGateway struct {
 	creds    backlog.Credentials
 	delay    time.Duration // answer after this long (virtual time under synctest)
 	onCall   func()        // runs inside the call, e.g. to turn the switch off
+	noRetry  bool          // the call's context asked for no 429 retry
 
 	// U2 calls.
 	projects      []backlog.Project
@@ -54,6 +56,7 @@ func (g *fakeGateway) Myself(ctx context.Context, c backlog.Credentials) (backlo
 	g.mu.Lock()
 	g.calls++
 	g.creds = c
+	g.noRetry = backlog.RetryDisabled(ctx)
 	if d, ok := ctx.Deadline(); ok {
 		g.deadline = time.Until(d)
 	}
@@ -254,6 +257,35 @@ func TestConnectOutcomeTable(t *testing.T) {
 	}
 }
 
+// Connect must answer a 429 at once (NFR2.1, T-RATE-01): its Myself call asks
+// the client for no retry, so one request is made and nothing is stored.
+func TestConnectAsksForNoRetryOn429(t *testing.T) {
+	h := newHarness(t)
+	h.gw.err = &backlog.Error{Kind: backlog.KindRateLimited, Status: 429, RetryAfter: 2 * time.Second}
+	_, err := h.svc.Connect(h.ctx, ws, ConnectInput{SpaceURL: "example-space.backlog.com", APIKey: testutil.APIKey(t)})
+	require.Equal(t, Outcome{Code: CodeRateLimited, RetryAfterSeconds: 2}, Classify(err))
+	require.Equal(t, 1, h.gw.callCount())
+	require.True(t, h.gw.noRetry, "the Connect Myself call must not retry")
+	require.Empty(t, h.secrets.snapshot())
+}
+
+func TestOAuthSignInAsksForNoRetry(t *testing.T) {
+	u := newU2(t)
+	state := u.start(t)
+	u.okTokens(t)
+	u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {testutil.Token(t)}}, u.verifier)
+	require.True(t, u.gw.noRetry, "the sign-in Myself call must not retry")
+}
+
+func TestConnectionTestKeepsTheRetry(t *testing.T) {
+	h := newHarness(t)
+	_, err := h.svc.Connect(h.ctx, ws, ConnectInput{SpaceURL: "example-space.backlog.com", APIKey: testutil.APIKey(t)})
+	require.NoError(t, err)
+	_, err = h.svc.Test(h.ctx, ws)
+	require.NoError(t, err)
+	require.False(t, h.gw.noRetry, "connection.test keeps the shared retry")
+}
+
 func TestConnectCancelledWritesNothingAndReturnsCancellation(t *testing.T) {
 	h := newHarness(t)
 	ctx, cancel := context.WithCancel(h.ctx)
@@ -449,9 +481,9 @@ func TestConnectNeverLeaksTheKeyOrDisplayName(t *testing.T) {
 		}
 		b, _ := json.Marshal(view)
 		texts = append(texts, string(b))
-		testutil.AssertNoLeak(t, h.logs.String(), key, 8, "Test User")
+		testutil.AssertNoLeak(t, h.logs.String(), key, "Test User")
 	}
-	testutil.AssertNoLeak(t, strings.Join(texts, "\n"), key, 8)
+	testutil.AssertNoLeak(t, strings.Join(texts, "\n"), key)
 }
 
 func TestSetEnabledWritesOnlyTheSwitchAndReturnsItsValue(t *testing.T) {

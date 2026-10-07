@@ -45,7 +45,7 @@ func TestOAuthConfigMissingOrBlankFieldIsNotConfigured(t *testing.T) {
 				}
 				_, err := ParseOAuthConfig(m)
 				require.ErrorIs(t, err, ErrOAuthNotConfigured)
-				testutil.AssertNoLeak(t, err.Error(), secret, 8)
+				testutil.AssertNoLeak(t, err.Error(), secret)
 			})
 		}
 	}
@@ -91,6 +91,6 @@ func TestOAuthConfigHidesTheClientSecretWhenFormatted(t *testing.T) {
 	m, secret := oauthConfigMap(t)
 	cfg, err := ParseOAuthConfig(m)
 	require.NoError(t, err)
-	testutil.AssertNoLeak(t, fmt.Sprintf("%v %+v %#v %s", cfg, cfg, cfg, cfg), secret, 8)
+	testutil.AssertNoLeak(t, fmt.Sprintf("%v %+v %#v %s", cfg, cfg, cfg, cfg), secret)
 	require.True(t, errors.Is(fmt.Errorf("wrap: %w", ErrOAuthNotConfigured), ErrOAuthNotConfigured))
 }

@@ -42,10 +42,26 @@ func (r *Runtime) HandleWebhook(ctx context.Context, req *pluginsdk.WebhookReque
 		// The callback gets the same budget as an action (12 s).
 		cctx, cancel := context.WithTimeout(ctx, r.service.Deadline)
 		defer cancel()
-		res = r.service.CompleteOAuth(cctx, q)
+		res = r.service.CompleteOAuth(cctx, q, verifierCookie(req.Headers))
 	}
 	log.InfoContext(ctx, "oauth callback", "event", "oauth_callback", "outcome", res.Outcome)
 	return redirect(callbackLocation(res)), nil
+}
+
+// verifierCookie returns the browser's OAuth verifier cookie, or "". Kandev
+// relays the Cookie header to a public webhook with its own session cookie
+// removed (flattenHeaders in internal/plugins/handlers.go, v0.96.0), under the
+// canonical key "Cookie". Malformed cookies are skipped, not fatal.
+func verifierCookie(headers map[string]string) string {
+	h := http.Header{}
+	if v := headers["Cookie"]; v != "" {
+		h.Set("Cookie", v)
+	}
+	c, err := (&http.Request{Header: h}).Cookie(connection.VerifierCookie)
+	if err != nil {
+		return ""
+	}
+	return c.Value
 }
 
 // callbackLocation is the settings page of the state's workspace.

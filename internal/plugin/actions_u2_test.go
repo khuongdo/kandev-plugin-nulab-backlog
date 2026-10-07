@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
 	"strings"
 	"testing"
@@ -30,6 +32,15 @@ func oauthConfig(t *testing.T) (map[string]any, string) {
 	}, secret
 }
 
+// startBody is a connection.start_oauth body as the settings UI sends it:
+// verifierHash is the hex SHA-256 of the verifier cookie, which is returned.
+func startBody(t *testing.T) (body map[string]string, verifier string) {
+	t.Helper()
+	verifier = testutil.Token(t)
+	sum := sha256.Sum256([]byte(verifier))
+	return map[string]string{"spaceUrl": "example-space.backlog.com", "verifierHash": hex.EncodeToString(sum[:])}, verifier
+}
+
 func (r *rig) connected(t *testing.T) string {
 	t.Helper()
 	key := testutil.APIKey(t)
@@ -55,7 +66,7 @@ func TestDisconnectActionRemovesTheSecretAndPendingSignIn(t *testing.T) {
 	r := newRig(t)
 	r.host.config, _ = oauthConfig(t)
 	r.connected(t)
-	resp, _ := r.call(t, keyStartOAuth, map[string]string{"spaceUrl": "example-space.backlog.com"})
+	resp, _ := r.call(t, keyStartOAuth, must(startBody(t)))
 	require.Equal(t, 200, resp.Status)
 	require.Contains(t, r.host.state, "workspace/ws-1/oauth_pending")
 
@@ -108,28 +119,28 @@ func TestOAuthStartActionReadsTheConfigOnEveryCall(t *testing.T) {
 	cfg, secret := oauthConfig(t)
 	r.host.config = cfg
 	for range 2 {
-		resp, out := r.call(t, keyStartOAuth, map[string]string{"spaceUrl": "example-space.backlog.com"})
+		resp, out := r.call(t, keyStartOAuth, must(startBody(t)))
 		require.Equal(t, 200, resp.Status)
 		au, err := url.Parse(out["authorizeUrl"].(string))
 		require.NoError(t, err)
 		require.Equal(t, "example-space.backlog.com", au.Host)
 		require.Equal(t, "/OAuth2AccessRequest.action", au.Path)
-		testutil.AssertNoLeak(t, string(resp.Body), secret, 8)
+		testutil.AssertNoLeak(t, string(resp.Body), secret)
 	}
 	require.Equal(t, 2, r.host.configCalls)
-	testutil.AssertNoLeak(t, r.logs.String(), secret, 8)
+	testutil.AssertNoLeak(t, r.logs.String(), secret)
 }
 
 func TestOAuthStartActionWithoutConfig(t *testing.T) {
 	r := newRig(t)
 	r.host.config = map[string]any{}
-	resp, out := r.call(t, keyStartOAuth, map[string]string{"spaceUrl": "example-space.backlog.com"})
+	resp, out := r.call(t, keyStartOAuth, must(startBody(t)))
 	require.Equal(t, 400, resp.Status)
 	require.Equal(t, "validation", errorOf(t, out)["code"])
 	require.Equal(t, "oauth", errorOf(t, out)["field"])
 
 	r.host.failConfig = true
-	resp, out = r.call(t, keyStartOAuth, map[string]string{"spaceUrl": "example-space.backlog.com"})
+	resp, out = r.call(t, keyStartOAuth, must(startBody(t)))
 	require.Equal(t, 500, resp.Status)
 	require.Equal(t, "internal", errorOf(t, out)["code"])
 
@@ -172,7 +183,7 @@ func TestActionFailureLogOnABacklog500(t *testing.T) {
 	require.Contains(t, e, "durationMs")
 	require.Equal(t, "ws-1", e["workspaceId"])
 	require.Equal(t, errorOf(t, out)["requestId"], e["requestId"])
-	testutil.AssertNoLeak(t, r.logs.String(), key, 8)
+	testutil.AssertNoLeak(t, r.logs.String(), key)
 }
 
 func TestU2_ValidationFailuresAreNotLoggedAsActionFailed(t *testing.T) {
@@ -184,4 +195,24 @@ func TestU2_ValidationFailuresAreNotLoggedAsActionFailed(t *testing.T) {
 
 func TestU2_ReconnectRequiredMapsTo401(t *testing.T) {
 	require.Equal(t, 401, statusFor("reconnect_required"))
+}
+
+// must drops the verifier when a test only needs the body.
+func must(body map[string]string, _ string) map[string]string { return body }
+
+func TestU2_StartActionNeedsVerifierHash(t *testing.T) {
+	r := newRig(t)
+	r.host.config, _ = oauthConfig(t)
+	for name, body := range map[string]map[string]string{
+		"missing": {"spaceUrl": "example-space.backlog.com"},
+		"not hex": {"spaceUrl": "example-space.backlog.com", "verifierHash": strings.Repeat("z", 64)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			resp, out := r.call(t, keyStartOAuth, body)
+			require.Equal(t, 400, resp.Status)
+			require.Equal(t, "validation", errorOf(t, out)["code"])
+			require.Equal(t, "verifierHash", errorOf(t, out)["field"])
+			require.NotContains(t, r.host.state, "workspace/ws-1/oauth_pending")
+		})
+	}
 }

@@ -4,8 +4,8 @@
 
 Review `code-generation-plan.md` (11 steps, TDD per layer, with the embedded Testing Contract) and `unit-test-instructions.md` in this folder. There is no unit-level design for U5 (user choice), so every design decision is listed as an assumption at the end of the plan. Approving lets the developer generate the code exactly as planned.
 
-[Approval Fingerprint]: sha256:v3:5f02fdb36a6fc9a68a591e50a701c4091403961f4c87fbc15c04637a8a054090
-[Planned Source]: 465a7ac45636d397cce8841dc40791ac3f984cb8d7ea0f86c602f55b25a731ef
+[Approval Fingerprint]: sha256:v3:0fa4f9dff2b8d609eab26ab7f5c2799c92d599e91114767e8a269054fbb9140a
+[Planned Source]: 3a7864b3c9d9a731ae70cd6374aec319e177d21fe5f9cd2affacc6f4f9ef404a
 
 - Approve Plan
 - Request Changes

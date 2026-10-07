@@ -234,7 +234,8 @@ func TestRunContractFailsOnWrongValidationReplyWithoutLeakingTheKey(t *testing.T
 			cfg, _ := startFake(t, fake)
 			err := RunContract(context.Background(), cfg)
 			require.ErrorContains(t, err, "connection.connect_api_key")
-			testutil.AssertNoLeak(t, err.Error(), fake.sentKey, 8)
+
+			testutil.AssertNoLeak(t, err.Error(), fake.sentKey)
 		})
 	}
 }

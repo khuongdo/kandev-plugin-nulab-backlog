@@ -137,6 +137,13 @@ The plugin refreshes the OAuth sign-in by itself before it expires. If Backlog r
 refresh, the settings page shows **Sign in again**. Without the three fields, choosing OAuth
 says that OAuth is not set up on this Kandev server.
 
+**Unsupported: Kandev under a path prefix.** OAuth sign-in works only when Kandev is served at
+the root of its address (for example `https://kandev.example.com`). If `public_base_url` has a
+path (for example `https://example.com/kandev`), the browser does not send the sign-in cookie to
+the callback, because the cookie is scoped to `/api/plugins/nulab-backlog/webhooks/oauth-callback`
+without the prefix. Sign-in then fails safely with "failed" and nothing is stored. Use an API key
+in that setup.
+
 ## Backlog Git and pull requests
 
 These features need pull requests and Git hosting on the Backlog plan of the space (assumption

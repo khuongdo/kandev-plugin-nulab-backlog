@@ -17,6 +17,8 @@ interface ProjectItem {
 }
 
 export interface ProjectPickerProps {
+  /** React key; SettingsScreen sets the space host so a new space remounts the picker (R-02). */
+  key?: string;
   workspaceId: string;
   announce: (notice: Notice) => void;
   onView?: (view: ConnectionView) => void;

@@ -55,8 +55,8 @@ func TestU3_Leak_NoSecretAnywhere(t *testing.T) {
 		b, err := json.Marshal(out)
 		require.NoError(t, err)
 		text := string(b) + fmt.Sprint(out) + r.logs.String() + fmt.Sprint(r.host.creates)
-		testutil.AssertNoLeak(t, text, key, 8)
-		testutil.AssertNoLeak(t, text, token, 8)
+		testutil.AssertNoLeak(t, text, key)
+		testutil.AssertNoLeak(t, text, token)
 	})
 }
 
@@ -67,6 +67,6 @@ func TestU3_Leak_CycleLogHasNoSecret(t *testing.T) {
 		r.gw.set(func(g *fakeGateway) { g.errs["issue"] = rateLimited(30 * time.Second) })
 		after(time.Minute)
 		require.NotEmpty(t, cycleLines(t, r.logs.String()))
-		testutil.AssertNoLeak(t, r.logs.String(), r.conn.apiKey, 8)
+		testutil.AssertNoLeak(t, r.logs.String(), r.conn.apiKey)
 	})
 }

@@ -285,6 +285,29 @@ All tests render with the existing fake `host` (`ui/src/testing/harness.ts`), ru
 - [x] Write `construction/connection/code-generation/code-summary.md`, `source-manifest.json` and `traceability.json`, including the upstream amendments listed below.
 - Stories: all U2.
 
+## Revision 2 — Build and Test Loop-back 1 Repairs
+
+Build and Test (Loop-back 1 in `construction/build-and-test/test-results.md`) sent back the two open Major review findings of this unit. Steps 1–16 stay as built. Steps 17–18 modify the existing code in place, Red → Green → Refactor.
+
+### Step 17 — OAuth bound to the browser that started sign-in (review R-01, Major)
+
+Kandev v0.96.0 drops `Set-Cookie` on relayed webhook responses but forwards non-session cookies to a public webhook, so the settings UI (same Kandev origin) sets the cookie.
+
+- [x] Red, backend (`internal/connection/oauth_flow_test.go`, `internal/plugin` webhook tests): `start_oauth` requires a `verifierHash` (hex SHA-256, 64 chars; otherwise 400 `validation` on field `verifierHash`) and stores it in the pending record; the callback reads the verifier from the cookie `nulab_backlog_oauth_verifier` in the relayed `Cookie` header, hashes it and compares in constant time **before** the code exchange. Missing cookie → `failed` page, 0 token requests, pending record kept (no DoS by workspace id); wrong cookie → same; right cookie → success as before. The cookie value never appears in logs, errors, the redirect `Location` or events.
+- [x] Red, UI (`ui/src/settings/oauth.test.tsx`): Sign in with OAuth generates a random verifier with `crypto.getRandomValues` (32 bytes, base64url), sets `nulab_backlog_oauth_verifier=<v>; Path=/api/plugins/nulab-backlog/webhooks/oauth-callback; Secure; SameSite=Lax; Max-Age=600`, and sends `sha256(v)` as `verifierHash` with `connection.start_oauth`.
+- [x] Run the tests and record the failing output.
+- [x] Green: implement both sides; update the `[assumption]` about OAuth state in this plan's Assumptions to "state plus a browser-bound verifier cookie". Refactor while green.
+- Stories: US1.3. ACs: AC1.3.1–AC1.3.3. NFRs: NFR3.
+
+### Step 18 — Project picker reloads after a space change, restore or replace (review R-02, Major)
+
+- [x] Red in `ui/src/settings/connected-panel.test.tsx` / `project-picker.test.tsx`: after an API-key replace to another space (and after a restore), `connection.list_projects` is called again and no checkbox from the previous space remains; Save after a space change never sends the old space's keys.
+- [x] Run the tests and record the failing output.
+- [x] Green: remount the picker on `${view.spaceHost}:${view.connectionEpoch}` (React `key`) or reload when either changes. Refactor while green.
+- Stories: US1.8, US1.7. ACs: AC1.8.2, AC1.7.3.
+
+Then run `make check-format vet lint test coverage check-secrets build package verify-package`, delete the generated `coverage.out`, and update `code-summary.md` (a "Loop-back 1 repairs" section), `traceability.json` and `source-manifest.json` for any new path.
+
 ## Story-to-Step Map
 
 | Story | Steps |
@@ -318,7 +341,7 @@ All tests render with the existing fake `host` (`ui/src/testing/harness.ts`), ru
 - [assumption] (R-02) The OAuth client id, client secret and Kandev's public base URL come from the plugin `config_schema` (Settings > Plugins), with the client secret marked `secret: true`. The plugin reads them with `Host.GetConfig` on every `start_oauth` and callback. One OAuth app serves the whole Kandev instance. The redirect URI is `<public_base_url>/api/plugins/nulab-backlog/webhooks/oauth-callback`.
 - [assumption] A Nulab OAuth app works for any Backlog space the user signs in to. Not verified; X5 confirms it.
 - [assumption] (A2) `public_base_url` may be `http` only for `localhost` and `127.0.0.1`, for trial runs. Whether Nulab accepts such a callback is unverified.
-- [assumption] PKCE is not used, because Backlog does not document it. The `state` is a 256-bit random nonce with the `workspaceId`, base64url-encoded, checked in constant time against a single-use server-side pending record (workspace state key `oauth_pending`) that expires after 10 minutes. This replaces the contract's "signed state" with the same guarantee: no forging, no replay. One pending sign-in per workspace; a new `start_oauth` replaces the old one.
+- [assumption] PKCE is not used, because Backlog does not document it. The `state` is a 256-bit random nonce with the `workspaceId`, base64url-encoded, checked in constant time against a single-use server-side pending record (workspace state key `oauth_pending`) that expires after 10 minutes. Sign-in is protected by the state plus a browser-bound verifier cookie (Revision 2, R-01): the settings UI sets a random `nulab_backlog_oauth_verifier` cookie scoped to the callback path and sends only its SHA-256 as `verifierHash`; the pending record stores that hash, and the callback compares the relayed cookie's hash in constant time before any token request. A missing or wrong cookie fails without using up the pending record. Together they replace the contract's "signed state": no forging, no replay, and no completing a sign-in started in another browser. One pending sign-in per workspace; a new `start_oauth` replaces the old one.
 - [assumption] (R-08) The epoch increases on every write of the connection: connect, credential replacement, space change, disconnect and project change. A token refresh does not change the epoch. Project changes rewrite the secret with the new epoch, so U1's BR2.11 pair rule stays the only consistency rule.
 - [assumption] Disconnect keeps a disconnect record (epoch + 1, previous host and projects, no secret) instead of deleting the record, so the epoch never decreases and a later restore can be detected. New optional fields keep `schemaVersion: 1`, because U1 readers ignore unknown fields.
 - [assumption] Restore: `Restore` is true when the new host equals the remembered previous host, or when a project selection adds a key. On a restore, the previous project selection is put back.

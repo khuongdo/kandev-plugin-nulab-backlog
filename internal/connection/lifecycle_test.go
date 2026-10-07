@@ -171,7 +171,7 @@ func TestRestoreReconnectingToTheRememberedHost(t *testing.T) {
 		require.NoError(t, err)
 		state := u.start(t)
 		u.okTokens(t)
-		res := u.svc.CompleteOAuth(u.ctx, map[string][]string{"state": {state}, "code": {"c-1234"}})
+		res := u.svc.CompleteOAuth(u.ctx, map[string][]string{"state": {state}, "code": {"c-1234"}}, u.verifier)
 		require.Equal(t, OAuthResult{WorkspaceID: ws, Outcome: OutcomeConnected, Restored: true}, res)
 	})
 }

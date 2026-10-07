@@ -52,7 +52,7 @@ func TestHandlerMasksAttributesMessagesAndErrorChains(t *testing.T) {
 		InfoContext(ctx, "msg "+key, "err", wrapped, "plain", key, "n", 42, slog.Group("nested", "k", key))
 
 	out := buf.String()
-	testutil.AssertNoLeak(t, out, key, 8)
+	testutil.AssertNoLeak(t, out, key)
 	require.Contains(t, out, "?REDACTED")
 	require.Contains(t, out, `"n":42`)
 	require.Contains(t, out, Marker)

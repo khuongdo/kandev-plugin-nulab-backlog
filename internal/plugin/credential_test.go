@@ -36,7 +36,7 @@ func TestU4_Credential_ResolvesAValidScope(t *testing.T) {
 	exp, err := time.Parse(time.RFC3339, resp.ExpiresAt)
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().Add(15*time.Minute), exp, time.Minute)
-	testutil.AssertNoLeak(t, r.logs.String(), pw, 8)
+	testutil.AssertNoLeak(t, r.logs.String(), pw)
 }
 
 func TestU4_Credential_RefusalsHoldNoSecret(t *testing.T) {
@@ -53,11 +53,11 @@ func TestU4_Credential_RefusalsHoldNoSecret(t *testing.T) {
 		resp, err := r.rt.ResolveGitCredential(context.Background(), q)
 		require.Error(t, err, reason)
 		require.Nil(t, resp)
-		testutil.AssertNoLeak(t, err.Error(), pw, 8)
+		testutil.AssertNoLeak(t, err.Error(), pw)
 		require.Contains(t, r.logs.String(), `"reason":"`+reason+`"`)
 	}
 	require.Contains(t, r.logs.String(), `"event":"git_credential_refused"`)
-	testutil.AssertNoLeak(t, r.logs.String(), pw, 8)
+	testutil.AssertNoLeak(t, r.logs.String(), pw)
 
 	r2 := newU4Rig(t)
 	_, err := r2.rt.ResolveGitCredential(context.Background(), credRequest())

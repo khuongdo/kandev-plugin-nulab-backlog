@@ -145,7 +145,7 @@ func TestStoreRollbackFailureLeavesAnErrorViewAndLogsInconsistency(t *testing.T)
 	require.Equal(t, "ERROR", event["level"])
 	require.EqualValues(t, 1, event["previousEpoch"])
 	require.EqualValues(t, 2, event["newEpoch"])
-	testutil.AssertNoLeak(t, buf.String(), newKey, 8)
+	testutil.AssertNoLeak(t, buf.String(), newKey)
 }
 
 func TestStoreLoadStates(t *testing.T) {
@@ -499,7 +499,8 @@ func TestOAuthPendingStateIsSingleUse(t *testing.T) {
 	store := newTestStore(secrets, state)
 	nonce, err := newNonce()
 	require.NoError(t, err)
-	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(10*time.Minute)))
+	verifier := testutil.Token(t)
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, hashHex(verifier), "a.backlog.com", fixedNow.Add(10*time.Minute)))
 
 	rec, ok := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
 	require.True(t, ok)
@@ -507,16 +508,23 @@ func TestOAuthPendingStateIsSingleUse(t *testing.T) {
 	require.Equal(t, "a.backlog.com", rec["spaceHost"])
 	require.Equal(t, fixedNow.Add(10*time.Minute).Format(time.RFC3339), rec["expiresAt"])
 	require.Len(t, rec["nonceHash"], 64, "hex SHA-256, never the nonce")
+	require.Equal(t, hashHex(verifier), rec["verifierHash"], "only the hash of the browser verifier")
+
+	_, found, err := store.TakePending(context.Background(), ws, nonce, testutil.Token(t))
+	require.NoError(t, err)
+	require.False(t, found, "another browser's verifier never matches")
+	_, kept := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
+	require.True(t, kept, "and does not use up the sign-in")
 	require.NotContains(t, fmt.Sprint(rec), fmt.Sprintf("%x", nonce))
 
-	host, found, err := store.TakePending(context.Background(), ws, nonce)
+	host, found, err := store.TakePending(context.Background(), ws, nonce, verifier)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, "a.backlog.com", host)
 	_, still := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
 	require.False(t, still, "deleted before it is returned")
 
-	_, found, err = store.TakePending(context.Background(), ws, nonce)
+	_, found, err = store.TakePending(context.Background(), ws, nonce, verifier)
 	require.NoError(t, err)
 	require.False(t, found, "a used state is refused")
 }
@@ -526,14 +534,15 @@ func TestOAuthPendingWrongNonceAndExpiryAreRefused(t *testing.T) {
 	store := newTestStore(secrets, state)
 	nonce, _ := newNonce()
 	other, _ := newNonce()
-	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(10*time.Minute)))
+	verifier := testutil.Token(t)
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, hashHex(verifier), "a.backlog.com", fixedNow.Add(10*time.Minute)))
 
-	_, found, err := store.TakePending(context.Background(), ws, other)
+	_, found, err := store.TakePending(context.Background(), ws, other, verifier)
 	require.NoError(t, err)
 	require.False(t, found, "a different nonce never matches")
 
 	store.Now = func() time.Time { return fixedNow.Add(10*time.Minute + time.Second) }
-	_, found, err = store.TakePending(context.Background(), ws, nonce)
+	_, found, err = store.TakePending(context.Background(), ws, nonce, verifier)
 	require.NoError(t, err)
 	require.False(t, found, "an expired state is refused")
 	_, still := state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
@@ -544,12 +553,13 @@ func TestOAuthPendingDeleteAndUndecodable(t *testing.T) {
 	secrets, state := newFakeSecrets(), newFakeState()
 	store := newTestStore(secrets, state)
 	nonce, _ := newNonce()
-	require.NoError(t, store.SavePending(context.Background(), ws, nonce, "a.backlog.com", fixedNow.Add(time.Minute)))
+	verifier := testutil.Token(t)
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, hashHex(verifier), "a.backlog.com", fixedNow.Add(time.Minute)))
 	require.NoError(t, store.DeletePending(context.Background(), ws))
 	require.Empty(t, state.snapshot())
 
 	state.data[stateKey("workspace", ws, "oauth_pending")] = map[string]any{"schemaVersion": 1, "nonceHash": 3}
-	_, found, err := store.TakePending(context.Background(), ws, nonce)
+	_, found, err := store.TakePending(context.Background(), ws, nonce, verifier)
 	require.NoError(t, err)
 	require.False(t, found)
 
@@ -709,9 +719,9 @@ func TestU2_StoreCallsKeepTheOneSecondLimit(t *testing.T) {
 		state := newFakeState()
 		state.blockGet = true
 		store := newTestStore(newFakeSecrets(), state)
-		nonce, _ := newNonce()
+		nonce, verifier := []byte("n"), "v"
 		for name, call := range map[string]func() error{
-			"TakePending":  func() error { _, _, err := store.TakePending(context.Background(), ws, nonce); return err },
+			"TakePending":  func() error { _, _, err := store.TakePending(context.Background(), ws, nonce, verifier); return err },
 			"SaveProjects": func() error { _, err := store.SaveProjects(context.Background(), ws, nil); return err },
 			"Disconnect":   func() error { _, _, err := store.Disconnect(context.Background(), ws); return err },
 		} {
@@ -776,7 +786,7 @@ func TestU4_GitStore_SaveBindsToTheConnectedHost(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, view.HasGitCredential)
 	b, _ := json.Marshal(view)
-	testutil.AssertNoLeak(t, string(b), pw, 8)
+	testutil.AssertNoLeak(t, string(b), pw)
 }
 
 func TestU4_GitStore_SaveNeedsAConnection(t *testing.T) {
@@ -846,4 +856,16 @@ func TestU4_GitStore_SameHostChangesKeepIt(t *testing.T) {
 	view, err = store.Load(ctx, ws)
 	require.NoError(t, err)
 	require.True(t, view.HasGitCredential)
+}
+
+func TestOAuthPendingRefusesAnEmptyVerifier(t *testing.T) {
+	secrets, state := newFakeSecrets(), newFakeState()
+	store := newTestStore(secrets, state)
+	nonce, _ := newNonce()
+	require.NoError(t, store.SavePending(context.Background(), ws, nonce, hashHex(""), "a.backlog.com", fixedNow.Add(10*time.Minute)))
+
+	_, found, err := store.TakePending(context.Background(), ws, nonce, "")
+	require.NoError(t, err)
+	require.False(t, found, "an empty verifier never matches, even against sha256(\"\")")
+	require.Contains(t, state.snapshot(), stateKey("workspace", ws, "oauth_pending"), "and does not use up the sign-in")
 }

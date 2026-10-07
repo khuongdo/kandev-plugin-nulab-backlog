@@ -100,8 +100,8 @@ func TestU2_LogsOneLinePerOutcome(t *testing.T) {
 	u := newU2(t)
 	state := u.start(t)
 	u.okTokens(t)
-	require.Equal(t, OutcomeConnected, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}).Outcome)
-	require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}).Outcome)
+	require.Equal(t, OutcomeConnected, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier).Outcome)
+	require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier).Outcome)
 	_, err := u.svc.Test(u.ctx, ws)
 	require.NoError(t, err)
 	u.advance(2 * time.Hour)
@@ -146,18 +146,15 @@ func TestU2_NoSecretInLogsErrorsViewsOrEvents(t *testing.T) {
 	record(u.svc.Test(u.ctx, ws))
 	u.gw.err = nil
 
-	res, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "example-space.backlog.com"})
-	require.NoError(t, err)
-	au, _ := url.Parse(res.AuthorizeURL)
-	state := au.Query().Get("state")
+	state := u.start(t)
 	tokens := u.okTokens(t)
 	code := testutil.Token(t)
-	record(u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {code}}), nil)
+	record(u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {code}}, u.verifier), nil)
 	u.advance(2 * time.Hour)
 	refreshed := backlog.TokenSet{AccessToken: testutil.Token(t), RefreshToken: testutil.Token(t), ExpiresAt: u.clock().Add(time.Hour)}
 	u.gw.refreshed = refreshed
 	record(u.svc.Get(u.ctx, ws))
-	_, _, err = u.svc.Credentials(u.ctx, ws)
+	_, _, err := u.svc.Credentials(u.ctx, ws)
 	require.NoError(t, err)
 	u.advance(2 * time.Hour)
 	u.gw.refreshErr = &backlog.Error{Kind: backlog.KindUnauthorized, Status: 401}
@@ -170,10 +167,10 @@ func TestU2_NoSecretInLogsErrorsViewsOrEvents(t *testing.T) {
 
 	all := strings.Join(texts, "\n")
 	logs := u.logs.String()
-	for _, secret := range []string{key, tokens.AccessToken, tokens.RefreshToken, refreshed.AccessToken, refreshed.RefreshToken, u.clientSecret, code} {
-		testutil.AssertNoLeak(t, all, secret, 8)
-		testutil.AssertNoLeak(t, logs, secret, 8)
+	for _, secret := range []string{key, tokens.AccessToken, tokens.RefreshToken, refreshed.AccessToken, refreshed.RefreshToken, u.clientSecret, code, u.verifier} {
+		testutil.AssertNoLeak(t, all, secret)
+		testutil.AssertNoLeak(t, logs, secret)
 	}
-	testutil.AssertNoLeak(t, all+logs, "", 8, state, state[:16])
-	testutil.AssertNoLeak(t, logs, "", 8, "Test User")
+	testutil.AssertNoLeak(t, all+logs, "", state, state[:16])
+	testutil.AssertNoLeak(t, logs, "", "Test User")
 }

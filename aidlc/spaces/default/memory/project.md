@@ -25,6 +25,8 @@
 
 <!-- Project-specific specialisation. -->
 
+- Keep the coverage profile out of the repository root during AI-DLC stages (delete coverage.out after local make coverage runs, or write it under build/); reviewers never use -coverprofile, because an unclaimed coverage.out blocks the Code Generation gate (learned 2026-10-07) <!-- cid:261006-nulab-backlog-plugin:build-and-test:8cd7a5beeb6e5dbadef5e468d66ae6df9e031e5767e3f5903bf4dc29f677343c -->
+
 ## Guard Policy
 
 <!-- Project-specific. Mode: strict, relaxed, or off. Strict here holds for every intent and cannot be changed from chat. A section under the retired Change Control heading, written by an earlier release, is still read. -->
@@ -96,3 +98,4 @@
 - walking-skeleton: in Kandev 0.96.0 registerIntegrationSettings only adds a card on Settings > Integrations (learned 2026-10-06) <!-- cid:261006-nulab-backlog-plugin:code-generation:3ea952e72205a9e9b4892a8d8d8b2c08cb3e7e0d5fc0eec1ba1bf8109e0d8e38 -->
 - walking-skeleton: renamed the action connection.connectApiKey to connection.connect_api_key because Kandev only accepts keys matching ^[a-z0-9][a-z0-9._-]*$ (learned 2026-10-06) <!-- cid:261006-nulab-backlog-plugin:code-generation:ac91a8cfcfbb4f10fc037d7876e46690380c2df9f2384d6c8efd76eee37171ae -->
 - walking-skeleton: pinned ../kandev to the v0.96.0 tag (user choice) (learned 2026-10-06) <!-- cid:261006-nulab-backlog-plugin:code-generation:426144fb5c6cd4cc5246f27b54366710308fcaf496c2097ffb6719380139fabb -->
+- Kandev injects the plugin Host asynchronously after startup, so every Host-dependent path must wait (bounded) for the Host instead of failing; run the packaged-host contract test repeatedly (e.g. 10 times) to catch intermittent startup races (learned 2026-10-07) <!-- cid:261006-nulab-backlog-plugin:code-generation:94e82723b7276e2af514bf6a4796fb018a91a37c99c3458d26a385b260bcf424 -->

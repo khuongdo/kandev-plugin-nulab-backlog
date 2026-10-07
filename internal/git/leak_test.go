@@ -47,7 +47,7 @@ func TestU4_Leak_NoSecretInRepliesErrorsOrTasks(t *testing.T) {
 		}
 		all := strings.Join(texts, "\n") + r.logs.String()
 		for _, secret := range []string{r.conn.creds.APIKey, r.conn.git.Password, bait} {
-			testutil.AssertNoLeak(t, all, secret, 8)
+			testutil.AssertNoLeak(t, all, secret)
 		}
 	})
 }
@@ -57,6 +57,6 @@ func TestU4_Leak_LeaseErrorsHoldNoPassword(t *testing.T) {
 	for _, sc := range []Scope{{}, {ProviderID: ProviderID}, {ProviderID: ProviderID, TaskID: "t", SessionID: "s", RepositoryID: "r", Host: "evil.example.com"}} {
 		_, err := r.svc.ResolveCredential(r.ctx, sc)
 		require.Error(t, err)
-		testutil.AssertNoLeak(t, err.Error()+fmt.Sprintf("%+v", err), r.conn.git.Password, 8)
+		testutil.AssertNoLeak(t, err.Error()+fmt.Sprintf("%+v", err), r.conn.git.Password)
 	}
 }

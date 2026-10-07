@@ -77,7 +77,7 @@ func TestU4_GitAccess_SaveReturnsTheViewWithoutThePassword(t *testing.T) {
 	require.True(t, view.HasGitCredential)
 	require.True(t, view.Connected)
 	b, _ := json.Marshal(view)
-	testutil.AssertNoLeak(t, string(b), pw, 8)
+	testutil.AssertNoLeak(t, string(b), pw)
 	require.NotContains(t, string(b), "lan", "the view has no user name field either")
 	cred, _, err := u.svc.GitCredential(u.ctx, ws)
 	require.NoError(t, err)
@@ -207,6 +207,6 @@ func TestU4_GitAccess_PasswordNeverLeaks(t *testing.T) {
 	record(nil, err)
 	record(u.svc.Disconnect(u.ctx, ws))
 	texts = append(texts, fmt.Sprintf("%+v", events.next(t)))
-	testutil.AssertNoLeak(t, strings.Join(texts, "\n"), pw, 8)
-	testutil.AssertNoLeak(t, u.logs.String(), pw, 8)
+	testutil.AssertNoLeak(t, strings.Join(texts, "\n"), pw)
+	testutil.AssertNoLeak(t, u.logs.String(), pw)
 }

@@ -229,6 +229,49 @@ func TestMyselfRateLimitWait(t *testing.T) {
 	}
 }
 
+// Connect asks for no retry: a 429 comes back after one request and no wait,
+// whatever wait Backlog asks for (NFR2.1, T-RATE-01).
+func TestNoRetryReturns429AtOnce(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	cases := []struct {
+		name    string
+		headers map[string]string
+		want    time.Duration
+	}{
+		{"short Retry-After", map[string]string{"Retry-After": "2"}, 2 * time.Second},
+		{"reset 1 s ahead", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()+1, 10)}, time.Second},
+		{"past reset is clamped", map[string]string{"X-RateLimit-Reset": strconv.FormatInt(now.Unix()-10, 10)}, time.Second},
+		{"long wait", map[string]string{"Retry-After": "120"}, 120 * time.Second},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			c, _ := fakeBacklog(t, func(w http.ResponseWriter, _ *http.Request) {
+				hits.Add(1)
+				for k, v := range tc.headers {
+					w.Header().Set(k, v)
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+			})
+			c.Now = func() time.Time { return now }
+			var waited time.Duration
+			c.Wait = func(_ context.Context, d time.Duration) error { waited += d; return nil }
+			_, err := c.Myself(NoRetry(context.Background()), creds(testutil.APIKey(t)))
+			var be *Error
+			require.True(t, errors.As(err, &be))
+			require.Equal(t, KindRateLimited, be.Kind)
+			require.Equal(t, tc.want, be.RetryAfter)
+			require.Equal(t, int32(1), hits.Load(), "exactly one Backlog request")
+			require.Zero(t, waited, "no wait before returning")
+		})
+	}
+}
+
+func TestRetryDisabledReadsTheContext(t *testing.T) {
+	require.False(t, RetryDisabled(context.Background()))
+	require.True(t, RetryDisabled(NoRetry(context.Background())))
+}
+
 func TestMyselfTransportErrorsHideTheURLAndKey(t *testing.T) {
 	key := testutil.APIKey(t)
 	c, srv := fakeBacklog(t, func(http.ResponseWriter, *http.Request) {})
@@ -241,7 +284,7 @@ func TestMyselfTransportErrorsHideTheURLAndKey(t *testing.T) {
 	require.True(t, errors.As(err, &be))
 	require.Equal(t, KindUnreachable, be.Kind)
 	require.Zero(t, be.Status)
-	testutil.AssertNoLeak(t, err.Error(), key, 8, "apiKey", "?")
+	testutil.AssertNoLeak(t, err.Error(), key, "apiKey", "?")
 }
 
 func TestMyselfRejectsAHostThatIsNotABareHost(t *testing.T) {
@@ -279,7 +322,7 @@ func TestMyselfLogsBacklogCallWithoutQuery(t *testing.T) {
 	require.Contains(t, out, `"status":401`)
 	require.Contains(t, out, `"errorKind":"unauthorized"`)
 	require.Contains(t, out, `"durationMs"`)
-	testutil.AssertNoLeak(t, out, key, 8, "apiKey", "SECRET-BODY-MARKER")
+	testutil.AssertNoLeak(t, out, key, "apiKey", "SECRET-BODY-MARKER")
 }
 
 func TestNewClientUsesProductionDefaults(t *testing.T) {

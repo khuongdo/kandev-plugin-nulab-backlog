@@ -40,7 +40,7 @@ func TestU4_Resolver_RefusesABadScope(t *testing.T) {
 		require.ErrorAs(t, err, &refused, reason)
 		require.Equal(t, reason, refused.Reason)
 		require.ErrorIs(t, err, ErrScopeRefused)
-		testutil.AssertNoLeak(t, err.Error(), r.conn.git.Password, 8)
+		testutil.AssertNoLeak(t, err.Error(), r.conn.git.Password)
 	}
 	sc := scope()
 	sc.Host = "EXAMPLE-SPACE.backlog.com"

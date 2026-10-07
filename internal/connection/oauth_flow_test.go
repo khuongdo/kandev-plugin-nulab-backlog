@@ -1,7 +1,11 @@
 package connection
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,9 +15,17 @@ import (
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/testutil"
 )
 
+// hashHex is what the settings UI sends as verifierHash: hex SHA-256 of the cookie value.
+func hashHex(v string) string {
+	sum := sha256.Sum256([]byte(v))
+	return hex.EncodeToString(sum[:])
+}
+
+// start begins a sign-in as the browser would, keeping its verifier cookie in u.verifier.
 func (u *u2) start(t *testing.T) (state string) {
 	t.Helper()
-	res, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "Example-Space.backlog.com"})
+	u.verifier = testutil.Token(t)
+	res, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "Example-Space.backlog.com", VerifierHash: hashHex(u.verifier)})
 	require.NoError(t, err)
 	au, err := url.Parse(res.AuthorizeURL)
 	require.NoError(t, err)
@@ -28,7 +40,7 @@ func (u *u2) okTokens(t *testing.T) backlog.TokenSet {
 
 func TestOAuthStartBuildsTheAuthorizeURL(t *testing.T) {
 	u := newU2(t)
-	res, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: " https://Example-Space.backlog.com/ "})
+	res, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: " https://Example-Space.backlog.com/ ", VerifierHash: hashHex(testutil.Token(t))})
 	require.NoError(t, err)
 	au, err := url.Parse(res.AuthorizeURL)
 	require.NoError(t, err)
@@ -61,11 +73,11 @@ func TestOAuthStartRefusals(t *testing.T) {
 	t.Run("no OAuth config", func(t *testing.T) {
 		u := newU2(t)
 		u.cfg.m = map[string]any{}
-		_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com"})
+		_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: hashHex(testutil.Token(t))})
 		require.ErrorIs(t, err, ErrOAuthNotConfigured)
 		require.Equal(t, Outcome{Code: CodeValidation, Field: FieldOAuth}, Classify(err))
 		u.svc.Config = nil
-		_, err = u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com"})
+		_, err = u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: hashHex(testutil.Token(t))})
 		require.ErrorIs(t, err, ErrOAuthNotConfigured)
 	})
 	t.Run("Backlog is off", func(t *testing.T) {
@@ -83,7 +95,7 @@ func TestOAuthCompleteConnects(t *testing.T) {
 	tokens := u.okTokens(t)
 	code := testutil.Token(t)
 
-	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {code}})
+	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {code}}, u.verifier)
 	require.Equal(t, OAuthResult{WorkspaceID: ws, Outcome: OutcomeConnected}, res)
 	require.Equal(t, code, u.gw.exchangeCode)
 	require.Equal(t, testBaseURL+"/api/plugins/nulab-backlog/webhooks/oauth-callback", u.gw.exchangeURI)
@@ -101,7 +113,7 @@ func TestOAuthCompleteConnects(t *testing.T) {
 func TestOAuthCompleteCancelledStoresNothing(t *testing.T) {
 	u := newU2(t)
 	state := u.start(t)
-	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "error": {"access_denied"}})
+	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "error": {"access_denied"}}, u.verifier)
 	require.Equal(t, OutcomeCancelled, res.Outcome)
 	require.Equal(t, ws, res.WorkspaceID)
 	require.Empty(t, u.state.snapshot(), "the pending state is deleted")
@@ -123,7 +135,7 @@ func TestOAuthCompleteBadStateOrCodeMakesNoTokenRequest(t *testing.T) {
 			u := newU2(t)
 			state := u.start(t)
 			u.okTokens(t)
-			res := u.svc.CompleteOAuth(u.ctx, query(state))
+			res := u.svc.CompleteOAuth(u.ctx, query(state), u.verifier)
 			require.Equal(t, OutcomeFailed, res.Outcome)
 			_, _, exchange, _ := u.gw.counts()
 			require.Zero(t, exchange, "AC1.3.3")
@@ -134,8 +146,8 @@ func TestOAuthCompleteBadStateOrCodeMakesNoTokenRequest(t *testing.T) {
 		u := newU2(t)
 		state := u.start(t)
 		u.okTokens(t)
-		require.Equal(t, OutcomeConnected, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}).Outcome)
-		require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}).Outcome)
+		require.Equal(t, OutcomeConnected, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier).Outcome)
+		require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier).Outcome)
 		_, _, exchange, _ := u.gw.counts()
 		require.Equal(t, 1, exchange)
 	})
@@ -144,7 +156,7 @@ func TestOAuthCompleteBadStateOrCodeMakesNoTokenRequest(t *testing.T) {
 		state := u.start(t)
 		u.okTokens(t)
 		u.advance(10*time.Minute + time.Second)
-		require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}).Outcome)
+		require.Equal(t, OutcomeFailed, u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier).Outcome)
 		_, _, exchange, _ := u.gw.counts()
 		require.Zero(t, exchange)
 	})
@@ -166,7 +178,7 @@ func TestOAuthCompleteFailuresStoreNothing(t *testing.T) {
 			state := u.start(t)
 			u.okTokens(t)
 			setup(u)
-			res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}})
+			res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, u.verifier)
 			require.Equal(t, OutcomeFailed, res.Outcome)
 			require.Empty(t, u.secrets.snapshot())
 			_, hasRecord := u.state.snapshot()[stateKey("workspace", ws, "connection")]
@@ -174,4 +186,127 @@ func TestOAuthCompleteFailuresStoreNothing(t *testing.T) {
 			require.Empty(t, u.changedLogs(t))
 		})
 	}
+}
+
+func TestU2_StartNeedsAVerifierHash(t *testing.T) {
+	for name, hash := range map[string]string{
+		"missing":        "",
+		"too short":      strings.Repeat("a", 63),
+		"too long":       strings.Repeat("a", 65),
+		"not hex":        strings.Repeat("g", 64),
+		"upper-case hex": strings.Repeat("A", 64),
+	} {
+		t.Run(name, func(t *testing.T) {
+			u := newU2(t)
+			_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: hash})
+			require.Equal(t, Outcome{Code: CodeValidation, Field: FieldVerifierHash}, Classify(err))
+			require.Empty(t, u.state.snapshot(), "no pending sign-in")
+		})
+	}
+	t.Run("a valid hash is stored with the pending sign-in", func(t *testing.T) {
+		u := newU2(t)
+		_ = u.start(t)
+		pending := u.state.snapshot()[stateKey("workspace", ws, "oauth_pending")]
+		require.Equal(t, hashHex(u.verifier), pending["verifierHash"])
+		testutil.AssertNoLeak(t, u.logs.String(), u.verifier)
+	})
+}
+
+func TestU2_CallbackChecksTheVerifierCookie(t *testing.T) {
+	cases := map[string]func(u *u2) string{
+		"no cookie":              func(*u2) string { return "" },
+		"wrong cookie":           func(*u2) string { return testutil.Token(t) },
+		"the hash as the cookie": func(u *u2) string { return hashHex(u.verifier) },
+	}
+	for name, cookie := range cases {
+		t.Run(name, func(t *testing.T) {
+			u := newU2(t)
+			state := u.start(t)
+			u.okTokens(t)
+			q := url.Values{"state": {state}, "code": {"c-1234"}}
+			bad := cookie(u)
+
+			res := u.svc.CompleteOAuth(u.ctx, q, bad)
+			require.Equal(t, OAuthResult{WorkspaceID: ws, Outcome: OutcomeFailed}, res)
+			_, _, exchange, _ := u.gw.counts()
+			require.Zero(t, exchange, "no token request before the verifier matches")
+			require.Empty(t, u.secrets.snapshot())
+			require.Contains(t, u.state.snapshot(), stateKey("workspace", ws, "oauth_pending"),
+				"the pending sign-in is kept, so a stranger cannot cancel it")
+			testutil.AssertNoLeak(t, u.logs.String(), u.verifier, bad)
+
+			res = u.svc.CompleteOAuth(u.ctx, q, u.verifier)
+			require.Equal(t, OutcomeConnected, res.Outcome, "the starting browser still finishes")
+			testutil.AssertNoLeak(t, u.logs.String(), u.verifier)
+		})
+	}
+}
+
+func TestU2_CallbackCancelNeedsTheVerifier(t *testing.T) {
+	u := newU2(t)
+	state := u.start(t)
+	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "error": {"access_denied"}}, "")
+	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Contains(t, u.state.snapshot(), stateKey("workspace", ws, "oauth_pending"))
+}
+
+// plantEmptyHashPending stores a pending sign-in bound to sha256(""), as if the
+// start-time check were bypassed, and returns its state.
+func (u *u2) plantEmptyHashPending(t *testing.T) string {
+	t.Helper()
+	nonce, err := newNonce()
+	require.NoError(t, err)
+	require.NoError(t, u.svc.store.SavePending(u.ctx, ws, nonce, emptyVerifierHash, "example-space.backlog.com", u.clock().Add(pendingTTL)))
+	return encodeState(ws, nonce)
+}
+
+func TestU2_EmptyVerifierNeverMatches(t *testing.T) {
+	require.Equal(t, emptyVerifierHash, hashHex(""))
+
+	t.Run("start refuses the hash of the empty verifier", func(t *testing.T) {
+		u := newU2(t)
+		_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: emptyVerifierHash})
+		require.Equal(t, Outcome{Code: CodeValidation, Field: FieldVerifierHash}, Classify(err))
+		require.Empty(t, u.state.snapshot(), "no pending sign-in")
+	})
+
+	t.Run("a callback without a cookie or with an empty one fails and keeps the record", func(t *testing.T) {
+		u := newU2(t)
+		u.okTokens(t)
+		state := u.plantEmptyHashPending(t)
+		res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, "")
+		require.Equal(t, OAuthResult{WorkspaceID: ws, Outcome: OutcomeFailed}, res)
+		_, _, exchange, _ := u.gw.counts()
+		require.Zero(t, exchange, "no token request")
+		require.Empty(t, u.secrets.snapshot())
+		require.Contains(t, u.state.snapshot(), stateKey("workspace", ws, "oauth_pending"), "the record is kept")
+		require.Contains(t, u.logs.String(), `"reason":"bad_state"`)
+	})
+
+	t.Run("the callback refuses an empty verifier before taking the lock or comparing", func(t *testing.T) {
+		u := newU2(t)
+		state := u.plantEmptyHashPending(t)
+		unlock, err := u.svc.lockWS(u.ctx, ws) // a busy workspace would make a later check time out
+		require.NoError(t, err)
+		defer unlock()
+		ctx, cancel := context.WithTimeout(u.ctx, 50*time.Millisecond)
+		defer cancel()
+		res := u.svc.CompleteOAuth(ctx, url.Values{"state": {state}, "code": {"c-1234"}}, "")
+		require.Equal(t, OAuthResult{WorkspaceID: ws, Outcome: OutcomeFailed}, res)
+		require.Contains(t, u.logs.String(), `"reason":"bad_state"`, "refused up front, not after waiting for the lock")
+	})
+
+	t.Run("end to end: attacker starts with the empty hash, victim has no cookie", func(t *testing.T) {
+		u := newU2(t)
+		u.okTokens(t)
+		_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "Example-Space.backlog.com", VerifierHash: emptyVerifierHash})
+		require.Error(t, err, "the attacker's start is refused")
+		state := u.plantEmptyHashPending(t) // even if a record with that hash exists
+		res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "code": {"c-1234"}}, "")
+		require.Equal(t, OutcomeFailed, res.Outcome)
+		_, _, exchange, _ := u.gw.counts()
+		require.Zero(t, exchange)
+		require.Empty(t, u.secrets.snapshot())
+		require.Contains(t, u.state.snapshot(), stateKey("workspace", ws, "oauth_pending"))
+	})
 }

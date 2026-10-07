@@ -75,8 +75,8 @@ func TestU4_GitCalls_ErrorsNeverEchoTheBody(t *testing.T) {
 				ctx, logs := oauthLogs()
 				err := call(c, ctx, creds(key))
 				require.Equal(t, kind, kindOf(t, err))
-				testutil.AssertNoLeak(t, err.Error()+logs.String(), bait, 8)
-				testutil.AssertNoLeak(t, err.Error()+logs.String(), key, 8)
+				testutil.AssertNoLeak(t, err.Error()+logs.String(), bait)
+				testutil.AssertNoLeak(t, err.Error()+logs.String(), key)
 			})
 		}
 	}
@@ -240,7 +240,7 @@ func TestU4_GitAccess_RefusedIsUnauthorizedAndRedacted(t *testing.T) {
 			ctx, logs := oauthLogs()
 			err := c.CheckGitAccess(ctx, spaceHost, "lan", pw, "PROJ", "web-app")
 			require.Equal(t, KindUnauthorized, kindOf(t, err))
-			testutil.AssertNoLeak(t, err.Error()+logs.String(), pw, 8, basic)
+			testutil.AssertNoLeak(t, err.Error()+logs.String(), pw, basic)
 			require.Contains(t, logs.String(), "backlog_call")
 		})
 	}

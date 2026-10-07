@@ -54,7 +54,7 @@ func TestProjectsErrorsNeverEchoTheBody(t *testing.T) {
 			var be *Error
 			require.True(t, errors.As(err, &be))
 			require.Equal(t, kind, be.Kind)
-			testutil.AssertNoLeak(t, err.Error()+logs.String(), bait, 8)
+			testutil.AssertNoLeak(t, err.Error()+logs.String(), bait)
 		})
 	}
 }

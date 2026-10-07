@@ -40,7 +40,7 @@ func TestU4_GitCredential_ValidatesTheInput(t *testing.T) {
 			var fe *FieldError
 			require.True(t, errors.As(err, &fe))
 			require.Equal(t, tc.field, fe.Field)
-			testutil.AssertNoLeak(t, err.Error(), pw, 8)
+			testutil.AssertNoLeak(t, err.Error(), pw)
 		})
 	}
 }
@@ -61,7 +61,7 @@ func TestU4_GitCredential_HidesThePassword(t *testing.T) {
 	pw := testutil.Token(t)
 	c := GitCredential{Username: "lan", Password: pw, SpaceHost: "a.backlog.com"}
 	for _, s := range []string{fmt.Sprintf("%v", c), fmt.Sprintf("%+v", c), fmt.Sprintf("%#v", c), fmt.Sprint(c)} {
-		testutil.AssertNoLeak(t, s, pw, 8)
+		testutil.AssertNoLeak(t, s, pw)
 		require.Contains(t, s, "lan")
 	}
 }

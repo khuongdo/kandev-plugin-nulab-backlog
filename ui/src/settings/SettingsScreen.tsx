@@ -242,7 +242,16 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
           <ConnectedPanel workspaceId={workspaceId} onView={onView} announce={announce} view={state.view} />
         ) : null}
         {status && !off && !state.isMember && workspaceId ? (
-          <ProjectPicker workspaceId={workspaceId} onView={onView} announce={announce} />
+          // A new space (a change or a restore) or a new account on the same space
+          // remounts the picker so it reloads and keeps no list or checkbox of the old one
+          // (R-02, R-12). Not the epoch: a project save bumps it. The view carries no user
+          // id, so the account is told apart by its display name.
+          <ProjectPicker
+            key={`${state.view?.spaceHost ?? ""}:${state.view?.connectedUserName ?? ""}`}
+            workspaceId={workspaceId}
+            onView={onView}
+            announce={announce}
+          />
         ) : null}
         {signInAgain ? (
           <div className={STACK}>
