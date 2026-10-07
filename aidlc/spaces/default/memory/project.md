@@ -43,6 +43,8 @@
 
 - ALWAYS re-check gh release list and origin/main right before asking the version question AND again before tagging; v0.4.0 was released on main (PR #9) while this intent ran, after the first version question had proposed 0.4.0, forcing a rebase, a loop-back and release 0.4.1 (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:deployment-pipeline:d702f15b3c44e75136756728f4224aad87d8129a42bc32f0c72b2b2ca9b1f1d1 -->
 
+- ALWAYS put the README upgrade-note text for the version at the top of the auto-generated GitHub Release notes (gh release edit), keeping the generated PR list below it (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:deployment-execution:b9b96fad7055c7dd4f07cb217b9400018bfad9d50f5b5ed1e3858f617ed65ac9 -->
+
 ## Code Style
 
 <!-- Project-specific specialisation. -->
