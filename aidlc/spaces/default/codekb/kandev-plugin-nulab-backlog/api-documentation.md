@@ -1,43 +1,40 @@
 # API Documentation — kandev-plugin-nulab-backlog
 
-## Kandev Plugin Actions
+## Kandev Host Contract (`manifest.yaml`)
 
-Declared in `manifest.yaml`, routed in `internal/plugin/` (`handlers` map). 55 actions, all workspace-scoped (some task-scoped); 7 `admin`, 48 `authenticated`. Keys must match `^[a-z0-9][a-z0-9._-]*$`; `internal/plugin/manifest_test.go` asserts the list and access. Every action except `connection.get` and `connection.set_enabled` is refused while Backlog is off (`runtime.go` `guarded`).
+- `api_version: 2`, `runtime.type: binary`, 5 executables, `min_kandev_version: "0.96.0"`.
+- Capabilities: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`, `events: [task.deleted]`.
+- `repository_providers: [nulab-backlog]`, 1 `reference_sources` entry, `config_schema` (OAuth client id/secret, public base URL), `ui.bundle: /ui/bundle.js`.
 
-| Group | Actions | Access |
+## Plugin Actions (77)
+
+| Prefix | Count | Notes |
 |---|---|---|
-| `connection.*` (9) | `get`, `test`, `list_projects`; `connect_api_key`, `set_enabled`, `start_oauth`, `disconnect`, `set_projects`, `set_git_credential` | first three `authenticated`; the rest `admin` |
-| `repositories.*` (2) | `inspect`, `branches` — fixed names Kandev calls for this plugin's repository provider; descriptor carries `provider_id` | `authenticated` |
-| `git.*` (19) | `repositories.list`; `prs.link`, `prs.unlink`, `prs.create`, `prs.status`, `prs.list`; `links.list`; `impact`; `watches.list/save/delete/run/pause/resume`; `queries.list/save/delete/run/set_default` | `authenticated` |
-| `issues.*` (25) | `list`, `filters`, `create_task`, `tasks.search`, `links.list`, `refresh`, `impact`, `settings.get`, `link`, `unlink`, `get`, `comments`, `set_poll_interval`; `watches.*` (6); `quick_actions.get/save`; `queries.list/save/delete/set_default` | `authenticated`; `set_poll_interval` `admin` |
+| `connection.*` | 9 | connect API key / OAuth, get, disconnect, projects, switch, Git credential; admin-only where they change state |
+| `repositories.*` | 2 | repository provider |
+| `git.*` | 19 | Backlog PRs, watches, queries |
+| `issues.*` | 25 | list, tasks, links, sync, watches, quick actions, queries |
+| `scm.*` | 22 | GitHub/GitLab/Bitbucket context |
 
-Source-control relevant contracts (intent 261007-source-control-agnostic):
-- No `git.*` or `repositories.*` action takes a provider argument; all assume Backlog Git of the connected space. A second provider needs payload-level dispatch on `provider_id` or new action keys (existing keys must stay unchanged).
-- `connection.set_git_credential` (admin) stores `{username, password}` for the connected Backlog host only; there is no per-provider credential, owner/workspace or repository allowlist setting.
-- `git.repositories.list` and the repository picker list repositories of the Backlog selected projects only.
+Each action declares `scope` (workspace/task), `access` (authenticated/admin), `max_body_bytes` (8-256 KiB).
 
-## Git Credential Extension (gRPC)
+## Webhooks
 
-`internal/plugin/credential.go` implements `pluginsdk.GitCredentialHandler`:
-- `ResolveGitCredential(ProviderID, Host, Path, TaskID, workspace)` → username/password lease and binding; refused unless Backlog is on, `ProviderID == "nulab-backlog"`, host = connected space host, path `/git/<PROJ>/<repo>` in a selected project.
-- `GetGitCredentialBinding` → `<connectionEpoch>.<revision>` only.
+- `oauth-callback`: GET, public, 1 KiB body limit.
 
-## Webhook, Events, Manifest Surfaces
+## Kandev Install API (consumed by operators and by the contract test)
 
-- Webhook `oauth-callback` — GET, `public`; redirect `<public_base_url>/api/plugins/nulab-backlog/webhooks/oauth-callback`.
-- Events: `task.deleted`.
-- `repository_providers: ["nulab-backlog"]` (one entry, `manifest.yaml:31`); `reference_sources`: Backlog issues on `#`.
-- `capabilities`: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`.
-- `config_schema` (operator-level): `oauth_client_id`, `oauth_client_secret` (secret), `public_base_url`. New providers' app credentials would go here; per-workspace secrets need no manifest change.
+- `POST /api/plugins/install`, either:
+  - multipart form with field `package` (the `.tar.gz`) — used by the web UI upload and by `internal/ci/contract.go` (expects 201, no `warning`); or
+  - JSON `{"url": "<package url>"}` — the backend downloads the package itself (100 MiB cap, Kandev `service_install.go`).
+- `GET /ready`, `GET /api/plugins/<id>`.
+- Error mapping in the install handler: 409 / 400 / 500 only; it never returns 502.
 
-## Kandev Host Data API (Go, through the host port)
+### Known issue: upload install over a slow link
 
-`Tasks().Create` / `Tasks().List`, task metadata (`nulab_backlog_pr`), and `Repositories` (`host_port.go`). `CreateTaskInput.StartAgent` / `Launch` exist at v0.96.0.
+The multipart body is read fully before install, bounded by the server `ReadTimeout` (default 30 s, `server.readTimeout` / `KANDEV_SERVER_READTIMEOUT`, Kandev `common/config/catalog.go` line 61). A 29.5 MB upload slower than ~1 MB/s is cut: backend returns 400 `missing multipart field "package"`, the `tailscale serve` proxy returns 502. Details: [code-quality-assessment.md](code-quality-assessment.md#known-issue-plugin-install-502).
 
-## Kandev UI Extension Points
+## Outbound APIs
 
-Registered in `ui/src/index.ts`: `registerTranslations`, `registerIntegrationSettings` (card `nulab-backlog`, `SettingsScreen`, switch action), `registerNavItem` / `registerRoute` (`/backlog`), `registerRepositoryProvider` and `registerReviewProvider` (id `PLUGIN_ID = "nulab-backlog"`, URL matcher `BACKLOG_GIT_URL` for `*.backlog.com|backlog.jp|backlogtool.com/git/`), `registerTaskAction` (PR link), issue badge/menu/panel. At v0.96.0 a plugin may register one repository and one review provider per declared `repository_providers` id (`apps/web/lib/plugins/registry.ts:481,504`, external).
-
-## Backlog Outbound APIs
-
-`internal/backlog` (skimmed this run): REST v2 users/myself, projects, statuses, users, issues, comments, attachments, `/projects/{key}/git/repositories[/{repo}/pullRequests[/count|/{n}]]`, PR create, OAuth exchange/refresh; Git smart-HTTP probe `/git/{PROJ}/{repo}.git/info/refs?service=git-upload-pack` (Basic auth). Credentials passed per call; HTTP errors become `*backlog.Error` with `Status`/`Retry-After`; responses capped with `io.LimitReader`. No GitHub, Bitbucket or other vendor client exists.
+- Backlog REST v2 (`internal/backlog`): ~17 paths — `users/myself`, `projects`, statuses, project users, `issues`, `issues/count`, comments, attachments, git repositories, pull requests and count, `oauth2/token`.
+- GitHub / GitLab / Bitbucket REST (read-only): repos, PRs/MRs, user.

@@ -34,7 +34,9 @@ CONTRACT_AGENTCTL_PORT ?= 39529
 MARKETPLACE_REPO := khuongdo/kandev-plugin-nulab-backlog
 REGISTRY         ?=
 
-PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64
+# Exactly the executables in manifest.yaml and internal/pkgverify (BR5.1).
+# No Windows: a smaller package uploads within Kandev's 30 s read limit.
+PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64
 BUILD     := build
 STAGE     := $(BUILD)/stage
 DIST      := dist
@@ -92,11 +94,12 @@ ui-build:
 	@if grep -q 'react-dom\|__SECRET_INTERNALS\|react.production' $(BUILD)/ui/bundle.js; then echo "ui-build: React was bundled"; exit 1; fi
 
 build: check-sdk
-	@mkdir -p $(BUILD)/server
+	@# Start empty so a stale executable from an older build is never packaged.
+	@rm -rf $(BUILD)/server && mkdir -p $(BUILD)/server
 	@for p in $(PLATFORMS); do \
-		os=$${p%-*}; arch=$${p#*-}; ext=""; [ "$$os" = windows ] && ext=".exe"; \
+		os=$${p%-*}; arch=$${p#*-}; \
 		echo "build: $$p"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD)/server/plugin-$$p$$ext ./server; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD)/server/plugin-$$p ./server; \
 	done
 
 package: build ui-build

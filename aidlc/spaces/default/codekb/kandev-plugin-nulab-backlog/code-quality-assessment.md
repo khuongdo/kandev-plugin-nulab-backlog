@@ -2,34 +2,42 @@
 
 ## Test Coverage and Baselines
 
-| Area | Suite | Baseline |
-|---|---|---|
-| Go | co-located `*_test.go` in every `internal/*` package (95 files; `internal/git` 17 incl. `harness_test.go`, `leak_test.go`; `internal/connection` 20 incl. `git_credential_test.go`); fixtures in `internal/backlog/testdata/`; `make coverage` floor 80% over `./internal/... ./server/...` | **Not recorded at `5bf88b9`**: Go toolchain not installed, `../kandev` link absent. Last recorded (commit `2b4325f`, intent 261007-github-parity-actions): all 9 packages pass with `-race`, total 92.7% |
-| UI | 31 `*.test.{ts,tsx}` files (`ui/src/git` 7, `ui/src/settings` 7), axe-core checks | **Not recorded**: `ui/node_modules` absent. Last recorded at `2b4325f`: 286/286, `tsc`/ESLint/Prettier clean |
+- ~108 Go test files co-located in every `internal/*` package (`httptest` fakes, `testdata/` JSON), run with `-race`; ~40 Vitest files under `ui/src/`.
+- `make coverage`: 80% line floor over `./internal/... ./server/...`, sole exclusion `server/main.go`, profile at `build/coverage.out`.
+- Packaging: `pkgverify_test.go`, `contract_test.go` (driver units); the real install path runs only in `make contract-test` (CI `packaged-host-contract`, release `contract`).
+- Baseline: **not recorded** this run (no Go on `PATH`, no `../kandev` in this worktree). Link `../kandev` to `v0.96.0` before Construction.
 
-Per the project Testing Posture correction, install Go 1.26.x and link `../kandev` to v0.96.0 before Construction so a baseline exists before code changes.
+## Linting
 
-## Linting, CI/CD, Documentation
+gofmt, go vet, golangci-lint (`.golangci.yml`, +gosec), `tsc --noEmit` strict, ESLint, Prettier, actionlint, `cmd/ci workflows` policy (SHA-pinned actions, `contents: read`, no `pull_request_target`).
 
-- Lint: `gofmt`, `go vet`, golangci-lint + `gosec`, `go mod tidy` check; UI ESLint, Prettier, `tsc --strict`; actionlint.
-- CI: `ci.yml` runs Makefile targets plus the packaged-host contract job; `release.yml` with provenance.
-- Docs: `doc.go` per Go package; doc comments cite requirement IDs; secret-bearing types hide secrets in `String`/`GoString`/`Format`.
+## CI/CD
+
+- `ci.yml`: `checks` (format, vet, lint, test, coverage, check-secrets, build, package, verify-package) and `packaged-host-contract` (installs the package on Kandev built at `v0.96.0`).
+- `release.yml`: `verify` -> `contract` -> `publish` (build provenance attestation, `gh release create`).
+
+## Documentation
+
+README covers build, install (upload via Settings > Plugins), connection, CI, release, marketplace. Go packages have `doc.go`. `docs/manual-checks/` holds the first-release record.
+
+## Known Issue: Plugin install 502
+
+Symptom: Kandev web UI shows `Plugin install failed: 502` when uploading `nulab-backlog-0.4.1.tar.gz`.
+
+Verified evidence:
+- Runtime: Kandev v0.97.0 (`kandev --headless`, `:38429`) behind `tailscale serve` (`https://webfrontier.tail152aaa.ts.net`).
+- Kandev v0.97.0 `server.readTimeout` default 30 s (`KANDEV_SERVER_READTIMEOUT`, `catalog.go` line 61). Multipart upload install parses the whole body before `Install`; a body slower than 30 s is cut.
+- Backend logs: `POST /api/plugins/install` 400, `duration_ms` ~30000, 47-byte body `{"error":"missing multipart field \"package\""}`. The install handler never returns 502; `tailscale serve` turns the dropped upstream into 502, and the web UI prints it from the status line.
+- Reproduced: 29.5 MB upload throttled to 800 KB/s via the tailscale URL -> 502 after 33.5 s; unthrottled uploads succeed.
+- Package: 29,498,475 bytes; 5 server binaries of 14.7-16.4 MB each uncompressed, already `-trimpath -ldflags "-s -w"`; `ui/bundle.js` 226 KB. The package itself is valid (passes `verify-package` and the contract test).
+
+Classification: host timeout plus plugin package size. Not a manifest or checksum defect. Fix options: [architecture.md](architecture.md#improvement-opportunities).
 
 ## Technical Debt
 
-- **Backlog-only source control** (main debt for this intent): single provider id, Backlog-keyed Git identity, Backlog-typed gateway and errors, Git scope and credential taken from the Backlog connection, single Git settings section. Details: [architecture.md](architecture.md#source-control-coupling-intent-261007-source-control-agnostic).
-- **Backlog heuristics in Git**: `DefaultBranch` guesses from recent PR bases with fallback `"master"`; `Branches` lists only branches seen in the newest 100 PRs (`internal/git/service.go:222-290`).
-- **Large files**: `internal/git/service.go`, `internal/issues/service.go`, `ui/src/settings/SettingsScreen.tsx`.
-- **Known `ponytail:` ceilings** (from the previous store, not re-verified): process-wide rate-limit queue `internal/backlog/client.go`; store helpers copied between `internal/git/store.go` and `internal/issues/store.go`; unpruned PR watch ledger; first 50 repositories only in `ui/src/git/git-state.ts`.
-
-## Intent 261007-source-control-agnostic Risks
-
-1. **Host-reserved provider ids**: Kandev v0.96.0 reserves `github`, `gitlab`, `azure_devops` for its native integrations, and its GitHub credential resolver runs first. The plugin cannot register `github`; it must use plugin-scoped ids (e.g. `nulab-backlog-github`) or only reference Kandev's native GitHub repositories as PR links without owning clone/credentials. Requirements decision.
-2. **Exclusive provider ownership**: a bare `bitbucket` id would block activation next to a separate Bitbucket plugin; plugin-prefixed ids avoid it.
-3. **Mandated host allowlist vs. new providers**: project.md "ALWAYS accept only `https` space addresses under `backlog.com`, `backlog.jp`, or `backlogtool.com`" and the gateway's host pinning forbid calling GitHub/Bitbucket hosts as written. Needs an explicit rule decision (e.g. the mandate covers only the Backlog space address, with its own fixed allowlist per new provider) and a new stdlib-only client package, not `internal/backlog`.
-4. **Git coupled to the Backlog connection**: every Git action and both credential RPCs read the Backlog connection, its selected projects and the Backlog on/off switch, and `ConnectionChanged` disables Git items. Requirements must decide whether a GitHub/Bitbucket link survives Backlog disconnect, space change, project deselect, or the switch being off.
-5. **Backward compatibility of v0.3.0 data**: `git.links/watches/queries` (`schemaVersion: 1`), the `backlog.git.<ws>` secret, link keys `spaceHost|repositoryId|number`, the `nulab_backlog_pr` task metadata and `reviewKey` format exist on live installs with no provider field. Any new schema must read them as the Backlog Git provider (field defaulting when absent, or a migrating schema bump), with a regression test.
-6. **Issue-to-PR traceability differs by provider**: `RelatedIssueKey` and the `IssueID` attachment on PR create are Backlog-native; for external providers the Backlog issue key can only go in PR text.
-7. **Error mapping**: `git.errorCode`/`isKind` and `connection.Classify` read `*backlog.Error`; each new client needs its own error type mapped to the same `ActionError` codes, with redaction of tokens in errors and logs.
-8. **Missing local test baseline**: see [Test Coverage and Baselines](#test-coverage-and-baselines); brownfield regressions cannot be detected until it is recorded.
-9. **Locked behaviour to keep**: existing action keys unchanged; settings card/switch/nav independent of the switch; secrets never sent to the UI or logs.
+- Package ~29.5 MB: every install uploads all 5 platforms to use one.
+- Platform set declared three times (`manifest.yaml`, `Makefile` `PLATFORMS`, `pkgverify` `executables`).
+- `pkgverify` duplicates Kandev `pkgtar` rules; no size limit check.
+- Contract test installs over loopback (30 s client timeout), so it never sees proxy/slow-upload failures.
+- Sibling checkout `~/repo/kandev-plugin-nulab-backlog/dist` holds stale `0.0.1`/`0.1.0` tarballs; easy to upload the wrong file.
+- Runtime drift: Kandev 0.97.0 running vs 0.96.0 pin.

@@ -25,7 +25,6 @@ runtime:
     linux-arm64: server/plugin-linux-arm64
     darwin-amd64: server/plugin-darwin-amd64
     darwin-arm64: server/plugin-darwin-arm64
-    windows-amd64: server/plugin-windows-amd64.exe
 `
 
 var want = Expect{ID: "nulab-backlog", Version: "0.0.1"}
@@ -33,13 +32,12 @@ var want = Expect{ID: "nulab-backlog", Version: "0.0.1"}
 // goodFiles is a package that passes every check.
 func goodFiles() map[string]string {
 	return map[string]string{
-		"manifest.yaml":                   goodManifest,
-		"ui/bundle.js":                    "export {};",
-		"server/plugin-linux-amd64":       "bin-la",
-		"server/plugin-linux-arm64":       "bin-lr",
-		"server/plugin-darwin-amd64":      "bin-da",
-		"server/plugin-darwin-arm64":      "bin-dr",
-		"server/plugin-windows-amd64.exe": "bin-wa",
+		"manifest.yaml":              goodManifest,
+		"ui/bundle.js":               "export {};",
+		"server/plugin-linux-amd64":  "bin-la",
+		"server/plugin-linux-arm64":  "bin-lr",
+		"server/plugin-darwin-amd64": "bin-da",
+		"server/plugin-darwin-arm64": "bin-dr",
 	}
 }
 
@@ -122,6 +120,11 @@ func TestVerifyRejects(t *testing.T) {
 		delete(f, name)
 		return f
 	}
+	withWindowsExe := func() map[string]string {
+		f := goodFiles()
+		f["server/plugin-windows-amd64.exe"] = "bin-wa"
+		return f
+	}
 	withManifest := func(m string) map[string]string {
 		f := goodFiles()
 		f["manifest.yaml"] = m
@@ -144,8 +147,10 @@ func TestVerifyRejects(t *testing.T) {
 		{name: "a missing executable", pkg: pkg{files: without("server/plugin-darwin-arm64")}, errText: "missing required file: server/plugin-darwin-arm64"},
 		{name: "a wrong plugin id", pkg: pkg{files: goodFiles()}, expect: Expect{ID: "other", Version: "0.0.1"}, errText: `manifest is nulab-backlog@0.0.1, expected other@0.0.1`},
 		{name: "a wrong version", pkg: pkg{files: goodFiles()}, expect: Expect{ID: "nulab-backlog", Version: "9.9.9"}, errText: "expected nulab-backlog@9.9.9"},
-		{name: "a manifest listing four executables", pkg: pkg{files: withManifest(strings.Replace(goodManifest, "    windows-amd64: server/plugin-windows-amd64.exe\n", "", 1))}, errText: "manifest must list exactly the 5 executables"},
-		{name: "a manifest listing a sixth executable", pkg: pkg{files: withManifest(goodManifest + "    windows-arm64: server/plugin-windows-arm64.exe\n")}, errText: "manifest must list exactly the 5 executables"},
+		{name: "a manifest missing an executable", pkg: pkg{files: withManifest(strings.Replace(goodManifest, "    darwin-arm64: server/plugin-darwin-arm64\n", "", 1))}, errText: "manifest must list exactly the four executables"},
+		// Regression for "Plugin install failed: 502": Windows is no longer packaged.
+		{name: "a manifest that still lists windows-amd64", pkg: pkg{files: withManifest(goodManifest + "    windows-amd64: server/plugin-windows-amd64.exe\n")}, errText: "manifest must list exactly the four executables"},
+		{name: "a package containing the Windows executable", pkg: pkg{files: withWindowsExe()}, errText: "unexpected executable: server/plugin-windows-amd64.exe"},
 		{name: "an invalid manifest", pkg: pkg{files: withManifest("id: [")}, errText: "invalid manifest"},
 	}
 	for _, tc := range cases {
