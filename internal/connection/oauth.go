@@ -127,9 +127,27 @@ const (
 	OutcomeFailed    = "failed"
 )
 
-// StartInput is the connection.start_oauth body.
+// FieldVerifierHash is the start_oauth field holding the browser verifier's hash.
+const FieldVerifierHash = "verifierHash"
+
+// VerifierCookie is the cookie the settings UI sets before leaving for
+// Backlog. Kandev drops Set-Cookie on webhook replies but forwards other
+// cookies to a public webhook, so the callback can check it (R-01).
+const VerifierCookie = "nulab_backlog_oauth_verifier"
+
+// verifierHashPattern is a lower-case hex SHA-256.
+var verifierHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// emptyVerifierHash is sha256(""). A start bound to it would match any
+// browser that sends no cookie, so it is refused (review R-01).
+const emptyVerifierHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+// StartInput is the connection.start_oauth body. VerifierHash is the hex
+// SHA-256 of the verifier cookie; the verifier itself never reaches the server
+// until the callback.
 type StartInput struct {
-	SpaceURL string `json:"spaceUrl"`
+	SpaceURL     string `json:"spaceUrl"`
+	VerifierHash string `json:"verifierHash"`
 }
 
 // StartResult is the connection.start_oauth reply.
@@ -155,6 +173,12 @@ func (s *Service) StartOAuth(ctx context.Context, workspaceID string, in StartIn
 	if err != nil {
 		return StartResult{}, &FieldError{Field: FieldSpaceURL, Err: err}
 	}
+	if !verifierHashPattern.MatchString(in.VerifierHash) {
+		return StartResult{}, &FieldError{Field: FieldVerifierHash, Err: errors.New("must be a lower-case hex SHA-256")}
+	}
+	if in.VerifierHash == emptyVerifierHash {
+		return StartResult{}, &FieldError{Field: FieldVerifierHash, Err: errors.New("must be the hash of a non-empty verifier")}
+	}
 	cfg, err := s.oauthConfig(ctx)
 	if err != nil {
 		return StartResult{}, err
@@ -163,7 +187,7 @@ func (s *Service) StartOAuth(ctx context.Context, workspaceID string, in StartIn
 	if err != nil {
 		return StartResult{}, err
 	}
-	if err := s.store.SavePending(ctx, workspaceID, nonce, addr.Host, s.store.Now().Add(pendingTTL)); err != nil {
+	if err := s.store.SavePending(ctx, workspaceID, nonce, in.VerifierHash, addr.Host, s.store.Now().Add(pendingTTL)); err != nil {
 		return StartResult{}, err
 	}
 	u := url.URL{Scheme: "https", Host: addr.Host, Path: "/OAuth2AccessRequest.action", RawQuery: url.Values{
@@ -174,15 +198,16 @@ func (s *Service) StartOAuth(ctx context.Context, workspaceID string, in StartIn
 	return StartResult{AuthorizeURL: u.String()}, nil
 }
 
-// CompleteOAuth handles the callback query (AC1.3.2, AC1.3.3). Nothing is
-// stored and no token request is made unless the state matches a pending
-// sign-in and a code is present.
-func (s *Service) CompleteOAuth(ctx context.Context, q url.Values) OAuthResult {
+// CompleteOAuth handles the callback query (AC1.3.2, AC1.3.3). verifier is
+// the VerifierCookie value relayed with the callback ("" when absent).
+// Nothing is stored and no token request is made unless the state and the
+// verifier match a pending sign-in and a code is present.
+func (s *Service) CompleteOAuth(ctx context.Context, q url.Values, verifier string) OAuthResult {
 	start := time.Now()
-	ctx = redact.WithSecrets(ctx, q.Get("state"), q.Get("code"))
+	ctx = redact.WithSecrets(ctx, q.Get("state"), q.Get("code"), verifier)
 	res, reason := OAuthResult{Outcome: OutcomeFailed}, "bad_state"
 	if workspaceID, nonce, err := decodeState(q.Get("state")); err == nil {
-		res, reason = s.completeOAuth(ctx, workspaceID, nonce, q)
+		res, reason = s.completeOAuth(ctx, workspaceID, nonce, verifier, q)
 	}
 	log := redact.Logger(ctx)
 	if reason != "" {
@@ -192,14 +217,17 @@ func (s *Service) CompleteOAuth(ctx context.Context, q url.Values) OAuthResult {
 	return res
 }
 
-func (s *Service) completeOAuth(ctx context.Context, workspaceID string, nonce []byte, q url.Values) (OAuthResult, string) {
+func (s *Service) completeOAuth(ctx context.Context, workspaceID string, nonce []byte, verifier string, q url.Values) (OAuthResult, string) {
 	failed := OAuthResult{WorkspaceID: workspaceID, Outcome: OutcomeFailed}
+	if verifier == "" { // no cookie: never compared, the record is kept (R-01)
+		return failed, "bad_state"
+	}
 	unlock, err := s.lockWS(ctx, workspaceID)
 	if err != nil {
 		return failed, "store"
 	}
 	defer unlock()
-	host, found, err := s.store.TakePending(ctx, workspaceID, nonce)
+	host, found, err := s.store.TakePending(ctx, workspaceID, nonce, verifier)
 	switch {
 	case err != nil:
 		return failed, "store"
@@ -232,7 +260,7 @@ func (s *Service) signIn(ctx context.Context, workspaceID, host, code string) (O
 		return failed, "exchange"
 	}
 	ctx = redact.WithSecrets(ctx, tokens.AccessToken, tokens.RefreshToken)
-	user, err := s.gateway.Myself(ctx, backlog.Credentials{SpaceHost: host, AccessToken: tokens.AccessToken})
+	user, err := s.gateway.Myself(backlog.NoRetry(ctx), backlog.Credentials{SpaceHost: host, AccessToken: tokens.AccessToken})
 	if err != nil {
 		return failed, "verify"
 	}

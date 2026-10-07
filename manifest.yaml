@@ -1,6 +1,6 @@
 id: "nulab-backlog"
 api_version: 2
-version: "0.0.1"
+version: "0.1.0"
 display_name: "Nulab Backlog"
 description: "Connect a Kandev workspace to a Nulab Backlog space."
 author: "khuongdo"

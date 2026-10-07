@@ -148,3 +148,77 @@ Failed Tests 19
 - Assumptions still unverified: one Nulab OAuth app serves any space; Nulab accepts an `http://localhost` callback (A2); Backlog accepts the `Backlog-API-Key` header.
 - Deferred to later units: the Git-password parts of AC1.5.4, AC1.8.2 and AC1.9.2 (U4, through `ConnectionChanged`); link and watch counts in the dialogs (AC1.8.1, AC1.9.1) and the M12 counts and "Review watches" (U3/U4); the "No project selected" Issues page (AC1.7.2) and the polling-cycle log (AC8.3.2), both U3; the link to the settings page from other Backlog pages in the Sign-in-again state (AC1.4.3, U3 pages).
 - `ConnectionChanged` has no production subscriber yet; U3 and U4 subscribe.
+
+## Loop-back 1 repairs
+
+Build and Test Loop-back 1 (`construction/build-and-test/test-results.md`) sent back the two open Major review findings, R-01 and R-02. Plan Revision 2, Steps 17–18, were built test-first (Red → Green → Refactor). Steps 1–16 are unchanged.
+
+### Step 17 — OAuth bound to the starting browser (R-01; US1.3, AC1.3.1–AC1.3.3, NFR3)
+
+- **Kandev fact (v0.96.0, `../kandev`, read-only):** a public webhook receives the browser's `Cookie` header with only Kandev's session cookie removed. See `apps/backend/internal/plugins/handlers.go:454` (`Headers: flattenHeaders(ctx.Request.Header, c.svc.sessionCookieName(), public)`), `:702–728` (`flattenHeaders`: `Cookie` is kept only when `public`, after `stripSessionCookies`) and `:771–791` (`stripSessionCookie`). `Set-Cookie` on the plugin's reply is dropped (`:636`), so the cookie is set by the settings UI. Plugin UI bundles run in the Kandev page itself (dynamic `import` in `apps/web/lib/plugins/host.ts`), so `document.cookie` works there. `pluginsdk.WebhookRequest.Headers` is a `map[string]string` (`apps/backend/pkg/pluginsdk/types.go:63–70`).
+- **UI (`ui/src/settings/oauth.ts`):** `startOAuth` makes a 32-byte `crypto.getRandomValues` verifier (base64url, 43 characters) and sends only `verifierHash` = hex SHA-256 (Web Crypto) with `connection.start_oauth`. After the reply passes the authorize-URL check, and before navigation, it sets `nulab_backlog_oauth_verifier=<v>; Path=/api/plugins/nulab-backlog/webhooks/oauth-callback; Secure; SameSite=Lax; Max-Age=600` through a new `browser.setCookie` seam, so tests can replace it.
+- **Backend:** `StartInput.VerifierHash` must match `^[0-9a-f]{64}$`; otherwise the result is `validation` on the field `verifierHash` (`FieldVerifierHash`) and nothing is stored. The pending record (`oauth_pending`) gains `verifierHash`. `CompleteOAuth(ctx, q, verifier)` adds the verifier to the redaction set. `Store.TakePending(ctx, ws, nonce, verifier)` compares the nonce hash and the verifier hash in constant time (`hashMatches`, `crypto/sha256` + `crypto/subtle`) before any token request. A mismatch leaves the record in place, so a stranger who knows the state cannot cancel the real sign-in. A record from before this change has no `verifierHash` and never matches, so it fails closed. `internal/plugin/webhook.go` reads the cookie with `http.Request.Cookie` from the relayed `Cookie` header, which skips malformed cookies.
+- **Red evidence:**
+
+  ```
+  go test -race ./internal/connection/ -run 'TestU2_(Start|Callback)'
+  internal/connection/events_test.go:103:114: too many arguments in call to u.svc.CompleteOAuth
+  internal/connection/oauth_flow_test.go:27:92: unknown field VerifierHash in struct literal of type StartInput
+  FAIL  github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection [build failed]
+
+  go test -race ./internal/plugin/ -run 'TestU2_(StartAction|Webhook)|TestWebhook'
+  --- FAIL: TestU2_StartActionNeedsVerifierHash/missing   expected: 400 actual: 200
+  --- FAIL: TestU2_WebhookNeedsTheVerifierCookie/no_Cookie_header
+      expected: ".../integrations/nulab-backlog?oauth=failed"  actual: "...?oauth=connected"
+  (also no_verifier_cookie, wrong_verifier, malformed_Cookie, verifier_in_a_header, not_hex)
+
+  npx vitest run src/settings/oauth.test.tsx
+  × binds the sign-in to this browser with a verifier cookie (R-01)
+  Error: The property "setCookie" is not defined on the object.   (9 failed)
+  ```
+
+### Step 18 — Project picker reloads after a space change or restore (R-02; US1.8, US1.7, AC1.8.2)
+
+- `SettingsScreen.tsx` renders `<ProjectPicker key={state.view?.spaceHost} …>`. A new space remounts the picker, so it calls `connection.list_projects` again and keeps no checkbox state from the old space. `ProjectPickerProps` gains an optional `key` so the SDK's `Component` type accepts it.
+- **Red evidence:**
+
+  ```
+  npx vitest run src/settings/connected-panel.test.tsx
+  × reloads the projects after a space change and never saves the old space's keys
+  × reloads the projects after a restore of the other space and never saves the old space's keys
+  AssertionError: expected [ Array(1) ] to have a length of 2 but got 1
+  ```
+
+### Tests added or changed
+
+- Go, new: `TestU2_StartNeedsAVerifierHash`, `TestU2_CallbackChecksTheVerifierCookie` and `TestU2_CallbackCancelNeedsTheVerifier` (`internal/connection/oauth_flow_test.go`); `TestU2_StartActionNeedsVerifierHash` (`internal/plugin/actions_u2_test.go`); `TestU2_WebhookNeedsTheVerifierCookie` (`internal/plugin/webhook_test.go`). `TestOAuthPendingStateIsSingleUse` now also checks that another browser's verifier is refused and does not use up the record.
+- Go, adapted to the new signatures: the `u.start` and `r.startState` helpers keep the browser verifier, and every `CompleteOAuth` or callback call passes it. The events leak test adds the verifier to its secret list. `TestWebhookRedirectsWithTheOutcome` checks the verifier against the `Location` header and the logs. The plugin's fake gateway counts token exchanges.
+- UI, new: "binds the sign-in to this browser with a verifier cookie (R-01)" and "uses a new verifier for every sign-in" (`oauth.test.tsx`), plus a two-case table "reloads the projects after a space change / a restore of the other space and never saves the old space's keys" (`connected-panel.test.tsx`). The existing OAuth tests wait for `connection.start_oauth` through `clickStart`, because the Web Crypto digest finishes outside `act`'s microtask flush.
+
+### Results
+
+| Check | Result |
+|-------|--------|
+| `make check-format vet lint test coverage check-secrets build package verify-package` | exit 0 |
+| golangci-lint | `0 issues.` |
+| Go coverage | `coverage: 92.9% (floor 80%, excluded: server/main.go)`; connection 94.5%, plugin 93.7% |
+| Vitest | 28 files, 228 tests passed; `oauth.test.tsx` was run 8 times in a row and passed each time |
+| `make check-secrets` / `make verify-package` | `ci secrets: OK` / `verifypkg: OK dist/nulab-backlog-0.0.1.tar.gz (nulab-backlog@0.0.1)` |
+
+### Deviations
+
+- **Picker key is the space host only, not `${spaceHost}:${connectionEpoch}`.** The plan allowed either a remount on that key or a reload when either value changes. `connection.set_projects` raises the epoch (R-08), so an epoch key would remount the picker after every Save and drop the "Projects saved" message. Every case where the server-side selection changes while the picker is mounted (a space change, or a restore of the remembered space) changes the host. A same-host replace keeps the selection (`nextConnection`), and a restore after a disconnect remounts anyway, because the picker is hidden while disconnected.
+- **The verifier is checked before `error=access_denied` is read.** A cancel without the cookie gives `failed`, and the pending record is kept.
+- **The verifier cookie is not cleared after the callback.** Kandev drops `Set-Cookie`, so the plugin cannot clear it. It expires after 600 s, is scoped to the callback path, and a used verifier can never match again because its pending record is deleted.
+- **Cookie path.** The UI uses the fixed callback path. If `public_base_url` has a path prefix (Kandev behind a sub-path), the browser will not send the cookie and sign-in fails closed. This is not handled.
+
+### Review iteration 1 repairs (review-04, NOT-READY)
+
+- **R-01 (Critical), empty verifier bypass.** Three guards, each covered by a test that fails when only that guard is removed:
+  - `CompleteOAuth` refuses an empty verifier (no cookie, or an empty cookie value) up front. It does this before the workspace lock and before any comparison, reports `bad_state`, makes 0 token requests and keeps the pending record (`internal/connection/oauth.go`).
+  - `StartOAuth` refuses `verifierHash` equal to sha256("") (`e3b0c442…b855`) with `validation` on field `verifierHash`.
+  - `Store.TakePending` never matches an empty verifier and leaves the record in place (`internal/connection/store.go`).
+  - Tests: `TestU2_EmptyVerifierNeverMatches` (start refused; callback with no cookie or an empty one against a planted sha256("") record; refusal before the lock; end to end, where the attacker's empty-hash start is refused and a no-cookie callback against such a record ends `failed` with 0 exchanges and the record kept) in `oauth_flow_test.go`; `TestOAuthPendingRefusesAnEmptyVerifier` in `store_test.go`; an "empty verifier cookie" case in `TestU2_WebhookNeedsTheVerifierCookie`.
+- **R-12 (Minor), stale picker after a same-host account change.** The picker key is now `${spaceHost}:${connectedUserName}`. The view carries no Backlog user ID, and adding one would change contract C5, so the display name identifies the account. Ceiling: two accounts with the same display name on one space are not told apart. The epoch is still left out, so a Save does not remount. Test: "reloads the projects for the new account, and a save does not reload them" (`connected-panel.test.tsx`).
+- **R-13 (Minor), path-prefix deployments.** README "Sign in with OAuth" now says that Kandev under a path prefix is unsupported for OAuth sign-in and that an API key should be used instead.
+- Results: `make check-format vet lint test coverage check-secrets` exit 0; golangci-lint `0 issues.`; `coverage: 92.9% (floor 80%, excluded: server/main.go)`; connection 94.6%, plugin 93.7%; Vitest 28 files, 229 tests passed; `ci secrets: OK`.

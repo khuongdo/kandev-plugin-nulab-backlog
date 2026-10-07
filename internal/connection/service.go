@@ -238,7 +238,8 @@ func (s *Service) verify(ctx context.Context, addr SpaceAddress, key string) (ba
 	}
 	callCtx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	user, err := s.gateway.Myself(callCtx, backlog.Credentials{SpaceHost: addr.Host, APIKey: key})
+	// A 429 is answered at once with its wait, never retried (NFR2.1).
+	user, err := s.gateway.Myself(backlog.NoRetry(callCtx), backlog.Credentials{SpaceHost: addr.Host, APIKey: key})
 	if err != nil {
 		return backlog.User{}, verifyError(err)
 	}

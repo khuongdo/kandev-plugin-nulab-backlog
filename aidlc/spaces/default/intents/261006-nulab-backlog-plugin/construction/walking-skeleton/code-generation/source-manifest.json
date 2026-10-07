@@ -52,6 +52,24 @@
       "path": "internal/backlog/doc.go"
     },
     {
+      "path": "internal/backlog/git_client_test.go"
+    },
+    {
+      "path": "internal/backlog/issues_client_test.go"
+    },
+    {
+      "path": "internal/backlog/limiter_test.go"
+    },
+    {
+      "path": "internal/backlog/oauth_test.go"
+    },
+    {
+      "path": "internal/backlog/oauth_types_test.go"
+    },
+    {
+      "path": "internal/backlog/projects_test.go"
+    },
+    {
       "path": "internal/backlog/testdata/error_401.json"
     },
     {
@@ -76,6 +94,9 @@
       "path": "internal/backlog/types_test.go"
     },
     {
+      "path": "internal/ci/contract_test.go"
+    },
+    {
       "path": "internal/connection/address.go"
     },
     {
@@ -91,7 +112,22 @@
       "path": "internal/connection/doc.go"
     },
     {
+      "path": "internal/connection/events_test.go"
+    },
+    {
       "path": "internal/connection/fakes_test.go"
+    },
+    {
+      "path": "internal/connection/git_credential_test.go"
+    },
+    {
+      "path": "internal/connection/git_credential_types_test.go"
+    },
+    {
+      "path": "internal/connection/oauth.go"
+    },
+    {
+      "path": "internal/connection/oauth_config_test.go"
     },
     {
       "path": "internal/connection/service.go"
@@ -106,6 +142,15 @@
       "path": "internal/connection/store_test.go"
     },
     {
+      "path": "internal/git/leak_test.go"
+    },
+    {
+      "path": "internal/git/resolver_test.go"
+    },
+    {
+      "path": "internal/issues/leak_test.go"
+    },
+    {
       "path": "internal/pkgverify/pkgverify.go"
     },
     {
@@ -115,6 +160,21 @@
       "path": "internal/plugin/actions_test.go"
     },
     {
+      "path": "internal/plugin/actions_timing_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u2_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/credential_test.go"
+    },
+    {
       "path": "internal/plugin/doc.go"
     },
     {
@@ -122,6 +182,12 @@
     },
     {
       "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "internal/plugin/runtime_host_test.go"
+    },
+    {
+      "path": "internal/plugin/webhook_test.go"
     },
     {
       "path": "internal/redact/doc.go"

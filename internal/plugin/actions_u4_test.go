@@ -257,7 +257,7 @@ func TestU4_Actions_SetGitCredential(t *testing.T) {
 	require.Equal(t, "gitUsername", errorOf(t, out)["field"])
 	resp, _ = r.call(t, actionSetGitCredential, []byte("{nope"))
 	require.Equal(t, 400, resp.Status)
-	testutil.AssertNoLeak(t, r.logs.String(), pw, 8)
+	testutil.AssertNoLeak(t, r.logs.String(), pw)
 }
 
 func TestU4_Actions_RepositorySource(t *testing.T) {

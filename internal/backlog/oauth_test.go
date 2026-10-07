@@ -84,8 +84,8 @@ func TestOAuthExchangeErrorsAndLogsHideEverySecret(t *testing.T) {
 			require.True(t, errors.As(err, &be))
 			require.Equal(t, tc.kind, be.Kind)
 			text := err.Error() + logs.String()
-			testutil.AssertNoLeak(t, text, secret, 8, "SECRET-BODY-MARKER", "invalid_grant")
-			testutil.AssertNoLeak(t, text, code, 8)
+			testutil.AssertNoLeak(t, text, secret, "SECRET-BODY-MARKER", "invalid_grant")
+			testutil.AssertNoLeak(t, text, code)
 			require.Contains(t, logs.String(), `"path":"/api/v2/oauth2/token"`)
 		})
 	}
@@ -132,8 +132,8 @@ func TestTokenRefreshRefusals(t *testing.T) {
 			var be *Error
 			require.True(t, errors.As(err, &be))
 			require.Equal(t, kind, be.Kind)
-			testutil.AssertNoLeak(t, err.Error()+logs.String(), old, 8, "invalid_grant")
-			testutil.AssertNoLeak(t, logs.String(), secret, 8)
+			testutil.AssertNoLeak(t, err.Error()+logs.String(), old, "invalid_grant")
+			testutil.AssertNoLeak(t, logs.String(), secret)
 		})
 	}
 }

@@ -122,6 +122,9 @@ type Runtime struct {
 	lifeMu   sync.Mutex
 	started  bool
 	unlisten []func()
+
+	hostReady chan struct{} // closed by the first SetHost with a Host
+	hostOnce  sync.Once
 }
 
 var _ pluginsdk.ActionHandler = (*Runtime)(nil)
@@ -180,13 +183,17 @@ func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	if strings.EqualFold(level, "debug") {
 		lvl = slog.LevelDebug
 	}
-	r := &Runtime{log: slog.New(redact.NewHandler(slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: lvl})))}
+	r := &Runtime{
+		log:       slog.New(redact.NewHandler(slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: lvl}))),
+		hostReady: make(chan struct{}),
+	}
 	// The stores resolve the injected Host on every call, because Serve
-	// injects it from a background goroutine after NewRuntime returns.
-	stores := hostStores{host: r.Host}
+	// injects it from a background goroutine after NewRuntime returns; a
+	// call that comes first waits for SetHost (T-COMPAT-01).
+	stores := hostStores{host: r.Host, ready: r.hostReady}
 	r.service = connection.NewService(gateway, connection.NewStore(stores, stores))
 	r.service.Config = stores
-	ports := hostPort{host: r.Host}
+	ports := hostPort{host: r.Host, ready: r.hostReady}
 	r.git = git.NewService(gateway, r.service, ports, git.NewStore(stores))
 	r.watcher = git.NewWatcher(r.git, r.log)
 	r.issues = issues.NewService(gateway, r.service, issueHost{ports}, issues.NewStore(stores))
@@ -216,13 +223,17 @@ func (r *Runtime) HandleAction(ctx context.Context, req *pluginsdk.PluginActionR
 	if !ok {
 		return reject(ctx, log, req.ActionKey, codeNotFound, requestID), nil
 	}
-	var actErr error
 	if guarded(req.ActionKey) {
-		// The action deadline starts before the guard, so the Connect budget
-		// (NFR1.4: 12 s plus a 2 s rollback) also covers the guard's read.
+		// The action deadline starts before the Host wait and the guard, so
+		// the Connect budget (NFR1.4: 12 s plus a 2 s rollback) covers both.
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, r.service.Deadline)
 		defer cancel()
+	}
+	// An action can arrive before Serve injects the Host: wait for it once
+	// here, inside the action's budget, rather than inside a 1 s store call.
+	_, actErr := waitHost(ctx, r.Host, r.hostReady)
+	if actErr == nil && guarded(req.ActionKey) {
 		// The one guard: read the switch before anything else; fail closed (NFR3.9).
 		actErr = r.service.RequireEnabled(ctx, req.Context.WorkspaceID)
 	}
@@ -346,23 +357,57 @@ func newRequestID() string {
 	return hex.EncodeToString(b)
 }
 
+// SetHost stores the Host injected by Serve and releases the calls waiting
+// for it. Serve calls it from a background goroutine; it is safe to call
+// concurrently and more than once (the latest Host wins).
+func (r *Runtime) SetHost(h pluginsdk.Host) {
+	r.UnimplementedPlugin.SetHost(h)
+	if h != nil {
+		r.hostOnce.Do(func() { close(r.hostReady) })
+	}
+}
+
 // errNoHost is returned while Kandev has not injected the Host yet.
 var errNoHost = errors.New("kandev host not connected")
 
-// hostStores adapts the injected pluginsdk.Host to the connection stores.
-type hostStores struct {
-	host func() pluginsdk.Host
-}
+// hostWait caps how long a store call waits for SetHost, so a plugin whose
+// Host never arrives still answers well inside the action budgets.
+const hostWait = 5 * time.Second
 
-func (s hostStores) get() (pluginsdk.Host, error) {
-	if h := s.host(); h != nil {
+// waitHost returns the injected Host. Before SetHost it waits on ready until
+// the Host arrives, ctx is done, or hostWait passes, whichever is first, then
+// fails closed with errNoHost. A nil ready means do not wait.
+func waitHost(ctx context.Context, host func() pluginsdk.Host, ready <-chan struct{}) (pluginsdk.Host, error) {
+	if h := host(); h != nil {
 		return h, nil
+	}
+	if ready != nil {
+		t := time.NewTimer(hostWait)
+		defer t.Stop()
+		select {
+		case <-ready:
+		case <-ctx.Done():
+		case <-t.C:
+		}
+		if h := host(); h != nil {
+			return h, nil
+		}
 	}
 	return nil, errNoHost
 }
 
+// hostStores adapts the injected pluginsdk.Host to the connection stores.
+type hostStores struct {
+	host  func() pluginsdk.Host
+	ready <-chan struct{} // see waitHost
+}
+
+func (s hostStores) get(ctx context.Context) (pluginsdk.Host, error) {
+	return waitHost(ctx, s.host, s.ready)
+}
+
 func (s hostStores) GetSecret(ctx context.Context, key string) (string, bool, error) {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return "", false, err
 	}
@@ -370,7 +415,7 @@ func (s hostStores) GetSecret(ctx context.Context, key string) (string, bool, er
 }
 
 func (s hostStores) SetSecret(ctx context.Context, key, value string) error {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return err
 	}
@@ -378,7 +423,7 @@ func (s hostStores) SetSecret(ctx context.Context, key, value string) error {
 }
 
 func (s hostStores) DeleteSecret(ctx context.Context, key string) error {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return err
 	}
@@ -386,7 +431,7 @@ func (s hostStores) DeleteSecret(ctx context.Context, key string) error {
 }
 
 func (s hostStores) GetState(ctx context.Context, scope, scopeID, key string) (map[string]any, bool, error) {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return nil, false, err
 	}
@@ -394,7 +439,7 @@ func (s hostStores) GetState(ctx context.Context, scope, scopeID, key string) (m
 }
 
 func (s hostStores) SetState(ctx context.Context, scope, scopeID, key string, value map[string]any) error {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return err
 	}
@@ -402,7 +447,7 @@ func (s hostStores) SetState(ctx context.Context, scope, scopeID, key string, va
 }
 
 func (s hostStores) DeleteState(ctx context.Context, scope, scopeID, key string) error {
-	h, err := s.get()
+	h, err := s.get(ctx)
 	if err != nil {
 		return err
 	}

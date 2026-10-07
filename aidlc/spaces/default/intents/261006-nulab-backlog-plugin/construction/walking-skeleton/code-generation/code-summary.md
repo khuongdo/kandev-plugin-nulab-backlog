@@ -352,6 +352,119 @@ A fresh run of `make check-format vet lint test coverage build package verify-pa
 | Created | `ui/src/switch/enabled-events.ts` |
 | Modified | `internal/connection/service.go`, `service_test.go`; `internal/plugin/runtime.go`, `actions_test.go`; `ui/src/index.ts`, `switch/integration-switch.tsx`, `switch/switch.test.tsx`, `settings/SettingsScreen.tsx`, `settings/state.ts`, `page/BacklogPage.tsx`, `page/backlog-page.test.tsx` |
 
+## Loop-back 1 repairs (Steps 23–25)
+
+Build and Test Loop-back 1 (`construction/build-and-test/test-results.md`) found T-RATE-01 and T-SEC-02 Not Met and T-PERF-03 Unverified. Steps 23–25 fix them in place with Red → Green → Refactor. Go 1.26.8, `GOTOOLCHAIN=local`, Kandev v0.96.0.
+
+### Step 23 — Connect returns `rate_limited` at once (T-RATE-01, NFR2.1)
+
+**Red.** `go test -race ./internal/backlog/ ./internal/connection/ -run 'TestNoRetry|TestRetryDisabled|TestConnectAsksForNoRetryOn429|TestOAuthSignInAsksForNoRetry|TestConnectionTestKeepsTheRetry'`. The first run failed to build (`undefined: NoRetry`, `undefined: RetryDisabled`). With no-op stubs:
+
+```
+--- FAIL: TestNoRetryReturns429AtOnce
+    client_test.go:264: expected: 1 actual: 2   exactly one Backlog request   (short Retry-After)
+    client_test.go:264: expected: 1 actual: 4   exactly one Backlog request   (reset 1 s ahead)
+    client_test.go:264: expected: 1 actual: 4   exactly one Backlog request   (past reset is clamped)
+--- FAIL: TestRetryDisabledReadsTheContext   Should be true
+--- FAIL: TestConnectAsksForNoRetryOn429    Should be true  the Connect Myself call must not retry
+--- FAIL: TestOAuthSignInAsksForNoRetry     Should be true  the sign-in Myself call must not retry
+FAIL internal/backlog, FAIL internal/connection
+```
+
+**Green.** `backlog.NoRetry(ctx)` marks a context, and `backlog.RetryDisabled(ctx)` reads the mark. `Client.send` returns a 429 after the first attempt when the mark is set, so there is no wait and no retry. `RetryAfter` is still computed as before: `X-RateLimit-Reset`, then `Retry-After`, else 60 s, and never less than 1 s. `Service.verify` (API-key Connect) and `signIn` (the OAuth sign-in check) pass `backlog.NoRetry(...)` to `Myself`. Every other call keeps the shared policy: `TestMyselfRateLimitWait` still sees 4 hits on the clamp case (AC8.4.1–AC8.4.3), and `TestConnectionTestKeepsTheRetry` shows `connection.test` does not set the mark. The context option was chosen over a new Gateway method, so no Gateway interface or fake changed. Refactor: none needed.
+
+### Step 24 — 4-character leak windows (T-SEC-02, NFR3.2)
+
+**Red 1 (window).** `testutil.AssertNoLeak` lost its window argument and now always scans `testutil.LeakWindow` characters. All 55 call sites in the units' tests dropped their `, 8` argument (a mechanical edit that the compiler checks). With `LeakWindow = 8`, `go test -race ./internal/testutil/`:
+
+```
+--- FAIL: TestAssertNoLeak_Catches4CharWindow   Should be true  window at 0 must be caught   (x 58, every window of an APIKey and a Token)
+--- FAIL: TestAssertNoLeak_PassesWithout4Char   Should be true  cdef is a 4-character window
+FAIL internal/testutil
+```
+
+**Green 1.** `LeakWindow = 4`. Every package then passed once. A 40-times rerun (`go test -race -count=40` over backlog, connection, git, issues, plugin, redact, testutil) failed intermittently in 16 tests across backlog, connection, issues and plugin, each in at most 9 of 40 runs. Examples: `TestConnectNeverLeaksTheKeyOrDisplayName`, `TestU2_NoSecretInLogsErrorsViewsOrEvents`, `TestWebhookRedirectsWithTheOutcome`, `TestU3_IssueCalls_ErrorsNeverEchoTheBody`. A real leak of 4 or more characters would fail on every run. These failures were chance matches between the secrets' random hex and the digits, timestamps and hex IDs in log and fixture text (for example `2026` or `0710`). **No genuine leak was found.**
+
+**Red 2 (generator).** As the plan directs, the generator was changed and the window was not widened. Tests first, `go test -race ./internal/testutil/`:
+
+```
+--- FAIL: TestAPIKeyHasFakePrefixAndRandomPart   Expect "test-api-key-<32 hex, redacted>" to match "^test-api-key-[GHJKLMNPQRSVWXYZ]{32}$"
+--- FAIL: TestU2_TokenHasFakePrefixAndRandomPart Expect "test-token-<32 hex, redacted>" to match "^test-token-[GHJKLMNPQRSVWXYZ]{32}$"
+--- FAIL: TestSecretRandomPartAvoidsHexAndDigits Expect "<32 hex, redacted>" to NOT match "[0-9a-z]"
+FAIL internal/testutil
+```
+
+**Green 2.** `randomPart` draws 32 characters from `GHJKLMNPQRSVWXYZ`: 16 uppercase letters with no hex digit, no digit and no vowel. T is left out so that "HTTP" cannot be formed. That is 4 bits per character, 128 random bits in all. The `test-api-key-` and `test-token-` prefixes are unchanged, and `Windows` still skips them. After the change, `go test -race -count=40 ./internal/...` passed in every package with no failure. Refactor: `randomHex` was replaced, and the `encoding/hex` import was removed.
+
+### Step 25 — 100-call timing of `connection.get` and `connection.set_enabled` (T-PERF-03, NFR1.1, NFR1.3)
+
+`internal/plugin/actions_timing_test.go` runs inside `testing/synctest`. A `slowHost` wraps the rig's fake host and adds `storeLatency = 100 ms` of virtual time to each `GetState`, `SetState`, `GetSecret` and `SetSecret` call. That value is half the "well under 200 ms" store latency that `performance-requirements` assumes. After one Connect, each test calls the action 100 times through `HandleAction`, reads each duration from the synctest clock, and asserts that p95 ≤ 500 ms and that the fake gateway is never called. Both tests passed on the first run, so no code change was made. The measured p95 values were **400 ms** for `connection.get` (4 store reads) and **200 ms** for `connection.set_enabled` (1 read and 1 write). Raising the latency to 200 ms makes the `connection.get` test fail at 800 ms, so the test is not vacuous.
+
+### Results
+
+`make check-format vet lint test coverage check-secrets` passed. Results: gofmt clean; `go vet` clean; golangci-lint with gosec, 0 issues; `tsc`, ESLint and Prettier clean. Go tests ran with `-race` and every package was `ok`. Vitest: 28 files, 224 tests passed. Go coverage was **92.9%** against the 80% floor, with only `server/main.go` excluded. Per package: backlog 96.0%, ci 91.0%, connection 94.5%, git 90.8%, issues 91.3%, pkgverify 93.2%, plugin 93.6%, redact 97.4%, testutil 88.0%. `ci secrets: OK`. `go mod tidy` left no diff, and no dependency was added. The generated `coverage.out` was deleted.
+
+| Change | Files |
+|--------|-------|
+| Created | `internal/plugin/actions_timing_test.go` |
+| Modified (code) | `internal/backlog/client.go`, `internal/connection/service.go`, `internal/connection/oauth.go` (U2 file, one line), `internal/testutil/testutil.go` (shared by every unit) |
+| Modified (tests: new tests) | `internal/backlog/client_test.go`, `internal/connection/service_test.go`, `internal/testutil/testutil_test.go` |
+| Modified (tests: only the `, 8` argument removed) | `internal/backlog/{client,git_client,issues_client,limiter,oauth,oauth_types,projects,types}_test.go`, `internal/ci/contract_test.go`, `internal/connection/{apikey,events,git_credential,git_credential_types,oauth_config,service,store}_test.go`, `internal/git/{leak,resolver}_test.go`, `internal/issues/leak_test.go`, `internal/plugin/{actions,actions_u2,actions_u3,actions_u4,credential,webhook}_test.go`, `internal/redact/redact_test.go` |
+
+### Findings and deviations (Loop-back 1)
+
+- **Finding (NFR1.1 design drift, not fixed here):** `performance-design.md` says `connection.get` makes three store reads: record, secret and switch. It now makes **four**: the switch, the record, the connection secret and the Git credential secret `backlog.git.<ws>`. U4 added the Git credential read for `hasGitCredential`. The target is still met at 100 ms per read (400 ms), but the headroom is smaller. If a read takes more than 125 ms, the p95 goes over 500 ms. Either the design's read count is amended, or a later change drops the fourth read.
+- **Deviation (test helper signature):** the plan said "change the window from 8 to 4". It was done by removing the window argument from `AssertNoLeak`, so no caller can choose a wider window again. This touched every unit's leak tests, but only to remove the argument.
+- **Deviation (exported API):** `backlog.RetryDisabled` is exported so that the connection tests can assert the mark through their fake Gateway. Production uses it only inside `Client.send`.
+
+## Loop-back 2 repair (Step 26)
+
+Build and Test Run 2 found T-COMPAT-01 Not Met: the packaged-host contract test failed 2 of 7 runs with `connection.get answered 500`. Kandev v0.96.0's `pluginsdk/serve.go` dials the host broker from a background goroutine (up to 30 s) and only then calls `SetHost`, so an action could arrive first, and `hostStores.get` returned `errNoHost` at once.
+
+### Step 26 — wait for the Host instead of failing (T-COMPAT-01, NFR6.1, R-04)
+
+**Red.** `internal/plugin/runtime_host_test.go` builds the runtime without a Host (`hostlessRig`) and runs inside `testing/synctest`, so no test sleeps in real time:
+
+- `TestHost_EarlyActionWaitsForHost` (a): `connection.get` sent before `SetHost` is still pending after 1 s of virtual time, then answers 200 at exactly 1 s, when `SetHost` is called.
+- `TestHost_DeadlineFailsClosed` (b): a 1 s action deadline before `SetHost` answers 500 `internal` at exactly 1 s, logs `errNoHost`, and the Host set afterwards sees no read and no write.
+- `TestHost_WaitIsCappedAt5s` (b): with no deadline, the wait stops at the 5 s cap.
+- `TestHost_NilHostDoesNotOpen` (b): `SetHost(nil)` does not release the waiters.
+- `TestHost_SetHostMeansNoWait` (c): after `SetHost`, three actions take zero virtual time.
+- `TestHost_SetHostTwiceIsSafe` (c): eight concurrent `SetHost` calls racing eight actions under `-race`, then a second `SetHost` with another Host: no panic, and the latest Host serves the call.
+- `TestHost_WorkersWaitWithoutStorm` (d): the PR watcher and the issue sync tick at 1 min with no Host, the Host arrives 500 ms later, and the logs have no ERROR line, at most two cycle lines per worker, and no cycle with `errors` > 0.
+
+Failing output (after adding only the `hostWait` constant so the file compiled; before that it failed to build on `undefined: hostWait`):
+
+```text
+--- FAIL: TestHost_EarlyActionWaitsForHost (0.00s)   the action answered 500 before the Host was set
+--- FAIL: TestHost_DeadlineFailsClosed (0.00s)       expected: 1s, actual: 0s
+--- FAIL: TestHost_WaitIsCappedAt5s (0.00s)          expected: 5s, actual: 0s
+--- FAIL: TestHost_NilHostDoesNotOpen (0.00s)        expected: 5s, actual: 0s
+--- FAIL: TestHost_WorkersWaitWithoutStorm (0.00s)   watch_cycle and issue_sync_cycle at 09:01 with "errors":2
+FAIL	github.com/khuongdo/kandev-plugin-nulab-backlog/internal/plugin
+```
+
+(c) passed already in Red: the old code never waited once a Host was set.
+
+**Green.** `Runtime` overrides `SetHost`: it calls the embedded `UnimplementedPlugin.SetHost` (the latest Host wins) and, for a non-nil Host, closes `hostReady` through a `sync.Once`, so concurrent and repeated calls are safe. `waitHost(ctx, host, ready)` returns the Host at once when it is set; otherwise it waits on `ready`, `ctx.Done()` or the `hostWait` (5 s) timer, whichever is first, then fails closed with `errNoHost` (code `internal`). `hostStores.get` and `hostPort.get` now take the call's context and use `waitHost`; `HandleAction` calls it once before the switch guard, after the guarded action's 12 s deadline is set. A first Green that waited only inside the stores still failed (a) and the cap test: each store call runs under the store's 1 s `CallTimeout`, so an early `connection.get` failed after 1 s. Waiting once in `HandleAction`, inside the action's own budget, fixed it without changing any timeout. Refactor: none beyond the shared `waitHost`; tests stayed green.
+
+`make package`, then `make contract-test KANDEV_MIN_DIR=../kandev-min` 10 times in a row: **10/10 passed** (`ci contract: OK nulab-backlog on Kandev v0.96.0` each time).
+
+### Results (Loop-back 2)
+
+`make check-format vet lint test coverage check-secrets build package verify-package` passed: gofmt clean, `go vet` clean, golangci-lint with gosec 0 issues, `ci workflows: OK`; Go tests with `-race` `ok` in every package; Vitest 28 files, 229 tests passed. Go coverage **92.9%** against the 80% floor, only `server/main.go` excluded; plugin 93.6%, connection 94.6%. `ci secrets: OK`; `verifypkg: OK dist/nulab-backlog-0.0.1.tar.gz`. No dependency added. `coverage.out` was deleted.
+
+| Change | Files |
+|--------|-------|
+| Created | `internal/plugin/runtime_host_test.go` |
+| Modified (code) | `internal/plugin/runtime.go`, `internal/plugin/host_port.go` (U4 file), `internal/plugin/config.go` (U2 file) |
+
+### Findings and deviations (Loop-back 2)
+
+- **Deviation (where the action waits):** the plan put the wait in `hostStores.get` and `hostPort`. It is there, but the store's 1 s per-call limit caps it at 1 s for actions, so `HandleAction` also waits once, up front, bounded by the action context and the 5 s cap. Budgets are unchanged: a guarded action's wait counts toward its 12 s deadline (14 s with rollback).
+- **Note (workers):** background cycles still wait inside a 1 s store call. A Host that arrives later than that makes one cycle count errors in its single cycle line (no ERROR line, no storm), and the next tick runs normally.
+- **Note (fail closed):** a wait that ends on the context returns `errNoHost`, not `ctx.Err()`, so the action reports `internal` as the plan requires rather than `unreachable`.
+
 ## Sources
 
 - [desc] Initial description: Kandev plugin for Nulab Backlog.
@@ -371,6 +484,8 @@ A fresh run of `make check-format vet lint test coverage build package verify-pa
   - `apps/packages/plugin-sdk/src/index.ts`: `registerNavItem`, `registerRoute` with `PluginRouteOptions.topbar`, `registerIntegrationSettings` with `icon` and `action`, `IntegrationSettingsActionProps`, `PluginIconProps`, `PluginContextApi.getWorkspaceIds` and `subscribeWorkspaces`, `setIntegrationEnabled`, `navigate`;
   - `apps/web/components/integrations/drafted-integration-enabled-control.tsx` and `lib/plugins/host-api.ts`: `IntegrationEnabledControl` props `{id, enabled, persist, name}`, with the id prefixed by the plugin id;
   - `apps/web/lib/settings/workspace-settings-tabs.ts` and `components/app-sidebar/sections/settings/settings-menu-branches.ts`: the `/settings/workspaces/<id>/integrations/<pluginId>` route.
+- Loop-back 2: plan Step 26; `construction/build-and-test/test-results.md` (Run 2, Loop-back 2); Kandev v0.96.0 `apps/backend/pkg/pluginsdk/serve.go` (background host dial) and `plugin.go` (`HostSetter`, `UnimplementedPlugin`).
+- Loop-back 1: plan Steps 23–25; `construction/build-and-test/test-results.md` (Loop-back 1) and `build-and-test-summary.md` (T-RATE-01, T-SEC-02, T-PERF-03); `performance-requirements.md` (NFR1.1, NFR1.3, NFR2.1 and the store-latency assumption).
 - Nulab media assets <https://nulab.com/press/media-assets/> and logo guidelines <https://nulab.com/logo-guidelines/> (retrieved 2026-10-06).
 
 ## Assumptions & Open Questions

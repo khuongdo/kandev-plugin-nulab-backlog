@@ -123,6 +123,7 @@ type fakeGateway struct {
 	tokens        backlog.TokenSet
 	exchangeErr   error
 	exchangePanic bool
+	exchanges     int
 }
 
 func (g *fakeGateway) Projects(context.Context, backlog.Credentials) ([]backlog.Project, error) {
@@ -130,6 +131,7 @@ func (g *fakeGateway) Projects(context.Context, backlog.Credentials) ([]backlog.
 }
 
 func (g *fakeGateway) ExchangeOAuthCode(context.Context, string, backlog.OAuthClient, string, string) (backlog.TokenSet, error) {
+	g.exchanges++
 	if g.exchangePanic {
 		panic("exchange exploded")
 	}
@@ -174,6 +176,8 @@ type rig struct {
 	host *fakeHost
 	gw   *fakeGateway
 	logs *syncBuffer
+
+	verifier string // the browser cookie of the last startState
 }
 
 func newRig(t *testing.T) *rig {
@@ -363,8 +367,8 @@ func TestResponsesAndLogsNeverContainTheKey(t *testing.T) {
 		resp, _ = r.call(t, actionGet, nil)
 		bodies = append(bodies, string(resp.Body))
 	}
-	testutil.AssertNoLeak(t, strings.Join(bodies, "\n"), key, 8)
-	testutil.AssertNoLeak(t, r.logs.String(), key, 8, "Test User")
+	testutil.AssertNoLeak(t, strings.Join(bodies, "\n"), key)
+	testutil.AssertNoLeak(t, r.logs.String(), key, "Test User")
 }
 
 func TestNewRuntimeIsAKandevPlugin(t *testing.T) {

@@ -25,18 +25,28 @@ func parseLine(t *testing.T, line string) map[string]any {
 }
 
 // startState runs connection.start_oauth and returns the state it minted.
+// The verifier cookie is kept in r.verifier, as the browser would keep it.
 func (r *rig) startState(t *testing.T) string {
 	t.Helper()
-	resp, out := r.call(t, keyStartOAuth, map[string]string{"spaceUrl": "example-space.backlog.com"})
+	body, verifier := startBody(t)
+	resp, out := r.call(t, keyStartOAuth, body)
 	require.Equal(t, 200, resp.Status)
+	r.verifier = verifier
 	au, err := url.Parse(out["authorizeUrl"].(string))
 	require.NoError(t, err)
 	return au.Query().Get("state")
 }
 
+// callback relays the callback with the verifier cookie among other cookies,
+// as Kandev forwards it to a public webhook.
 func (r *rig) callback(t *testing.T, method, key string, q url.Values) *pluginsdk.WebhookResponse {
 	t.Helper()
-	resp, err := r.rt.HandleWebhook(context.Background(), &pluginsdk.WebhookRequest{WebhookKey: key, Method: method, Query: q.Encode()})
+	return r.callbackWith(t, method, key, q, map[string]string{"Cookie": "theme=dark; nulab_backlog_oauth_verifier=" + r.verifier + "; lang=en"})
+}
+
+func (r *rig) callbackWith(t *testing.T, method, key string, q url.Values, headers map[string]string) *pluginsdk.WebhookResponse {
+	t.Helper()
+	resp, err := r.rt.HandleWebhook(context.Background(), &pluginsdk.WebhookRequest{WebhookKey: key, Method: method, Query: q.Encode(), Headers: headers})
 	require.NoError(t, err, "HandleWebhook never returns a Go error")
 	require.NotNil(t, resp)
 	return resp
@@ -69,9 +79,9 @@ func TestWebhookRedirectsWithTheOutcome(t *testing.T) {
 			require.EqualValues(t, 302, resp.Status)
 			loc := resp.Headers["Location"]
 			require.Equal(t, tc.want, loc)
-			testutil.AssertNoLeak(t, loc, code, 8, state, r.gw.tokens.AccessToken, "SECRET-BODY-MARKER")
+			testutil.AssertNoLeak(t, loc, code, state, r.gw.tokens.AccessToken, "SECRET-BODY-MARKER", r.verifier)
 			require.Contains(t, r.logs.String(), `"event":"oauth_callback"`)
-			testutil.AssertNoLeak(t, r.logs.String(), code, 8, state)
+			testutil.AssertNoLeak(t, r.logs.String(), code, state, r.verifier)
 		})
 	}
 }
@@ -100,4 +110,36 @@ func TestWebhookPanicIsRecoveredAsFailed(t *testing.T) {
 	require.EqualValues(t, 302, resp.Status)
 	require.Equal(t, "/settings/integrations?oauth=failed", resp.Headers["Location"])
 	require.True(t, strings.Contains(r.logs.String(), `"event":"webhook_panic"`))
+}
+
+func TestU2_WebhookNeedsTheVerifierCookie(t *testing.T) {
+	cases := map[string]func(r *rig) map[string]string{
+		"no Cookie header":   func(*rig) map[string]string { return nil },
+		"no verifier cookie": func(*rig) map[string]string { return map[string]string{"Cookie": "theme=dark"} },
+		"wrong verifier": func(*rig) map[string]string {
+			return map[string]string{"Cookie": "nulab_backlog_oauth_verifier=" + testutil.Token(t)}
+		},
+		"empty verifier cookie": func(*rig) map[string]string {
+			return map[string]string{"Cookie": "theme=dark; nulab_backlog_oauth_verifier=; lang=en"}
+		},
+		"malformed Cookie":     func(*rig) map[string]string { return map[string]string{"Cookie": ";;=;"} },
+		"verifier in a header": func(r *rig) map[string]string { return map[string]string{"X-Verifier": r.verifier} },
+	}
+	for name, headers := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := oauthRig(t)
+			state := r.startState(t)
+			q := url.Values{"state": {state}, "code": {testutil.Token(t)}}
+			resp := r.callbackWith(t, "GET", "oauth-callback", q, headers(r))
+			require.Equal(t, settingsPath+"?oauth=failed", resp.Headers["Location"])
+			require.Zero(t, r.gw.exchanges, "no token request without the starting browser")
+			require.Contains(t, r.host.state, "workspace/ws-1/oauth_pending", "the pending sign-in is kept")
+			testutil.AssertNoLeak(t, r.logs.String(), r.verifier)
+
+			resp = r.callback(t, "GET", "oauth-callback", q)
+			require.Equal(t, settingsPath+"?oauth=connected", resp.Headers["Location"])
+			require.Equal(t, 1, r.gw.exchanges)
+			testutil.AssertNoLeak(t, r.logs.String()+resp.Headers["Location"], r.verifier)
+		})
+	}
 }

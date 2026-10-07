@@ -208,8 +208,8 @@ func TestU3_IssueCalls_ErrorsNeverEchoTheBody(t *testing.T) {
 				ctx, logs := oauthLogs()
 				err := tc.call(c, ctx, creds(key))
 				require.Equal(t, kind, kindOf(t, err))
-				testutil.AssertNoLeak(t, err.Error()+logs.String(), bait, 8)
-				testutil.AssertNoLeak(t, err.Error()+logs.String(), key, 8)
+				testutil.AssertNoLeak(t, err.Error()+logs.String(), bait)
+				testutil.AssertNoLeak(t, err.Error()+logs.String(), key)
 			})
 		}
 	}

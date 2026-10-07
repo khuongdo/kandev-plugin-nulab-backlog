@@ -98,7 +98,7 @@ func TestKindStringsAreStable(t *testing.T) {
 func TestCredentialsHideSecretsWhenFormatted(t *testing.T) {
 	key, token := testutil.APIKey(t), testutil.APIKey(t)
 	c := Credentials{SpaceHost: "example-space.backlog.com", APIKey: key, AccessToken: token}
-	testutil.AssertNoLeak(t, c.String()+fmt.Sprintf("%v %+v %#v", c, c, c), key, 8, token)
+	testutil.AssertNoLeak(t, c.String()+fmt.Sprintf("%v %+v %#v", c, c, c), key, token)
 	require.Contains(t, c.String(), "example-space.backlog.com")
 }
 

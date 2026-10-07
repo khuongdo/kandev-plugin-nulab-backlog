@@ -318,6 +318,6 @@ func TestQueueWaitsAreLoggedWithoutQueryOrSecret(t *testing.T) {
 		out := buf.String()
 		require.Contains(t, out, `"event":"backlog_wait","group":"update","reason":"spacing","waitMs":1000,"attempt":1`)
 		require.Contains(t, out, `"event":"backlog_wait","group":"update","reason":"rate_limited","waitMs":2000,"attempt":1`)
-		testutil.AssertNoLeak(t, out, key, 8, "?")
+		testutil.AssertNoLeak(t, out, key, "?")
 	})
 }

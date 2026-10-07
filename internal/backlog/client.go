@@ -204,6 +204,20 @@ func (c *Client) token(ctx context.Context, spaceHost string, form url.Values, s
 	return parseTokenSet(body, c.Now())
 }
 
+type noRetryKey struct{}
+
+// NoRetry marks ctx so a call made with it returns a 429 at once: one
+// request, no wait, no retry (NFR2.1). Connect uses it; every other call
+// keeps the shared retry policy (AC8.4.1-AC8.4.3).
+func NoRetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRetryKey{}, true)
+}
+
+// RetryDisabled reports whether ctx was marked with NoRetry.
+func RetryDisabled(ctx context.Context) bool {
+	return ctx.Value(noRetryKey{}) != nil
+}
+
 // request is one Backlog call.
 type request struct {
 	method  string
@@ -224,7 +238,8 @@ type request struct {
 var errOverBudget = errors.New("backlog: over the interactive wait budget")
 
 // send runs a call through its group's queue and retries a 429 up to
-// maxRetries times, waiting as Backlog asks (AC8.4.1, AC8.4.2).
+// maxRetries times, waiting as Backlog asks (AC8.4.1, AC8.4.2), unless ctx
+// carries NoRetry.
 func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
 	u := &url.URL{Scheme: "https", Host: r.creds.SpaceHost, Path: r.path}
 	if r.query != nil {
@@ -244,7 +259,7 @@ func (c *Client) send(ctx context.Context, r request) ([]byte, error) {
 		body, err := c.attempt(ctx, r, u)
 		release()
 		var be *Error
-		if !errors.As(err, &be) || be.Kind != KindRateLimited || attempt > maxRetries {
+		if !errors.As(err, &be) || be.Kind != KindRateLimited || attempt > maxRetries || RetryDisabled(ctx) {
 			return body, err
 		}
 		if err := c.pause(ctx, g, "rate_limited", be.RetryAfter, attempt, b); err != nil {

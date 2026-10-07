@@ -282,7 +282,7 @@ func TestU3_Actions_FailureLogHasNoSecret(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, failed, "AC8.3.1")
-	testutil.AssertNoLeak(t, r.logs.String()+string(resp.Body), key, 8)
+	testutil.AssertNoLeak(t, r.logs.String()+string(resp.Body), key)
 }
 
 // u3Actions lists every action U3 adds.

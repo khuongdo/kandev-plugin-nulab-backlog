@@ -212,3 +212,105 @@ describe("Connected panel (US1.5, US1.6, US1.8)", () => {
     expect(byTestId(c, "backlog-disconnect-dialog")!.textContent).not.toContain("PR links");
   });
 });
+
+describe("Project picker after a space change (US1.8, US1.7; review R-02)", () => {
+  const OTHER = "other.backlog.jp";
+  const LISTS: Record<string, unknown[]> = {
+    [HOST]: [{ projectKey: "OLD", projectId: 1, projectName: "Old Project", selected: true }],
+    [OTHER]: [{ projectKey: "NEW", projectId: 2, projectName: "New Project", selected: false }],
+  };
+
+  function twoSpaces(restored: boolean) {
+    let space = HOST;
+    const save = vi.fn(async (body: unknown) => ({ ...connected, spaceHost: space, ...(body as object) }));
+    const host = fakeHost(async (key, input) => {
+      switch (key) {
+        case "connection.get":
+          return connected;
+        case "connection.list_projects":
+          return { projects: LISTS[space] };
+        case "connection.connect_api_key":
+          space = OTHER;
+          return { ...connected, spaceHost: OTHER, restored };
+        case "connection.set_projects":
+          return save(input?.body);
+        case "git.impact":
+          return { prLinks: 0, prWatches: 0 };
+        case "issues.impact":
+          return { issueLinks: 0 };
+        case "issues.settings.get":
+          return { pollMinutes: 5 };
+      }
+      throw new Error(`unexpected ${key}`);
+    });
+    return { host, save };
+  }
+
+  it.each([
+    ["a space change", false],
+    ["a restore of the other space", true],
+  ])("reloads the projects after %s and never saves the old space's keys", async (_, restored) => {
+    const { host, save } = twoSpaces(restored);
+    const c = await mount(createSettingsScreen(host), { workspaceId: "ws-1" });
+    expect(byTestId(c, "backlog-project-OLD")).not.toBeNull();
+
+    await submitReplace(c, OTHER);
+    await act(async () => byTestId(c, "backlog-change-space-dialog-confirm")!.click());
+
+    expect(
+      vi.mocked(host.api.invokeAction).mock.calls.filter(([k]) => k === "connection.list_projects"),
+    ).toHaveLength(2);
+    expect(byTestId(c, "backlog-project-OLD")).toBeNull();
+    await act(async () => byTestId(c, "backlog-project-NEW")!.click());
+    await act(async () => byTestId(c, "backlog-projects-save")!.click());
+    expect(save).toHaveBeenCalledWith({ projectKeys: ["NEW"] });
+  });
+});
+
+describe("Project picker after a same-host account change (review R-12)", () => {
+  function twoAccounts() {
+    let user = "Test User";
+    const host = fakeHost(async (key, input) => {
+      switch (key) {
+        case "connection.get":
+          return connected;
+        case "connection.list_projects":
+          return {
+            projects:
+              user === "Test User"
+                ? [{ projectKey: "OLD", projectId: 1, projectName: "Old Project", selected: true }]
+                : [{ projectKey: "NEW", projectId: 2, projectName: "New Project", selected: false }],
+          };
+        case "connection.connect_api_key":
+          user = "Other User";
+          return { ...connected, connectedUserName: user };
+        case "connection.set_projects":
+          return { ...connected, connectedUserName: user, connectionEpoch: 7, ...(input?.body as object) };
+        case "git.impact":
+          return { prLinks: 0, prWatches: 0 };
+        case "issues.impact":
+          return { issueLinks: 0 };
+        case "issues.settings.get":
+          return { pollMinutes: 5 };
+      }
+      throw new Error(`unexpected ${key}`);
+    });
+    return host;
+  }
+
+  it("reloads the projects for the new account, and a save does not reload them", async () => {
+    const host = twoAccounts();
+    const c = await mount(createSettingsScreen(host), { workspaceId: "ws-1" });
+    expect(byTestId(c, "backlog-project-OLD")).not.toBeNull();
+
+    await submitReplace(c, HOST);
+    await act(async () => byTestId(c, "backlog-replace-dialog-confirm")!.click());
+
+    expect(calls(host, "connection.list_projects")).toHaveLength(2);
+    expect(byTestId(c, "backlog-project-OLD")).toBeNull();
+    await act(async () => byTestId(c, "backlog-project-NEW")!.click());
+    await act(async () => byTestId(c, "backlog-projects-save")!.click());
+    expect(calls(host, "connection.set_projects")).toHaveLength(1);
+    expect(calls(host, "connection.list_projects")).toHaveLength(2);
+  });
+});

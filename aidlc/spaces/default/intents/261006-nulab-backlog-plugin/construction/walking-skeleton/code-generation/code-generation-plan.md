@@ -367,6 +367,46 @@ Steps 1–14 are already built and stay as they are. The U1 design was revised a
 - [x] Update `code-summary.md`, `source-manifest.json` and `traceability.json` for the new rules and NFRs.
 - Stories: US1.1, US7.1, US7.2 (scope added to U1 by the change request, functional-design Q6–Q9).
 
+## Revision 3 — Build and Test Loop-back 1 Repairs
+
+Build and Test found two targets Not Met and one Unverified that belong to U1 (`construction/build-and-test/test-results.md`, Loop-back 1). Steps 1–22 stay as built. Steps 23–25 modify the existing code in place, Red → Green → Refactor.
+
+### Step 23 — Business logic, Red and Green: Connect returns `rate_limited` at once (T-RATE-01, NFR2.1)
+
+- [x] Red in `internal/connection/service_test.go` (and `internal/backlog/client_test.go` if the policy lives in the client): on a 429 from `Myself` during Connect — with `Retry-After: 2`, with `X-RateLimit-Reset` 1 s ahead (clamped case), and with a long wait — Connect makes exactly **one** Backlog request and returns `rate_limited` with `retryAfterSeconds` ≥ 1 in under 1 virtual second; nothing is stored. Other callers (U2 project list, U3/U4 calls) keep the shared retry behaviour (AC8.4.1–AC8.4.3 tests stay green).
+- [x] Run the tests and record the failing output.
+- [x] Green: give the `Myself` call made by Connect (API-key connect and the OAuth sign-in check) a no-retry rate-limit policy, for example a per-call option on the Backlog client; keep the default policy for every other call. Refactor while green.
+- NFRs: NFR2.1. ACs: AC1.1.x (Connect), AC8.4.1–AC8.4.3 unchanged.
+
+### Step 24 — Security test helper, Red and Green: 4-character leak windows (T-SEC-02, NFR3.2)
+
+- [x] Red in `internal/testutil/testutil_test.go`: `AssertNoLeak` fails when any 4-character substring of the secret's random part appears in the inspected text, and passes for text that shares no 4-character substring. Secrets from `testutil.APIKey`/`Token`/password helpers carry enough random characters that the fixed fake prefix is never part of the window.
+- [x] Run the tests and record the failing output.
+- [x] Green: change the window from 8 to 4 characters. Re-run every leak test in all packages; if a test fails only because a fixed fake value (not the secret) shares 4 characters by chance, change the generator so the random part uses an alphabet or length that cannot collide with fixtures, never widen the window again. Refactor while green.
+- NFRs: NFR3.2, NFR3.3, NFR4.1. ACs: AC7.3.2.
+
+### Step 25 — API / endpoint, Red and Green: timing of 100 `connection.get` and `connection.set_enabled` calls (T-PERF-03, NFR1.1, NFR1.3)
+
+- [x] Add `internal/plugin/actions_timing_test.go`: inside `testing/synctest`, with store fakes that add a fixed per-operation latency taken from the performance design (state read/write and secret read latencies), call `connection.get` 100 times and `connection.set_enabled` 100 times through `HandleAction`, collect each duration from the injected clock, and assert p95 ≤ 500 ms for both. Also assert `connection.get` never calls Backlog.
+- [x] Run the test; if it fails, record the output and make the minimum change (no budget change).
+- NFRs: NFR1.1, NFR1.3.
+
+Then run `make check-format vet lint test coverage check-secrets`, delete the generated `coverage.out`, and update `code-summary.md` (a "Loop-back 1 repairs" section), `traceability.json` and `source-manifest.json` for any new path.
+
+## Revision 4 — Build and Test Loop-back 2 Repair
+
+Build and Test Run 2 found T-COMPAT-01 Not Met: the packaged-host contract test fails 2 of 7 runs with `connection.get answered 500`, because actions can arrive before the SDK injects the Kandev Host (`pluginsdk/serve.go` dials the host broker from a background goroutine for up to 30 s) and `hostStores.get` returns `errNoHost` at once. Step 26 modifies the existing code in place, Red → Green → Refactor.
+
+### Step 26 — API / endpoint, Red and Green: wait for the Host instead of failing (T-COMPAT-01, NFR6.1; U1 review R-04)
+
+- [x] Red in `internal/plugin` (for example `runtime_host_test.go`, names under the 32-character rule): (a) an action handled before `SetHost` blocks and then succeeds when `SetHost` is called shortly after (inside `testing/synctest`); (b) an action whose context deadline passes before `SetHost` returns `internal` with `errNoHost` and makes no store call; (c) once the Host is set, store calls never wait; (d) background workers (PR watcher, issue sync) that run before `SetHost` skip the cycle without an error log storm.
+- [x] Run the tests and record the failing output.
+- [x] Green: the Runtime overrides `SetHost` to store the Host and close a ready channel once; `hostStores.get` and `hostPort` wait on that channel bounded by the call's context and a 5-second cap (whichever is sooner), then fail closed with `errNoHost`. No change to action budgets (the 12 s / 14 s Connect budget still holds). Refactor while green.
+- [x] Run `make package` and then `make contract-test KANDEV_MIN_DIR=../kandev-min` 10 times in a row; all 10 must pass (record the results).
+- NFRs: NFR6.1, NFR5.3. ACs: AC7.4.1, AC7.4.2. Rules: BR7.5.
+
+Then run `make check-format vet lint test coverage check-secrets build package verify-package`, delete the generated `coverage.out`, and add a "Loop-back 2 repair" section to `code-summary.md` (update `source-manifest.json` for any new path).
+
 ## Story-to-Step Map
 
 | Story | Steps |

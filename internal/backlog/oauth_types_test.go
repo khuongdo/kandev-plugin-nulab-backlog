@@ -53,8 +53,8 @@ func TestTokenSetAndOAuthClientHideSecretsWhenFormatted(t *testing.T) {
 	ts := TokenSet{AccessToken: access, RefreshToken: refresh, ExpiresAt: tokenNow}
 	oc := OAuthClient{ClientID: "client-id-1", ClientSecret: secret}
 	out := fmt.Sprintf("%v %+v %#v %s %v %+v %#v %s", ts, ts, ts, ts, oc, oc, oc, oc)
-	testutil.AssertNoLeak(t, out, access, 8)
-	testutil.AssertNoLeak(t, out, refresh, 8)
-	testutil.AssertNoLeak(t, out, secret, 8)
+	testutil.AssertNoLeak(t, out, access)
+	testutil.AssertNoLeak(t, out, refresh)
+	testutil.AssertNoLeak(t, out, secret)
 	require.Contains(t, out, "client-id-1", "the client id is not a secret")
 }

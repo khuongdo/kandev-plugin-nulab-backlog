@@ -16,7 +16,8 @@ import (
 // hostPort adapts the injected Host's data API to git.HostPort (C2). It
 // needs api_read: [tasks, repositories] and api_write: [tasks].
 type hostPort struct {
-	host func() pluginsdk.Host
+	host  func() pluginsdk.Host
+	ready <-chan struct{} // see waitHost
 }
 
 const hostPageSize = 100
@@ -26,11 +27,8 @@ const hostPageSize = 100
 // "source" (pluginTaskMetadata), and List returns it nested.
 const metadataNamespace = "plugin:nulab-backlog"
 
-func (p hostPort) get() (pluginsdk.Host, error) {
-	if h := p.host(); h != nil {
-		return h, nil
-	}
-	return nil, errNoHost
+func (p hostPort) get(ctx context.Context) (pluginsdk.Host, error) {
+	return waitHost(ctx, p.host, p.ready)
 }
 
 // CreateTask creates a task; an empty step means the workflow's default.
@@ -60,7 +58,7 @@ func (p hostPort) FindTaskByMetadata(ctx context.Context, ws, key, value string)
 
 // create is the one Tasks().Create call of both adapters (api_write: [tasks]).
 func (p hostPort) create(ctx context.Context, in pluginsdk.CreateTaskInput) (*pluginsdk.Task, error) {
-	h, err := p.get()
+	h, err := p.get(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +71,7 @@ func (p hostPort) create(ctx context.Context, in pluginsdk.CreateTaskInput) (*pl
 
 // eachTask pages through the tasks the filter matches until fn returns false.
 func (p hostPort) eachTask(ctx context.Context, filter pluginsdk.TaskFilter, fn func(pluginsdk.Task) bool) error {
-	h, err := p.get()
+	h, err := p.get(ctx)
 	if err != nil {
 		return err
 	}
@@ -131,7 +129,7 @@ func (p issueHost) ListTasks(ctx context.Context, ws string) ([]issues.TaskInfo,
 
 // Repository finds a workspace repository by id.
 func (p hostPort) Repository(ctx context.Context, ws, id string) (git.KandevRepository, error) {
-	h, err := p.get()
+	h, err := p.get(ctx)
 	if err != nil {
 		return git.KandevRepository{}, err
 	}

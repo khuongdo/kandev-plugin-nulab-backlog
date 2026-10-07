@@ -419,27 +419,35 @@ func (s *Store) saveProjects(ctx context.Context, workspaceID string, keys []str
 }
 
 // pendingRecord is the single-use OAuth sign-in in progress (state key
-// oauth_pending). It holds only a hash of the nonce.
+// oauth_pending). It holds only hashes of the nonce and of the verifier.
 type pendingRecord struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	NonceHash     string `json:"nonceHash"`
+	VerifierHash  string `json:"verifierHash"` // hex SHA-256 of the browser's verifier cookie (R-01)
 	SpaceHost     string `json:"spaceHost"`
 	ExpiresAt     string `json:"expiresAt"`
 }
 
 // SavePending stores the sign-in in progress; a newer one replaces it.
-func (s *Store) SavePending(ctx context.Context, workspaceID string, nonce []byte, host string, expiresAt time.Time) error {
+// verifierHash is the hex SHA-256 of the starting browser's verifier cookie.
+func (s *Store) SavePending(ctx context.Context, workspaceID string, nonce []byte, verifierHash, host string, expiresAt time.Time) error {
 	sum := sha256.Sum256(nonce)
 	return s.setState(ctx, workspaceID, pendingKey, pendingRecord{
-		SchemaVersion: schemaVersion, NonceHash: hex.EncodeToString(sum[:]),
+		SchemaVersion: schemaVersion, NonceHash: hex.EncodeToString(sum[:]), VerifierHash: verifierHash,
 		SpaceHost: host, ExpiresAt: expiresAt.UTC().Format(time.RFC3339),
 	}, "write pending sign-in")
 }
 
-// TakePending returns the host of the pending sign-in when nonce matches it
-// (constant time) and it has not expired. A matching record is deleted
-// before it is returned, so it can be used once; an expired one is deleted.
-func (s *Store) TakePending(ctx context.Context, workspaceID string, nonce []byte) (string, bool, error) {
+// TakePending returns the host of the pending sign-in when both nonce and the
+// browser's verifier match it (constant time) and it has not expired. A
+// matching record is deleted before it is returned, so it can be used once;
+// an expired one is deleted. A mismatch leaves the record in place, so a
+// stranger who knows the state cannot cancel the real sign-in. An empty
+// verifier never matches and leaves the record in place.
+func (s *Store) TakePending(ctx context.Context, workspaceID string, nonce []byte, verifier string) (string, bool, error) {
+	if verifier == "" {
+		return "", false, nil
+	}
 	value, found, err := s.getState(ctx, workspaceID, pendingKey)
 	if err != nil {
 		return "", false, s.storeErr(ctx, "read pending sign-in", err)
@@ -451,15 +459,21 @@ func (s *Store) TakePending(ctx context.Context, workspaceID string, nonce []byt
 	if exp, err := time.Parse(time.RFC3339, p.ExpiresAt); err != nil || !s.Now().Before(exp) {
 		return "", false, s.DeletePending(ctx, workspaceID)
 	}
-	want, _ := hex.DecodeString(p.NonceHash)
-	got := sha256.Sum256(nonce)
-	if subtle.ConstantTimeCompare(want, got[:]) != 1 {
+	if !hashMatches(p.NonceHash, nonce) || !hashMatches(p.VerifierHash, []byte(verifier)) {
 		return "", false, nil
 	}
 	if err := s.DeletePending(ctx, workspaceID); err != nil {
 		return "", false, err
 	}
 	return p.SpaceHost, true, nil
+}
+
+// hashMatches reports, in constant time, whether wantHex is the hex SHA-256
+// of value. A missing or malformed hash never matches.
+func hashMatches(wantHex string, value []byte) bool {
+	want, _ := hex.DecodeString(wantHex)
+	got := sha256.Sum256(value)
+	return subtle.ConstantTimeCompare(want, got[:]) == 1
 }
 
 // DeletePending removes the sign-in in progress, if any.

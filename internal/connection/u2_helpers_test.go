@@ -32,6 +32,7 @@ type u2 struct {
 	*harness
 	cfg          *fakeConfig
 	clientSecret string
+	verifier     string // the browser cookie of the last start
 	mu           sync.Mutex
 	now          time.Time
 }

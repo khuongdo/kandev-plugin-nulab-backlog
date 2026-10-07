@@ -44,5 +44,5 @@ func TestInvalidAPIKeyErrorNeverContainsTheInput(t *testing.T) {
 	input := testutil.APIKey(t) + " x"
 	_, err := ValidateAPIKey(input)
 	require.Error(t, err)
-	testutil.AssertNoLeak(t, err.Error(), input[:45], 8)
+	testutil.AssertNoLeak(t, err.Error(), input[:45])
 }
