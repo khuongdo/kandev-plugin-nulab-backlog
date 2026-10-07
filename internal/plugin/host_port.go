@@ -105,14 +105,27 @@ func optional(s string) *string {
 // It writes no task metadata and no repository.
 type issueHost struct{ hostPort }
 
-// CreateTask creates a task from an issue and returns its id and key.
+// CreateTask creates a task from an issue and returns its id and key. A
+// gRPC NotFound or InvalidArgument from Kandev means the workflow or step
+// is gone (BR3.14) and wraps issues.ErrWorkflowMissing.
 func (p issueHost) CreateTask(ctx context.Context, in issues.NewTask) (issues.TaskRef, error) {
 	t, err := p.create(ctx, pluginsdk.CreateTaskInput{WorkspaceID: in.WorkspaceID, WorkflowID: in.WorkflowID,
 		WorkflowStepID: optional(in.WorkflowStepID), Title: in.Title, Description: in.Description, Priority: in.Priority})
 	if err != nil {
+		if workflowRefused(err) {
+			return issues.TaskRef{}, fmt.Errorf("%w: %w", issues.ErrWorkflowMissing, err)
+		}
 		return issues.TaskRef{}, err
 	}
 	return issues.TaskRef{ID: t.ID, Key: t.Identifier}, nil
+}
+
+// workflowRefused reads the gRPC code from the error text.
+// ponytail: text match, because reading status.Code would make grpc a direct
+// go.mod requirement; switch to status.Code if grpc becomes one anyway.
+func workflowRefused(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "code = NotFound") || strings.Contains(msg, "code = InvalidArgument")
 }
 
 // ListTasks lists the workspace's tasks, archived and ephemeral ones included.

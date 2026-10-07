@@ -16,7 +16,7 @@ func TestU4_PRParse_DecodesTheList(t *testing.T) {
 	require.Equal(t, PullRequest{
 		ID: 2001, RepositoryID: 11, Number: 42, Summary: "Add login page", Description: "Related: PROJ-120 {{BAIT}}",
 		Base: "main", Branch: "feature/login", StatusID: 1, AssigneeName: "Lan", IssueID: 5120,
-		Created: "2026-10-01T09:00:00Z",
+		Created: "2026-10-01T09:00:00Z", AuthorName: "Test User", Updated: "2026-10-02T09:00:00Z",
 	}, got[0])
 	require.Empty(t, got[1].AssigneeName, "a null assignee is empty")
 	require.Zero(t, got[1].IssueID, "a null issue is 0")

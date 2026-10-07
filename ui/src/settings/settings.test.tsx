@@ -2,11 +2,12 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import axe from "axe-core";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PluginHostApi } from "@kandev/plugin-sdk";
 
 import { createSettingsScreen } from "./SettingsScreen";
 import { en, type Messages } from "../messages/en";
+import { fakeHost as harnessHost } from "../testing/harness";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -59,16 +60,24 @@ function deferred<T>(): Deferred<T> {
 
 type Invoke = (key: string, input?: { workspaceId?: string; body?: unknown }) => Promise<unknown>;
 
+/** The harness host; the settings sections' lists answer empty. */
 function fakeHost(invoke: Invoke): PluginHostApi {
-  const ui = { Button: "button", Input: "input", Label: "label" };
-  return {
-    pluginId: "nulab-backlog",
-    React,
-    jsx: React.createElement,
-    ui,
-    api: { baseUrl: "", fetch: vi.fn(), invokeAction: vi.fn(invoke) },
-    context: { getActiveWorkspaceId: () => "ws-1" },
-  } as unknown as PluginHostApi;
+  return harnessHost(async (key, input) => {
+    switch (key) {
+      case "git.watches.list":
+      case "issues.watches.list":
+        return { watches: [] };
+      case "git.queries.list":
+        return { queries: [] };
+      case "issues.filters":
+        return { projects: [], statuses: [], assignees: [] };
+      case "issues.settings.get":
+        return { pollMinutes: 5 };
+      case "connection.list_projects":
+        return { projects: [] };
+    }
+    return invoke(key, input);
+  });
 }
 
 let root: Root | undefined;
@@ -380,15 +389,15 @@ describe("M1 settings screen: switch and layout", () => {
     expect(byTestId(c, "backlog-announcement")!.textContent).toBe(en.integrationOff);
   });
 
-  it("lays out one vertical stack with one gap and a smaller label-to-input gap (BR6.5)", async () => {
+  it("stacks framed sections with a smaller label-to-input gap (BR6.5, BR1.1)", async () => {
     const c = await render(scripted(connected).host);
     const screen = byTestId(c, "backlog-settings")!;
     const form = byTestId(c, "backlog-connect-form")!;
-    expect(screen.className).toBe(STACK);
+    expect(screen.className).toBe("flex flex-col gap-8");
     expect(form.className).toBe(STACK);
-    // U2: the sign-in method radios wrap their inputs; the fields use label[for].
+    // The sign-in method dropdown and the two inputs each sit under their label.
     const fields = [...form.querySelectorAll("label[for]")].map((l) => l.parentElement!);
-    expect(fields).toHaveLength(2);
+    expect(fields).toHaveLength(3);
     fields.forEach((f) => expect(f.className).toBe(FIELD));
     expect(c.querySelector("style, link, [style]")).toBeNull();
   });

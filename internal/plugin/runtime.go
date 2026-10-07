@@ -117,7 +117,9 @@ type Runtime struct {
 	watcher *git.Watcher
 	issues  *issues.Service
 	syncer  *issues.Syncer
-	log     *slog.Logger
+	// issueWatcher runs the issue watches (intent 261007, FR3).
+	issueWatcher *issues.Watcher
+	log          *slog.Logger
 
 	lifeMu   sync.Mutex
 	started  bool
@@ -137,8 +139,8 @@ type gateway interface {
 }
 
 // NewRuntime returns the plugin served by server/main.go, with the Git and
-// issue services listening to ConnectionChanged and the PR watcher and the
-// issue sync running. It logs
+// issue services listening to ConnectionChanged and the PR watcher, the
+// issue sync and the issue watcher running. It logs
 // JSON to standard error at the level in KANDEV_PLUGIN_LOG_LEVEL (default info).
 func NewRuntime() *Runtime {
 	r := newRuntime(backlog.NewClient(), os.Stderr, os.Getenv("KANDEV_PLUGIN_LOG_LEVEL"))
@@ -147,7 +149,8 @@ func NewRuntime() *Runtime {
 }
 
 // Start subscribes the Git and issue services to ConnectionChanged and
-// starts the PR watcher and the issue sync. It starts nothing twice.
+// starts the PR watcher, the issue sync and the issue watcher. It starts
+// nothing twice.
 func (r *Runtime) Start() {
 	r.lifeMu.Lock()
 	defer r.lifeMu.Unlock()
@@ -158,6 +161,7 @@ func (r *Runtime) Start() {
 	r.unlisten = []func(){r.git.Listen(), r.issues.Listen()}
 	r.watcher.Start()
 	r.syncer.Start()
+	r.issueWatcher.Start()
 }
 
 // Close stops the workers and the subscriptions. Safe to call more than once.
@@ -170,12 +174,14 @@ func (r *Runtime) Close() {
 	r.started = false
 	r.watcher.Stop()
 	r.syncer.Stop()
+	r.issueWatcher.Stop()
 	for _, stop := range r.unlisten {
 		stop()
 	}
 	// Stopped workers cannot be started again, so Start gets new ones.
 	r.watcher = git.NewWatcher(r.git, r.log)
 	r.syncer = issues.NewSyncer(r.issues, r.log)
+	r.issueWatcher = issues.NewWatcher(r.issues, r.log)
 }
 
 func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
@@ -198,6 +204,7 @@ func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	r.watcher = git.NewWatcher(r.git, r.log)
 	r.issues = issues.NewService(gateway, r.service, issueHost{ports}, issues.NewStore(stores))
 	r.syncer = issues.NewSyncer(r.issues, r.log)
+	r.issueWatcher = issues.NewWatcher(r.issues, r.log)
 	r.log.Info("plugin started", "event", "plugin_started", "version", Version,
 		"platform", runtime.GOOS+"-"+runtime.GOARCH, "sdkRef", SDKRef)
 	return r

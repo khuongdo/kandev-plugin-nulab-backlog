@@ -1,12 +1,12 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { withImpact } from "../git/git-state";
+import { hostUi } from "../host-ui";
+import { BUTTON, FIELD, ROW, STACK } from "../layout";
 import { loadImpactText } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { failureNotice, type ConnectionView, type Notice } from "./state";
-
-type AnyProps = Record<string, unknown>;
 
 /** One row of connection.list_projects. */
 interface ProjectItem {
@@ -24,10 +24,6 @@ export interface ProjectPickerProps {
   onView?: (view: ConnectionView) => void;
 }
 
-const STACK = "flex flex-col gap-4";
-const FIELD = "flex flex-col gap-2";
-const ROW = "flex gap-2";
-
 /**
  * The project checkbox list with a search field (US1.7). Unselecting a
  * project in use asks first (US1.9). A rate-limited load counts down and
@@ -39,9 +35,7 @@ export function createProjectPicker(
 ): Component<ProjectPickerProps> {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
+  const { Button, Checkbox, Input, Label } = hostUi(host);
   const ConfirmDialog = createConfirmDialog(host, messages);
   const t = (n: Notice) => format(messages[n.key], n.params);
 
@@ -149,9 +143,17 @@ export function createProjectPicker(
         {loadFailed ? (
           <div className={STACK}>
             <p data-testid="backlog-projects-load-failed">{messages.projectsLoadFailed}</p>
-            <Button type="button" data-testid="backlog-projects-retry" onClick={() => void load()}>
-              {messages.retry}
-            </Button>
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                className={BUTTON}
+                data-testid="backlog-projects-retry"
+                onClick={() => void load()}
+              >
+                {messages.retry}
+              </Button>
+            </div>
           </div>
         ) : null}
         {items ? (
@@ -173,21 +175,28 @@ export function createProjectPicker(
                 </div>
                 {visible.map((p) => (
                   <div key={p.projectKey} className={ROW}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       id={`backlog-project-${p.projectKey}`}
                       data-testid={`backlog-project-${p.projectKey}`}
                       checked={checked.includes(p.projectKey)}
-                      onChange={() => toggle(p.projectKey)}
+                      onCheckedChange={() => toggle(p.projectKey)}
                     />
-                    <label htmlFor={`backlog-project-${p.projectKey}`}>
+                    <Label htmlFor={`backlog-project-${p.projectKey}`}>
                       {t({ key: "projectLabel", params: { name: p.projectName, key: p.projectKey } })}
-                    </label>
+                    </Label>
                   </div>
                 ))}
-                <Button type="button" data-testid="backlog-projects-save" disabled={saving} onClick={onSave}>
-                  {saving ? messages.saving : messages.saveProjects}
-                </Button>
+                <div>
+                  <Button
+                    type="button"
+                    className={BUTTON}
+                    data-testid="backlog-projects-save"
+                    disabled={saving}
+                    onClick={onSave}
+                  >
+                    {saving ? messages.saving : messages.saveProjects}
+                  </Button>
+                </div>
               </div>
             )}
             {fieldError ? (

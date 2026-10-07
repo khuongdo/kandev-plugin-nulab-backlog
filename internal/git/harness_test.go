@@ -129,10 +129,26 @@ func (g *fakeGateway) PullRequests(ctx context.Context, _ backlog.Credentials, c
 		}
 		out = append(out, pr)
 	}
+	out = out[min(q.Offset, len(out)):]
 	if len(out) > q.Count && q.Count > 0 {
 		out = out[:q.Count]
 	}
 	return out, nil
+}
+
+func (g *fakeGateway) PullRequestCount(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, project, repo string, q backlog.PullRequestQuery) (int, error) {
+	if err := g.hit("PullRequestCount"); err != nil {
+		return 0, err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	n := 0
+	for _, pr := range g.prs[project+"/"+repo] {
+		if len(q.StatusIDs) == 0 || slices.Contains(q.StatusIDs, int64(pr.StatusID)) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (g *fakeGateway) PullRequest(_ context.Context, _ backlog.Credentials, _ backlog.CallClass, project, repo string, number int) (backlog.PullRequest, error) {

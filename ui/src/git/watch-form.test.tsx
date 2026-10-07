@@ -9,8 +9,9 @@ import {
   deferred,
   expectTestIds,
   fakeHost,
+  choose,
   mount,
-  selectValue,
+  optionValues,
   setValue,
   unmount,
 } from "../testing/harness";
@@ -44,7 +45,7 @@ async function render(host: ReturnType<typeof setup>, watch?: Record<string, unk
 async function fill(c: HTMLElement) {
   await act(async () => {
     setValue(byTestId(c, "backlog-watch-name") as HTMLInputElement, "Reviews");
-    selectValue(byTestId(c, "backlog-watch-repo") as HTMLSelectElement, "PROJ/web-app");
+    choose(c, "backlog-watch-repo", "PROJ/web-app");
   });
 }
 
@@ -52,11 +53,12 @@ describe("Watch form (M4, US6.1)", () => {
   it("has labelled fields, repositories of selected projects and a status fieldset", async () => {
     const { c } = await render(setup());
     expect(c.querySelector('label[for="backlog-watch-name"]')!.textContent).toBe(`${en.watchNameLabel} *`);
-    const options = [...(byTestId(c, "backlog-watch-repo") as HTMLSelectElement).options].map((o) => o.value);
-    expect(options).toEqual(["", "PROJ/web-app", "PROJ/api"]);
+    expect(optionValues(c, "backlog-watch-repo")).toEqual(["PROJ/web-app", "PROJ/api"]);
     const fieldset = c.querySelector("fieldset")!;
     expect(fieldset.querySelector("legend")!.textContent).toBe(en.watchStatusLegend);
-    expect((byTestId(c, "backlog-watch-status-open") as HTMLInputElement).checked).toBe(true);
+    expect(byTestId(c, "backlog-watch-status-open")!.getAttribute("aria-checked")).toBe("true");
+    expect(byTestId(c, "backlog-watch-save")!.getAttribute("data-variant")).toBe("default");
+    expect(byTestId(c, "backlog-watch-cancel")!.getAttribute("data-variant")).toBe("outline");
     expect(await axeViolations(c)).toEqual([]);
     expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
   });
@@ -89,7 +91,7 @@ describe("Watch form (M4, US6.1)", () => {
     await fill(c);
     await act(async () => {
       byTestId(c, "backlog-watch-status-merged")!.click();
-      selectValue(byTestId(c, "backlog-watch-assignee") as HTMLSelectElement, "me");
+      choose(c, "backlog-watch-assignee", "me");
       setValue(byTestId(c, "backlog-watch-issue") as HTMLInputElement, " PROJ-120 ");
     });
     const button = byTestId(c, "backlog-watch-save") as HTMLButtonElement;

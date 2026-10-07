@@ -1,17 +1,12 @@
-import type {
-  Component,
-  PluginHostApi,
-  PluginTaskPanelProps,
-  TaskPanelRegistration,
-} from "@kandev/plugin-sdk";
+import type { PluginHostApi, PluginTaskPanelProps, TaskPanelRegistration } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
+import { hostUi } from "../host-ui";
+import { BUTTON, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
 import { issueNotice } from "./issues-state";
 import type { LinksStore } from "./links-store";
-
-type AnyProps = Record<string, unknown>;
 
 interface Detail {
   issueKey: string;
@@ -37,9 +32,6 @@ interface Comment {
   content: string;
   created: string;
 }
-
-const STACK = "flex flex-col gap-4";
-const ROW = "flex gap-2";
 
 type Load =
   | { kind: "loading" }
@@ -82,7 +74,7 @@ export function createIssuePanel(
 ): TaskPanelRegistration {
   const h = host.jsx;
   const { useCallback, useEffect, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
+  const { Button } = hostUi(host);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
 
@@ -120,15 +112,18 @@ export function createIssuePanel(
     return (
       <section className={STACK}>
         <h3>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            className={BUTTON}
             data-testid="backlog-issue-comments-toggle"
             aria-expanded={open}
             aria-controls="backlog-issue-comments"
             onClick={toggle}
           >
             {messages.comments}
-          </button>
+          </Button>
         </h3>
         {open ? (
           <div id="backlog-issue-comments" className={STACK}>
@@ -136,7 +131,13 @@ export function createIssuePanel(
               <div data-testid="backlog-issue-comments-error" className={ROW}>
                 <p>{messages.commentsFailed}</p>
                 <p>{t(error)}</p>
-                <Button type="button" data-testid="backlog-issue-comments-retry" onClick={() => void load()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={BUTTON}
+                  data-testid="backlog-issue-comments-retry"
+                  onClick={() => void load()}
+                >
                   {messages.retry}
                 </Button>
               </div>
@@ -157,6 +158,8 @@ export function createIssuePanel(
               <div>
                 <Button
                   type="button"
+                  variant="outline"
+                  className={BUTTON}
                   data-testid="backlog-issue-comments-more"
                   onClick={() => void load(next)}
                 >
@@ -177,15 +180,18 @@ export function createIssuePanel(
     return (
       <section className={STACK}>
         <h3>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            className={BUTTON}
             data-testid="backlog-issue-attachments-toggle"
             aria-expanded={open}
             aria-controls="backlog-issue-attachments"
             onClick={toggle}
           >
             {messages.attachments}
-          </button>
+          </Button>
         </h3>
         {open ? (
           <div id="backlog-issue-attachments" className={STACK}>
@@ -261,7 +267,13 @@ export function createIssuePanel(
           <p>{messages.issueLoadFailed}</p>
           <p>{t(load.notice)}</p>
           <div>
-            <Button type="button" data-testid="backlog-issue-retry" onClick={() => void reload()}>
+            <Button
+              type="button"
+              variant="outline"
+              className={BUTTON}
+              data-testid="backlog-issue-retry"
+              onClick={() => void reload()}
+            >
               {messages.retry}
             </Button>
           </div>

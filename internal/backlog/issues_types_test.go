@@ -15,7 +15,7 @@ func TestU3_ParseIssues_DecodesTheListFields(t *testing.T) {
 	require.Equal(t, Issue{ID: 5118, ProjectID: 101, IssueKey: "PROJ-118", Summary: "Fix login timeout",
 		Description: "Steps to reproduce are in the attachment.", StatusID: 2, StatusName: "In Progress",
 		PriorityID: 2, PriorityName: "High", AssigneeID: 2, AssigneeName: "Lan", DueDate: "2026-10-10T00:00:00Z",
-		Updated: "2026-10-01T09:00:00Z"}, issues[0])
+		Updated: "2026-10-01T09:00:00Z", Created: "2026-09-20T09:00:00Z"}, issues[0])
 	require.Zero(t, issues[1].AssigneeID, "no assignee")
 	require.Empty(t, issues[1].DueDate)
 	require.Equal(t, 200, len([]rune(issues[2].Summary)), "the long Japanese summary survives")

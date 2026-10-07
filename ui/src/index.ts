@@ -1,11 +1,9 @@
 import type { KandevPlugin, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { PLUGIN_ICON } from "./brand/backlog-logo";
-import { createDashboardPage } from "./git/dashboard-page";
 import { createPRLinkAction } from "./git/pr-link";
 import { createRepositoryProvider } from "./git/repository-provider";
 import { createReviewProvider } from "./git/review-provider";
-import { createWatchesPage } from "./git/watches-page";
 import { createIssueBadge } from "./issues/issue-badge";
 import { createIssuePanel } from "./issues/issue-panel";
 import { messagesFor, registerMessages } from "./issues/i18n";
@@ -46,7 +44,8 @@ const plugin: KandevPlugin = {
     const icon = PLUGIN_ICON(host);
     const links = createLinksStore(host);
     // These registrations never depend on the switch, so Backlog can always
-    // be turned back on (BR5.4, BR7.6, BR7.8).
+    // be turned back on (BR5.4, BR7.6, BR7.8). One Integrations entry, one
+    // route: /backlog holds the Issues and Pull requests lists (BR2.1).
     registry.registerIntegrationSettings({
       id: PLUGIN_ID,
       label: messages.integrationLabel,
@@ -65,22 +64,11 @@ const plugin: KandevPlugin = {
     registry.registerRoute("/backlog", createBacklogPage(host, messages, links), {
       topbar: { title: messages.integrationLabel, icon },
     });
-    // U4: Backlog Git repositories, PR links, the PR badge, PR watches and the dashboard.
+    // U4: Backlog Git repositories, PR links and the PR badge. PR watches and
+    // saved queries live in the settings, the PR list on /backlog (FR1, FR2).
     registry.registerRepositoryProvider(createRepositoryProvider(host, messages));
     registry.registerTaskAction(createPRLinkAction(host, messages));
     registry.registerReviewProvider(createReviewProvider(host, messages));
-    for (const [id, path, label, page] of [
-      ["backlog-watches", "/backlog/watches", messages.watchesTitle, createWatchesPage(host, messages)],
-      [
-        "backlog-dashboard",
-        "/backlog/dashboard",
-        messages.dashboardTitle,
-        createDashboardPage(host, messages),
-      ],
-    ] as const) {
-      registry.registerNavItem({ id, label, path, section: "integrations", icon });
-      registry.registerRoute(path, page, { topbar: { title: label, icon } });
-    }
     // U3: the issue badge on cards (M6), Unlink in the task menu, the issue panel (M8).
     registry.registerComponent("task-card-tags", createIssueBadge(host, links, messages));
     registry.registerTaskMenuAction(createUnlinkMenuAction(host, links, messages));

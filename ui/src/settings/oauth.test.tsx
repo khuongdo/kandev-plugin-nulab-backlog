@@ -7,6 +7,7 @@ import { browser, startOAuth } from "./oauth";
 import { en } from "../messages/en";
 import {
   byTestId,
+  choose,
   deferred,
   fakeHost,
   HOST,
@@ -69,17 +70,15 @@ async function clickStart(c: HTMLElement, host: ReturnType<typeof fakeHost>, tes
 }
 
 async function chooseOAuth(c: HTMLElement, spaceUrl = HOST) {
-  await act(async () => (byTestId(c, "backlog-method-oauth") as HTMLInputElement).click());
+  await act(async () => choose(c, "backlog-method", "oauth"));
   await act(async () => setValue(byTestId(c, "backlog-space-url") as HTMLInputElement, spaceUrl));
 }
 
 describe("OAuth sign-in (US1.3)", () => {
-  it("offers a sign-in method radiogroup with API key as the default", async () => {
+  it("offers a sign-in method dropdown with API key as the default (BR1.4)", async () => {
     const { c } = await render();
-    const group = c.querySelector('[role="radiogroup"]')!;
-    expect(group).not.toBeNull();
-    expect(group.getAttribute("aria-labelledby")).toBeTruthy();
-    expect((byTestId(c, "backlog-method-api-key") as HTMLInputElement).checked).toBe(true);
+    expect(c.querySelector('label[for="backlog-method"]')!.textContent).toBe(en.signInMethodLabel);
+    expect(byTestId(c, "backlog-method-api-key")!.getAttribute("aria-selected")).toBe("true");
     expect(byTestId(c, "backlog-api-key")).not.toBeNull();
     await chooseOAuth(c);
     expect(byTestId(c, "backlog-api-key")).toBeNull();

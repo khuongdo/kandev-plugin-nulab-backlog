@@ -98,6 +98,337 @@ export function FakeSkeleton(props: Record<string, unknown>) {
   return React.createElement("div", { "data-testid": "fake-skeleton", ...props });
 }
 
+type Props = Record<string, unknown> & { children?: React.ReactNode };
+
+/**
+ * Intent 261007: the host UI kit as plain DOM. Every stub element carries
+ * data-host="<Component>", and Button passes variant and size through as
+ * data-variant / data-size, so tests can tell host controls from raw ones
+ * and check the GitHub button style (BR5.1, BR5.2).
+ */
+function tag(name: string, element: string) {
+  const Stub = ({ children, ...props }: Props) =>
+    React.createElement(element, { "data-host": name, ...props }, children as React.ReactNode);
+  Stub.displayName = name;
+  return Stub;
+}
+
+function Button({ variant, size, children, ...props }: Props) {
+  delete props.asChild;
+  return React.createElement(
+    "button",
+    { "data-host": "Button", "data-variant": variant ?? "default", "data-size": size ?? "default", ...props },
+    children as React.ReactNode,
+  );
+}
+
+function Input(props: Props) {
+  return React.createElement("input", { "data-host": "Input", ...props });
+}
+
+function Checkbox({ checked, onCheckedChange, disabled, ...props }: Props) {
+  const on = checked === true;
+  return React.createElement("button", {
+    type: "button",
+    role: "checkbox",
+    "data-host": "Checkbox",
+    "aria-checked": on,
+    disabled,
+    onClick: () => (onCheckedChange as (v: boolean) => void)?.(!on),
+    ...props,
+  });
+}
+
+interface Choice {
+  value?: string;
+  set?: (v: string) => void;
+  disabled?: boolean;
+}
+const SelectCtx = React.createContext<Choice>({});
+
+function Select({ value, onValueChange, disabled, children }: Props) {
+  return React.createElement(
+    SelectCtx.Provider,
+    {
+      value: {
+        value: value as string,
+        set: onValueChange as (v: string) => void,
+        disabled: disabled as boolean,
+      },
+    },
+    React.createElement("div", { "data-host": "Select", "data-value": value }, children as React.ReactNode),
+  );
+}
+
+function SelectTrigger({ children, ...props }: Props) {
+  const ctx = React.useContext(SelectCtx);
+  return React.createElement(
+    "button",
+    {
+      type: "button",
+      role: "combobox",
+      "aria-expanded": false,
+      "data-host": "SelectTrigger",
+      disabled: ctx.disabled,
+      ...props,
+    },
+    children as React.ReactNode,
+  );
+}
+
+function SelectValue({ placeholder }: Props) {
+  const ctx = React.useContext(SelectCtx);
+  return React.createElement(
+    "span",
+    { "data-host": "SelectValue" },
+    ctx.value ? "" : ((placeholder as string) ?? ""),
+  );
+}
+
+function SelectItem({ value, disabled, children, ...props }: Props) {
+  const ctx = React.useContext(SelectCtx);
+  return React.createElement(
+    "div",
+    {
+      role: "option",
+      "data-host": "SelectItem",
+      "data-value": value,
+      "aria-selected": ctx.value === value,
+      "aria-disabled": disabled ? true : undefined,
+      onClick: () => !disabled && ctx.set?.(value as string),
+      ...props,
+    },
+    children as React.ReactNode,
+  );
+}
+
+interface Open {
+  onOpenChange?: (open: boolean) => void;
+  value?: string;
+  set?: (v: string) => void;
+}
+const DialogCtx = React.createContext<Open>({});
+const TabsCtx = React.createContext<Open>({});
+
+function Dialog({ open, onOpenChange, children }: Props) {
+  if (!open) return null;
+  return React.createElement(
+    DialogCtx.Provider,
+    { value: { onOpenChange: onOpenChange as (o: boolean) => void } },
+    children as React.ReactNode,
+  );
+}
+
+function DialogContent({ children, ...props }: Props) {
+  const ctx = React.useContext(DialogCtx);
+  return React.createElement(
+    "div",
+    {
+      role: "dialog",
+      "aria-modal": true,
+      "data-host": "DialogContent",
+      onKeyDown: (e: KeyboardEvent) => e.key === "Escape" && ctx.onOpenChange?.(false),
+      ...props,
+    },
+    children as React.ReactNode,
+  );
+}
+
+function Tabs({ value, onValueChange, children, ...props }: Props) {
+  return React.createElement(
+    TabsCtx.Provider,
+    { value: { value: value as string, set: onValueChange as (v: string) => void } },
+    React.createElement("div", { "data-host": "Tabs", ...props }, children as React.ReactNode),
+  );
+}
+
+function TabsTrigger({ value, children, ...props }: Props) {
+  const ctx = React.useContext(TabsCtx);
+  return React.createElement(
+    "button",
+    {
+      type: "button",
+      role: "tab",
+      "data-host": "TabsTrigger",
+      "aria-selected": ctx.value === value,
+      onClick: () => ctx.set?.(value as string),
+      ...props,
+    },
+    children as React.ReactNode,
+  );
+}
+
+function TabsContent({ value, forceMount, children, ...props }: Props) {
+  const ctx = React.useContext(TabsCtx);
+  if (ctx.value !== value && !forceMount) return null;
+  return React.createElement(
+    "div",
+    { role: "tabpanel", "data-host": "TabsContent", ...props },
+    children as React.ReactNode,
+  );
+}
+
+/** The menu is always open in tests; an item runs onSelect on click. */
+function DropdownMenuItem({ onSelect, disabled, children, ...props }: Props) {
+  return React.createElement(
+    "div",
+    {
+      role: "menuitem",
+      tabIndex: -1,
+      "data-host": "DropdownMenuItem",
+      "aria-disabled": disabled ? true : undefined,
+      onClick: disabled ? undefined : onSelect,
+      ...props,
+    },
+    children as React.ReactNode,
+  );
+}
+
+function DropdownMenuTrigger({ children }: Props) {
+  return children as React.ReactElement; // asChild: the plugin's Button
+}
+
+function SettingsSection({ title, description, action, icon, children }: Props) {
+  return React.createElement(
+    "section",
+    { "data-host": "SettingsSection" },
+    React.createElement("h3", null, icon as React.ReactNode, title as string),
+    description ? React.createElement("p", null, description as string) : null,
+    action as React.ReactNode,
+    children as React.ReactNode,
+  );
+}
+
+function IntegrationRepositoryFilter({ value, onValueChange, options, ariaLabel, testId }: Props) {
+  const list = (options as { value: string; label: string }[]) ?? [];
+  return React.createElement(
+    "div",
+    {
+      role: "group",
+      "aria-label": ariaLabel,
+      "data-host": "IntegrationRepositoryFilter",
+      "data-testid": testId,
+      "data-value": value,
+    },
+    list.map((o) =>
+      React.createElement(
+        "button",
+        {
+          key: o.value,
+          type: "button",
+          "data-host": "IntegrationRepositoryFilterOption",
+          "data-testid": `${testId}-option-${o.value}`,
+          "aria-pressed": o.value === value,
+          onClick: () => (onValueChange as (v: string) => void)(o.value),
+        },
+        o.label,
+      ),
+    ),
+  );
+}
+
+function ChangeRequestList({ loading, error, emptyMessage, isEmpty, children }: Props) {
+  let content: React.ReactNode = children as React.ReactNode;
+  if (loading) content = React.createElement("p", null, "…");
+  else if (error) content = React.createElement("p", null, error as string);
+  else if (isEmpty) content = React.createElement("p", null, emptyMessage as string);
+  return React.createElement("div", { "data-host": "ChangeRequestList" }, content);
+}
+
+function ChangeRequestRow({ stateIcon, title, href, metadata, taskIndicator, testId }: Props) {
+  return React.createElement(
+    "div",
+    { "data-host": "ChangeRequestRow", "data-testid": testId },
+    stateIcon as React.ReactNode,
+    React.createElement(
+      "a",
+      { href, target: "_blank", rel: "noopener noreferrer", "data-testid": `${testId}-link` },
+      title as string,
+    ),
+    React.createElement("div", null, metadata as React.ReactNode, taskIndicator as React.ReactNode),
+  );
+}
+
+function IntegrationIcon({ name, className }: Props) {
+  return React.createElement("svg", { "data-integration-icon": name, className, "aria-hidden": true });
+}
+
+export const fakeUi = {
+  Button,
+  Input,
+  Label: "label",
+  Checkbox,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  // Closed, like the host's popover: hidden from axe, still clickable in tests.
+  SelectContent: (props: Props) =>
+    React.createElement("div", { role: "listbox", hidden: true, "data-host": "SelectContent", ...props }),
+  SelectItem,
+  Dialog,
+  DialogContent,
+  DialogHeader: tag("DialogHeader", "div"),
+  DialogFooter: tag("DialogFooter", "div"),
+  DialogTitle: tag("DialogTitle", "h2"),
+  DialogDescription: tag("DialogDescription", "p"),
+  Table: tag("Table", "table"),
+  TableHeader: tag("TableHeader", "thead"),
+  TableBody: tag("TableBody", "tbody"),
+  TableRow: tag("TableRow", "tr"),
+  TableHead: tag("TableHead", "th"),
+  TableCell: tag("TableCell", "td"),
+  Card: tag("Card", "div"),
+  CardContent: tag("CardContent", "div"),
+  Badge: tag("Badge", "span"),
+  Alert: tag("Alert", "div"),
+  AlertTitle: tag("AlertTitle", "div"),
+  AlertDescription: tag("AlertDescription", "div"),
+  Empty: tag("Empty", "div"),
+  EmptyHeader: tag("EmptyHeader", "div"),
+  EmptyTitle: tag("EmptyTitle", "div"),
+  EmptyDescription: tag("EmptyDescription", "p"),
+  EmptyContent: tag("EmptyContent", "div"),
+  Pagination: tag("Pagination", "nav"),
+  PaginationContent: tag("PaginationContent", "ul"),
+  PaginationItem: tag("PaginationItem", "li"),
+  Tabs,
+  TabsList: (props: Props) =>
+    React.createElement("div", { role: "tablist", "data-host": "TabsList", ...props }),
+  TabsTrigger,
+  TabsContent,
+  DropdownMenu: tag("DropdownMenu", "div"),
+  DropdownMenuTrigger,
+  DropdownMenuContent: (props: Props) =>
+    React.createElement("div", { role: "menu", "data-host": "DropdownMenuContent", ...props }),
+  DropdownMenuItem,
+  SettingsSection,
+  IntegrationRepositoryFilter,
+  ChangeRequestList,
+  ChangeRequestRow,
+  IntegrationIcon,
+};
+
+/** Picks value in the host Select whose trigger has data-testid triggerId. */
+export function choose(c: HTMLElement, triggerId: string, value: string) {
+  const select = byTestId(c, triggerId)!.closest('[data-host="Select"]')!;
+  const item = select.querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
+  if (!item) throw new Error(`no option ${value} in ${triggerId}`);
+  item.click();
+}
+
+/** The options of the host Select whose trigger has data-testid triggerId. */
+export function optionValues(c: HTMLElement, triggerId: string): string[] {
+  const select = byTestId(c, triggerId)!.closest('[data-host="Select"]')!;
+  return [...select.querySelectorAll('[role="option"]')].map((o) => o.getAttribute("data-value") ?? "");
+}
+
+/** Raw controls a plugin component must not render (BR5.1): any without data-host. */
+export function rawControls(c: HTMLElement): string[] {
+  return [...c.querySelectorAll("button, select, table, details, input[type=checkbox], input[type=radio]")]
+    .filter((el) => !el.hasAttribute("data-host"))
+    .map((el) => el.outerHTML.slice(0, 80));
+}
+
 /** U3: host.i18n with an optional catalogue of the active locale. */
 export function fakeI18n(locale = "en", catalogue: Record<string, string> = {}) {
   const t = (key: string, options?: { defaultValue?: string }) =>
@@ -128,9 +459,7 @@ export function fakeHost(invoke: Invoke, overrides: Record<string, unknown> = {}
     React,
     jsx: React.createElement,
     ui: {
-      Button: "button",
-      Input: "input",
-      Label: "label",
+      ...fakeUi,
       ChangeRequestDetail: FakeChangeRequestDetail,
       Skeleton: FakeSkeleton, // U3
     },

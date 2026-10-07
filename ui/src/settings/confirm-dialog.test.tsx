@@ -25,10 +25,11 @@ async function open(onConfirm: () => Promise<void>, onClose = vi.fn()) {
 }
 
 describe("ConfirmDialog", () => {
-  it("is a labelled alertdialog with the default focus on Cancel", async () => {
+  it("is a labelled host dialog with the default focus on Cancel", async () => {
     const { c } = await open(async () => undefined);
     const dialog = byTestId(c, "test-dialog")!;
-    expect(dialog.getAttribute("role")).toBe("alertdialog");
+    expect(dialog.getAttribute("data-host")).toBe("DialogContent");
+    expect(dialog.getAttribute("role")).toBe("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)!.textContent).toBe("Title");
     expect(document.getElementById(dialog.getAttribute("aria-describedby")!)!.textContent).toBe("Body text");
@@ -37,15 +38,19 @@ describe("ConfirmDialog", () => {
     expect(result.violations.map((v) => v.id)).toEqual([]);
   });
 
-  it("traps Tab inside the dialog", async () => {
-    const { c } = await open(async () => undefined);
-    const cancel = byTestId(c, "test-dialog-cancel")!;
-    const confirm = byTestId(c, "test-dialog-confirm")!;
-    confirm.focus();
-    act(() => press(confirm, "Tab"));
-    expect(document.activeElement).toBe(cancel);
-    act(() => press(cancel, "Tab", true));
-    expect(document.activeElement).toBe(confirm);
+  it("styles Cancel as outline and a destructive confirm as destructive (BR5.2)", async () => {
+    const host = fakeHost(async () => undefined);
+    const c = await mount(createConfirmDialog(host), {
+      testId: "test-dialog",
+      title: "Title",
+      body: "Body text",
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: async () => undefined,
+      onClose: vi.fn(),
+    });
+    expect(byTestId(c, "test-dialog-cancel")!.getAttribute("data-variant")).toBe("outline");
+    expect(byTestId(c, "test-dialog-confirm")!.getAttribute("data-variant")).toBe("destructive");
   });
 
   it("closes on Esc and returns the focus to its opener", async () => {

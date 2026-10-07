@@ -28,10 +28,14 @@ var (
 	// ErrStale means the connection changed while the action ran, so its
 	// result was dropped (AC1.8.3).
 	ErrStale = errors.New("the Backlog connection changed meanwhile")
+	// ErrWorkflowMissing is a task creation Kandev refused because the
+	// workflow or step no longer exists (BR3.14). HostPort wraps it.
+	ErrWorkflowMissing = errors.New("the workflow or step does not exist")
 )
 
 // Gateway is the Backlog calls U3 makes; all are GETs. backlog.Client implements it.
 type Gateway interface {
+	Myself(ctx context.Context, creds backlog.Credentials) (backlog.User, error)
 	Projects(ctx context.Context, creds backlog.Credentials) ([]backlog.Project, error)
 	Issues(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, q backlog.IssueQuery) ([]backlog.Issue, error)
 	IssueCount(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, q backlog.IssueQuery) (int, error)
@@ -68,6 +72,7 @@ type TaskInfo struct {
 // HostPort is the Kandev host API U3 needs (C2). internal/plugin implements
 // it on pluginsdk.Host; tests swap in a fake.
 type HostPort interface {
+	// CreateTask creates a task; a missing workflow or step wraps ErrWorkflowMissing.
 	CreateTask(ctx context.Context, in NewTask) (TaskRef, error)
 	// ListTasks lists the workspace's tasks, archived ones included.
 	ListTasks(ctx context.Context, workspaceID string) ([]TaskInfo, error)
@@ -414,18 +419,30 @@ func (s *Service) CreateTask(ctx context.Context, ws string, in CreateInput) (Cr
 	if err := s.unchanged(ctx, ws, snap.ConnectionEpoch); err != nil {
 		return CreateResult{}, err
 	}
+	ref, err := s.createLinkedTask(ctx, ws, snap, issue, in.WorkflowID, in.WorkflowStepID)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	return CreateResult{TaskID: ref.ID, TaskKey: ref.Key, IssueKey: issue.IssueKey}, nil
+}
+
+// createLinkedTask creates the task of an issue (NewTaskFor) in the
+// workflow and step, then stores its link. Used by issues.create_task and
+// the issue watcher. A failed link write is logged and returns the created
+// task with the error, so the caller knows the task exists.
+func (s *Service) createLinkedTask(ctx context.Context, ws string, snap connection.Snapshot, issue backlog.Issue, workflowID, stepID string) (TaskRef, error) {
 	task := NewTaskFor(issue, snap.SpaceHost)
-	task.WorkspaceID, task.WorkflowID, task.WorkflowStepID = ws, in.WorkflowID, in.WorkflowStepID
+	task.WorkspaceID, task.WorkflowID, task.WorkflowStepID = ws, workflowID, stepID
 	ref, err := s.host.CreateTask(ctx, task)
 	if err != nil {
-		return CreateResult{}, fmt.Errorf("create task: %w", err)
+		return TaskRef{}, fmt.Errorf("create task: %w", err)
 	}
 	if err := s.putLink(ctx, ws, s.newLink(snap, issue, ref)); err != nil {
 		redact.Logger(ctx).ErrorContext(ctx, "issue link not stored", "event", "issue_link_write_failed",
 			"taskId", ref.ID, "issueKey", issue.IssueKey)
-		return CreateResult{}, err
+		return ref, err
 	}
-	return CreateResult{TaskID: ref.ID, TaskKey: ref.Key, IssueKey: issue.IssueKey}, nil
+	return ref, nil
 }
 
 func (s *Service) newLink(snap connection.Snapshot, issue backlog.Issue, task TaskRef) Link {

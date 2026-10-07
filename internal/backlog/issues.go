@@ -1,6 +1,7 @@
 package backlog
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,7 @@ type Issue struct {
 	AssigneeName string
 	DueDate      string
 	Updated      string
+	Created      string // RFC 3339, the issue watch cursor (BR3.5)
 }
 
 // String hides the description, which is user content.
@@ -75,15 +77,19 @@ type ProjectUser struct {
 }
 
 // IssueQuery filters GET /api/v2/issues and /api/v2/issues/count. Results
-// are always newest-updated first.
+// are newest-updated first unless Sort and Order say otherwise.
 type IssueQuery struct {
-	ProjectIDs  []int64
-	StatusIDs   []int64
-	AssigneeIDs []int64
-	IDs         []int64
-	Keyword     string
-	Offset      int
-	Count       int // clamped to 1-100
+	ProjectIDs     []int64
+	StatusIDs      []int64
+	AssigneeIDs    []int64
+	CreatedUserIDs []int64
+	IDs            []int64
+	Keyword        string
+	CreatedSince   string // yyyy-MM-dd; empty = no lower bound
+	Sort           string // default "updated"
+	Order          string // default "desc"
+	Offset         int
+	Count          int // clamped to 1-100
 }
 
 // Values encodes the query string.
@@ -97,12 +103,16 @@ func (q IssueQuery) Values() url.Values {
 	add("projectId[]", q.ProjectIDs)
 	add("statusId[]", q.StatusIDs)
 	add("assigneeId[]", q.AssigneeIDs)
+	add("createdUserId[]", q.CreatedUserIDs)
 	add("id[]", q.IDs)
 	if q.Keyword != "" {
 		v.Set("keyword", q.Keyword)
 	}
-	v.Set("sort", "updated")
-	v.Set("order", "desc")
+	if q.CreatedSince != "" {
+		v.Set("createdSince", q.CreatedSince)
+	}
+	v.Set("sort", cmp.Or(q.Sort, "updated"))
+	v.Set("order", cmp.Or(q.Order, "desc"))
 	if q.Offset > 0 {
 		v.Set("offset", strconv.Itoa(q.Offset))
 	}
@@ -153,6 +163,7 @@ type rawIssue struct {
 	Assignee *rawUser `json:"assignee"`
 	DueDate  *string  `json:"dueDate"`
 	Updated  string   `json:"updated"`
+	Created  string   `json:"created"`
 }
 
 func (r rawIssue) issue() (Issue, bool) {
@@ -160,7 +171,7 @@ func (r rawIssue) issue() (Issue, bool) {
 		return Issue{}, false
 	}
 	i := Issue{ID: *r.ID, ProjectID: r.ProjectID, IssueKey: r.IssueKey, Summary: r.Summary,
-		Description: r.Description, Updated: r.Updated}
+		Description: r.Description, Updated: r.Updated, Created: r.Created}
 	if r.Status != nil {
 		i.StatusID, i.StatusName = r.Status.ID, r.Status.Name
 	}

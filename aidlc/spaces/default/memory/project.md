@@ -27,6 +27,10 @@
 
 - Keep the coverage profile out of the repository root during AI-DLC stages (delete coverage.out after local make coverage runs, or write it under build/); reviewers never use -coverprofile, because an unclaimed coverage.out blocks the Code Generation gate (learned 2026-10-07) <!-- cid:261006-nulab-backlog-plugin:build-and-test:8cd7a5beeb6e5dbadef5e468d66ae6df9e031e5767e3f5903bf4dc29f677343c -->
 
+- Install the Go toolchain (Go 1.26.x) and link ../kandev to the pinned v0.96.0 checkout before Reverse Engineering, so the scan records a Go test baseline instead of skipping it (learned 2026-10-07) <!-- cid:261007-uiux-github-style:reverse-engineering:3389596ef6b361ec650899892e6047c7a92dce16984dd780efd5fba878f77398 -->
+
+- Run the packaged-host contract test locally with make contract-test KANDEV_MIN_DIR=../kandev while the SDK checkout is at the minimum version tag, and run it 10 times to catch host startup races (learned 2026-10-07) <!-- cid:261007-uiux-github-style:build-and-test:31ed7cfc6ba57c51da8ed86142ad7477ca9b62962e5639ce6369fe59ff05b304 -->
+
 ## Guard Policy
 
 <!-- Project-specific. Mode: strict, relaxed, or off. Strict here holds for every intent and cannot be changed from chat. A section under the retired Change Control heading, written by an earlier release, is still read. -->
@@ -99,3 +103,10 @@
 - walking-skeleton: renamed the action connection.connectApiKey to connection.connect_api_key because Kandev only accepts keys matching ^[a-z0-9][a-z0-9._-]*$ (learned 2026-10-06) <!-- cid:261006-nulab-backlog-plugin:code-generation:ac91a8cfcfbb4f10fc037d7876e46690380c2df9f2384d6c8efd76eee37171ae -->
 - walking-skeleton: pinned ../kandev to the v0.96.0 tag (user choice) (learned 2026-10-06) <!-- cid:261006-nulab-backlog-plugin:code-generation:426144fb5c6cd4cc5246f27b54366710308fcaf496c2097ffb6719380139fabb -->
 - Kandev injects the plugin Host asynchronously after startup, so every Host-dependent path must wait (bounded) for the Host instead of failing; run the packaged-host contract test repeatedly (e.g. 10 times) to catch intermittent startup races (learned 2026-10-07) <!-- cid:261006-nulab-backlog-plugin:code-generation:94e82723b7276e2af514bf6a4796fb018a91a37c99c3458d26a385b260bcf424 -->
+- Treated the request to consult github.com/kdlbs/kandev as part of this refactor, not new work (learned 2026-10-07) <!-- cid:261007-uiux-github-style:reverse-engineering:49ac1e780e79b0dc1240976a7ac551d36510d7e57f05cf4c33846ae8c6996ed7 -->
+- Write every AI-DLC artifact (including the code knowledge base and delegated scans) in English while chat stays in Vietnamese; check the language before the gate (learned 2026-10-07) <!-- cid:261007-uiux-github-style:reverse-engineering:41a43925e447603eadf80b41bacc7e6227765787824c0bfe2b9c8a5f4c950087 -->
+- Asked follow-ups on behaviour and organisation when a refactor's answers added new backend features (issue watch filter, first-run pickup, keep or split) (learned 2026-10-07) <!-- cid:261007-uiux-github-style:requirements-analysis:8c053b02945d8c8c0e30e273f7c8494976d4c3e170d4da4da082b4c80dd357cb -->
+- Kept new backend features in the same refactor intent when the user chose so (F3=A), with Functional Design covering them (learned 2026-10-07) <!-- cid:261007-uiux-github-style:requirements-analysis:49473d321ef6f3e5ea412a68ef2dcc73ba4461ade6bee537624f460c2316a4f8 -->
+- Read the issue watch answers as at most one new task per watch per run, with a per-watch interval (default 5 minutes) set in the watch dialog (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:f11570a4a09290d2e3f6bc0632c4cded73c1830d1ec39718fcc29028381a185d -->
+- In refactor scope (no units or domain design), treated the existing code structure from the code knowledge base as the domain design for Functional Design (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:2369d780bf4e1983217919608f3224e7182dc767c72884e45a728feca8091cd3 -->
+- For Deployment Pipeline, asked only release-specific questions (version, upgrade notes) because the team Deployment practice already settles strategy, gates, approvals, rollback and feature flags (learned 2026-10-07) <!-- cid:261007-uiux-github-style:deployment-pipeline:da684d7f076fb85473387dd397f644dc998ea4caacd02a2228d75b67c5f951d5 -->

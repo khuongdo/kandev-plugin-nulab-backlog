@@ -1,5 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { hostUi } from "../host-ui";
+import { BUTTON, FIELD, STACK } from "../layout";
 import { en, type MessageKey, type Messages } from "../messages/en";
 import { readFailure, type ConnectionView, type Notice } from "../settings/state";
 import { gitNotice, noticeText } from "./git-state";
@@ -25,16 +27,11 @@ const ERRORS: Record<GitField, MessageKey> = {
   gitPassword: "errorGitPassword",
 };
 
-const STACK = "flex flex-col gap-4";
-const FIELD = "flex flex-col gap-2";
-
-/** The optional Git access block of the connected settings panel (M1, US5.5). */
+/** The body of the Git access section (M1, US5.5); the section gives the heading. */
 export function createGitAccess(host: PluginHostApi, messages: Messages = en): Component<GitAccessProps> {
   const h = host.jsx;
   const { useEffect, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
+  const { Button, Input, Label } = hostUi(host);
 
   return function GitAccess({ workspaceId, hasGitCredential, gitCheck, announce }: GitAccessProps) {
     const [username, setUsername] = useState("");
@@ -108,8 +105,7 @@ export function createGitAccess(host: PluginHostApi, messages: Messages = en): C
     };
 
     return (
-      <details data-testid="backlog-git-access" className={STACK}>
-        <summary data-testid="backlog-git-toggle">{messages.gitAccessHeading}</summary>
+      <div data-testid="backlog-git-access" className={STACK}>
         <div className={STACK}>
           <p>{messages.gitAccessHelp}</p>
           <p data-testid="backlog-git-status">{stored ? messages.gitStored : messages.gitNotStored}</p>
@@ -125,14 +121,23 @@ export function createGitAccess(host: PluginHostApi, messages: Messages = en): C
             type: "password",
             autoComplete: "new-password",
           })}
-          <Button type="button" data-testid="backlog-git-save" disabled={saving} onClick={() => void save()}>
-            {saving ? messages.saving : messages.gitSave}
-          </Button>
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              className={BUTTON}
+              data-testid="backlog-git-save"
+              disabled={saving}
+              onClick={() => void save()}
+            >
+              {saving ? messages.saving : messages.gitSave}
+            </Button>
+          </div>
           {message && !fieldError ? (
             <p data-testid="backlog-git-message">{noticeText(message, messages)}</p>
           ) : null}
         </div>
-      </details>
+      </div>
     );
   };
 }

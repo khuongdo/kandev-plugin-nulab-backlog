@@ -21,10 +21,10 @@ type target struct {
 	selected []string
 }
 
-// OnConnectionChanged turns links off when the connection no longer covers
-// them (disconnect AC1.5.4, another space AC1.8.2, a deselected project
-// AC1.9.2), and brings covered links back on a restore (M12). An event
-// older than the last one handled is ignored.
+// OnConnectionChanged turns links and issue watches off when the
+// connection no longer covers them (disconnect AC1.5.4, another space
+// AC1.8.2, a deselected project AC1.9.2), and brings covered ones back on a
+// restore (M12, SM1). An event older than the last one handled is ignored.
 func (s *Service) OnConnectionChanged(ctx context.Context, e connection.ConnectionChanged) {
 	s.mu.Lock()
 	if e.ConnectionEpoch < s.lastEpoch[e.WorkspaceID] {
@@ -39,6 +39,10 @@ func (s *Service) OnConnectionChanged(ctx context.Context, e connection.Connecti
 	}
 	if err := s.apply(ctx, e.WorkspaceID, t, e.Restore); err != nil {
 		redact.Logger(ctx).ErrorContext(ctx, "issue links not updated", "event", "issue_links_update_failed",
+			"workspaceId", e.WorkspaceID, "reason", string(e.Reason))
+	}
+	if err := s.applyWatches(ctx, e.WorkspaceID, t, e.Restore); err != nil {
+		redact.Logger(ctx).ErrorContext(ctx, "issue watches not updated", "event", "issue_watches_update_failed",
 			"workspaceId", e.WorkspaceID, "reason", string(e.Reason))
 	}
 }

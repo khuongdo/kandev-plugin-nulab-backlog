@@ -13,6 +13,7 @@ import {
   deferred,
   notConnected,
   fakeHost,
+  fakeUi,
   mount,
   unmount,
   type Invoke,
@@ -37,7 +38,7 @@ async function renderSwitch(invoke: Invoke, workspace: string | null = "ws-9") {
     return React.createElement("button", { role: "switch", "aria-checked": props.enabled });
   };
   const host = fakeHost(invoke, {
-    ui: { Button: "button", Input: "input", Label: "label", IntegrationEnabledControl },
+    ui: { ...fakeUi, IntegrationEnabledControl },
   });
   const c = await mount(createIntegrationSwitch(host), { workspaceId, surface: "detail" });
   return { c, host, control: () => control };
@@ -118,7 +119,7 @@ describe("settings screen and switch together", () => {
         enabled = (input?.body as { enabled: boolean }).enabled;
         return { enabled };
       },
-      { ui: { Button: "button", Input: "input", Label: "label", IntegrationEnabledControl } },
+      { ui: { ...fakeUi, IntegrationEnabledControl } },
     );
     const Switch = createIntegrationSwitch(host);
     const Settings = createSettingsScreen(host);

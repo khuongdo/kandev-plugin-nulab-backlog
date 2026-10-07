@@ -13,7 +13,8 @@ import {
   mount,
   press,
   pseudoCatalogue,
-  selectValue,
+  choose,
+  rawControls,
   setValue,
   text,
   unmount,
@@ -115,13 +116,13 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     vi.useFakeTimers();
     const host = setup();
     const c = await render(host);
-    await act(async () => selectValue(byTestId(c, "backlog-issues-status") as HTMLSelectElement, "2"));
+    await act(async () => choose(c, "backlog-issues-status", "2"));
     expect(calls(host, "issues.list").at(-1)![1]).toEqual({
       workspaceId: "ws-1",
       body: { page: 1, pageSize: 20, keyword: "", statusIds: [2] },
     });
-    await act(async () => selectValue(byTestId(c, "backlog-issues-assignee") as HTMLSelectElement, "2"));
-    await act(async () => selectValue(byTestId(c, "backlog-issues-project") as HTMLSelectElement, "PROJ"));
+    await act(async () => choose(c, "backlog-issues-assignee", "2"));
+    await act(async () => choose(c, "backlog-issues-project", "PROJ"));
     const before = calls(host, "issues.list").length;
     await act(async () => setValue(byTestId(c, "backlog-issues-search") as HTMLInputElement, "log"));
     await act(async () => setValue(byTestId(c, "backlog-issues-search") as HTMLInputElement, "login"));
@@ -217,11 +218,11 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     const pending = deferred<unknown>();
     const host = setup({ "issues.create_task": () => pending.promise });
     const c = await render(host);
-    const button = byTestId(c, "backlog-issue-create-PROJ-56") as HTMLButtonElement;
+    const button = byTestId(c, "backlog-issue-create-PROJ-56")!;
     await act(async () => button.click());
     await act(async () => button.click());
     expect(button.textContent).toBe(en.creatingTask);
-    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
     expect(calls(host, "issues.create_task")).toHaveLength(1);
     expect(calls(host, "issues.create_task")[0]![1]).toEqual({
       workspaceId: "ws-1",
@@ -274,9 +275,11 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     const c = await render(host);
     expect(byTestId(c, "backlog-issues-updated")!.textContent).toBe("Updated at rel:2026-10-06T00:00:00Z");
     const button = byTestId(c, "backlog-issues-refresh") as HTMLButtonElement;
+    expect(button.getAttribute("data-variant")).toBe("ghost");
+    expect(button.getAttribute("aria-label")).toBe(en.refresh);
     await act(async () => button.click());
     expect(button.disabled).toBe(true);
-    expect(button.textContent).toBe(en.refreshing);
+    expect(button.getAttribute("aria-label")).toBe(en.refreshing);
     const before = calls(host, "issues.list").length;
     await act(async () => pending.resolve({ updatedCount: 2, refreshedAt: "2026-10-06T00:05:00Z" }));
     expect(calls(host, "issues.list")).toHaveLength(before + 1);
@@ -293,7 +296,7 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     expect(byTestId(c, "backlog-issues-status")).toBeNull();
     await act(async () => toggle.click());
     expect(byTestId(c, "backlog-issues-status")).not.toBeNull();
-    await act(async () => selectValue(byTestId(c, "backlog-issues-status") as HTMLSelectElement, "1"));
+    await act(async () => choose(c, "backlog-issues-status", "1"));
     expect(byTestId(c, "backlog-issues-filters-toggle")!.textContent).toBe("Filters (1)");
   });
 
@@ -301,6 +304,8 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     const c = await render(setup());
     expect(await axeViolations(c)).toEqual([]);
     expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+    expect(rawControls(c)).toEqual([]); // BR5.1
+    expect(byTestId(c, "backlog-issues-table")!.getAttribute("data-host")).toBe("Table");
     unmount();
     const pseudo = setup({
       "issues.filters": async () => ({

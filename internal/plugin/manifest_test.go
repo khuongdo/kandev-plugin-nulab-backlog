@@ -182,7 +182,7 @@ func TestU3_Manifest_Actions(t *testing.T) {
 	}
 	want[actionSetPollInterval] = "workspace/admin"
 	require.Equal(t, want, got)
-	require.Len(t, u3Actions, 13)
+	require.Len(t, u3Actions, 19)
 }
 
 func TestU3_Manifest_EventsAndReferences(t *testing.T) {

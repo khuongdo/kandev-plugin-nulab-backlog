@@ -143,11 +143,23 @@ func TestU4_Query_Validate(t *testing.T) {
 		"repository": func(q *QueryInput) { q.ProjectKey = "DEMO" },
 		"statuses":   func(q *QueryInput) { q.Statuses = []string{"x"} },
 		"assignee":   func(q *QueryInput) { q.Assignee = "x" },
+		"creator":    func(q *QueryInput) { q.Creator = "x" },
 	} {
 		q := ok
 		mut(&q)
 		require.Equal(t, field, fieldOf(t, q.Validate([]string{"PROJ"})), field)
 	}
+}
+
+// FR2.6: a saved query can keep the PR list's creator filter; a stored query
+// without one means anyone.
+func TestQuery_CreatorIsOptional(t *testing.T) {
+	q := QueryInput{Name: "Mine", ProjectKey: "PROJ", RepoName: "api", Statuses: []string{"open"}, Assignee: "anyone"}
+	require.NoError(t, q.Validate([]string{"PROJ"}))
+	require.Equal(t, WhoAnyone, q.Creator)
+	q.Creator = WhoMe
+	require.NoError(t, q.Validate([]string{"PROJ"}))
+	require.Equal(t, WhoMe, q.Creator)
 }
 
 func TestU4_RelatedIssue_FirstSelectedKey(t *testing.T) {

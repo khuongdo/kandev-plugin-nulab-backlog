@@ -47,10 +47,10 @@ async function fill(c: HTMLElement) {
 }
 
 describe("Git access block (M1, US5.5)", () => {
-  it("is a collapsible block with labelled fields", async () => {
+  it("is the Git access section body with labelled fields", async () => {
     const { c } = await render(setup());
-    const details = c.querySelector("details")!;
-    expect(details.querySelector("summary")!.textContent).toBe(en.gitAccessHeading);
+    expect(c.querySelector("details")).toBeNull();
+    expect(byTestId(c, "backlog-git-save")!.getAttribute("data-variant")).toBe("outline");
     expect(c.querySelector('label[for="backlog-git-username"]')!.textContent).toBe(en.gitUsernameLabel);
     expect(c.querySelector('label[for="backlog-git-password"]')!.textContent).toBe(en.gitPasswordLabel);
     expect((byTestId(c, "backlog-git-password") as HTMLInputElement).type).toBe("password");

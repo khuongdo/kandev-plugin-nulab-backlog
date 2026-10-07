@@ -117,8 +117,9 @@ func newU3Rig(t *testing.T) *u3rig {
 	gw := &u3Gateway{fakeGateway: &fakeGateway{projects: []backlog.Project{{ID: 101, Key: "PROJ", Name: "Test Project"}}},
 		calls: map[string]int{}, issues: []backlog.Issue{
 			{ID: 5118, ProjectID: 101, IssueKey: "PROJ-118", Summary: "Fix login timeout", Description: "Steps.",
-				StatusID: 2, StatusName: "In Progress", PriorityID: 2, PriorityName: "High", AssigneeName: "Lan"},
-			{ID: 5120, ProjectID: 101, IssueKey: "PROJ-120", Summary: "Login page", StatusID: 3, StatusName: "Resolved", PriorityID: 3},
+				StatusID: 2, StatusName: "In Progress", PriorityID: 2, PriorityName: "High", AssigneeName: "Lan", Created: "2026-10-01T09:00:00Z"},
+			{ID: 5120, ProjectID: 101, IssueKey: "PROJ-120", Summary: "Login page", StatusID: 3, StatusName: "Resolved", PriorityID: 3,
+				Created: "2026-10-02T09:00:00Z"},
 		}}
 	logs, host := &syncBuffer{}, newFakeHost()
 	rt := newRuntime(gw, logs, "debug")
@@ -290,4 +291,7 @@ var u3Actions = []string{
 	actionIssuesList, actionIssuesFilters, actionIssuesCreate, actionTasksSearch, actionIssuesLinks, actionIssuesRefresh,
 	actionIssuesImpact, actionIssuesSettings, actionIssuesLink, actionIssuesUnlink, actionIssuesGet, actionIssuesComments,
 	actionSetPollInterval,
+	// Intent 261007: issue watches (FR3).
+	actionIssueWatchesList, actionIssueWatchesSave, actionIssueWatchesDelete, actionIssueWatchesRun,
+	actionIssueWatchesPause, actionIssueWatchesResume,
 }

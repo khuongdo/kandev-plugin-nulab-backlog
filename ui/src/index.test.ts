@@ -101,11 +101,18 @@ describe("plugin entry", () => {
     const s = setup({ "ws-1": { enabled: false }, "ws-2": { enabled: false } });
     await s.init();
     await flush();
-    expect(s.registry.registerNavItem).toHaveBeenCalledTimes(3); // U4 adds watches and the dashboard
-    expect(s.registry.registerRoute).toHaveBeenCalledTimes(3);
+    expect(s.registry.registerNavItem).toHaveBeenCalledTimes(1);
+    expect(s.registry.registerRoute).toHaveBeenCalledTimes(1);
   });
 
-  it("registers the U4 provider, task action, review provider and pages", async () => {
+  it("has exactly one Integrations entry and one route, /backlog (BR2.1, FR2.1, FR2.2)", async () => {
+    const s = setup({});
+    await s.init();
+    expect(s.registry.registerNavItem.mock.calls.map(([item]) => item.path)).toEqual(["/backlog"]);
+    expect(s.registry.registerRoute.mock.calls.map(([path]) => path)).toEqual(["/backlog"]);
+  });
+
+  it("registers the U4 provider, task action and review provider", async () => {
     const s = setup({});
     await s.init();
     expect(s.registry.registerRepositoryProvider).toHaveBeenCalledWith(
@@ -118,10 +125,7 @@ describe("plugin entry", () => {
       expect.objectContaining({ id: "nulab-backlog" }),
     );
     for (const path of ["/backlog/watches", "/backlog/dashboard"]) {
-      expect(s.registry.registerRoute).toHaveBeenCalledWith(path, expect.any(Function), expect.anything());
-      expect(s.registry.registerNavItem).toHaveBeenCalledWith(
-        expect.objectContaining({ path, section: "integrations" }),
-      );
+      expect(s.registry.registerRoute).not.toHaveBeenCalledWith(path, expect.anything(), expect.anything());
     }
   });
 

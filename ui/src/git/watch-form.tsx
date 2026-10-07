@@ -1,10 +1,10 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { hostUi } from "../host-ui";
+import { BUTTON, FIELD, ROW, STACK } from "../layout";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
 import { gitNotice, loadRepoOptions, noticeText, splitRepo, type RepoOption } from "./git-state";
-
-type AnyProps = Record<string, unknown>;
 
 /** A saved watch as git.watches.* returns it. */
 export interface Watch {
@@ -19,6 +19,7 @@ export interface Watch {
   state: string;
   createdCount: number;
   pendingCount: number;
+  lastRunAt?: string;
 }
 
 export interface WatchFormProps {
@@ -55,17 +56,12 @@ const STATUS_KEYS: Record<string, MessageKey> = {
   merged: "stateMerged",
 };
 
-const STACK = "flex flex-col gap-4";
-const FIELD = "flex flex-col gap-2";
-const ROW = "flex gap-2";
-
-/** Create or edit a PR watch (M4, AC6.1.1, AC6.1.2). */
+/** Create or edit a PR watch (M4, AC6.1.1, AC6.1.2), shown in the PR watches dialog. */
 export function createWatchForm(host: PluginHostApi, messages: Messages = en): Component<WatchFormProps> {
   const h = host.jsx;
   const { useEffect, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
+  const { Button, Input, Label, Checkbox, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } =
+    hostUi(host);
 
   return function WatchForm({ workspaceId, watch, onSaved, onCancel }: WatchFormProps) {
     const [repos, setRepos] = useState<RepoOption[]>([]);
@@ -144,15 +140,19 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
     const who = (id: string, label: string, value: string, set: (v: string) => void) => (
       <div className={FIELD}>
         <Label htmlFor={id}>{label}</Label>
-        <select
-          id={id}
-          data-testid={id}
-          value={value}
-          onChange={(e: { target: { value: string } }) => set(e.target.value)}
-        >
-          <option value="anyone">{messages.whoAnyone}</option>
-          <option value="me">{messages.whoMe}</option>
-        </select>
+        <Select value={value} onValueChange={set}>
+          <SelectTrigger id={id} data-testid={id}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="anyone" data-testid={`${id}-anyone`}>
+              {messages.whoAnyone}
+            </SelectItem>
+            <SelectItem value="me" data-testid={`${id}-me`}>
+              {messages.whoMe}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     );
 
@@ -172,21 +172,23 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
         </div>
         <div className={FIELD}>
           <Label htmlFor={IDS.repo}>{format(messages.required, { label: messages.watchRepoLabel })}</Label>
-          <select
-            id={IDS.repo}
-            data-testid={IDS.repo}
-            value={repo}
-            onChange={(e: { target: { value: string } }) => setRepo(e.target.value)}
-            {...described("repo")}
-          >
-            <option value="">{messages.chooseRepository}</option>
-            {repos.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-            {repo && !repos.some((r) => r.value === repo) ? <option value={repo}>{repo}</option> : null}
-          </select>
+          <Select value={repo} onValueChange={setRepo}>
+            <SelectTrigger id={IDS.repo} data-testid={IDS.repo} {...described("repo")}>
+              <SelectValue placeholder={messages.chooseRepository} />
+            </SelectTrigger>
+            <SelectContent>
+              {repos.map((r) => (
+                <SelectItem key={r.value} value={r.value} data-testid={`${IDS.repo}-${r.value}`}>
+                  {r.label}
+                </SelectItem>
+              ))}
+              {repo && !repos.some((r) => r.value === repo) ? (
+                <SelectItem value={repo} data-testid={`${IDS.repo}-current`}>
+                  {repo}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
           {errorText("repo")}
         </div>
         <fieldset
@@ -196,14 +198,15 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
           <legend>{messages.watchStatusLegend}</legend>
           {STATUSES.map((s) => (
             <div key={s} className={ROW}>
-              <input
-                type="checkbox"
+              <Checkbox
                 id={`${IDS.statuses}-${s}`}
                 data-testid={`backlog-watch-status-${s}`}
                 checked={statuses.includes(s)}
-                onChange={() => setStatuses((l) => (l.includes(s) ? l.filter((x) => x !== s) : [...l, s]))}
+                onCheckedChange={() =>
+                  setStatuses((l) => (l.includes(s) ? l.filter((x) => x !== s) : [...l, s]))
+                }
               />
-              <label htmlFor={`${IDS.statuses}-${s}`}>{messages[STATUS_KEYS[s]!]}</label>
+              <Label htmlFor={`${IDS.statuses}-${s}`}>{messages[STATUS_KEYS[s]!]}</Label>
             </div>
           ))}
           {errorText("statuses")}
@@ -224,11 +227,17 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
         </div>
         {notice ? <p data-testid="backlog-watch-form-notice">{noticeText(notice, messages)}</p> : null}
         <div className={ROW}>
-          <Button type="submit" data-testid="backlog-watch-save" disabled={saving}>
-            {saving ? messages.saving : messages.save}
-          </Button>
-          <Button type="button" data-testid="backlog-watch-cancel" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            className={BUTTON}
+            data-testid="backlog-watch-cancel"
+            onClick={onCancel}
+          >
             {messages.cancel}
+          </Button>
+          <Button type="submit" className={BUTTON} data-testid="backlog-watch-save" disabled={saving}>
+            {saving ? messages.saving : messages.save}
           </Button>
         </div>
       </form>

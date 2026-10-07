@@ -1,12 +1,19 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createGitAccess } from "../git/git-access";
 import { withImpact } from "../git/git-state";
+import { hostUi } from "../host-ui";
 import { loadImpactText } from "../issues/issues-state";
+import { createPollInterval } from "../issues/poll-interval";
+import { BUTTON, FIELD, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { createConnectedPanel } from "./connected-panel";
+import { createIssueWatchesSection } from "./issue-watches-section";
 import { normalizeHost, startOAuth, takeOAuthReturn } from "./oauth";
+import { createPrWatchesSection, PR_WATCHES_ANCHOR } from "./pr-watches-section";
 import { createProjectPicker } from "./project-picker";
+import { createSavedQueriesSection } from "./saved-queries-section";
 import {
   connectedNotice,
   initialState,
@@ -29,27 +36,44 @@ type Method = "api_key" | "oauth";
 
 const FIELD_IDS: Record<FormField, string> = { spaceUrl: "backlog-space-url", apiKey: "backlog-api-key" };
 
-// BR6.5: one vertical stack with one gap, and a smaller label-to-input gap,
-// using the host's utility classes only (the plugin ships no CSS).
-const STACK = "flex flex-col gap-4";
-const FIELD = "flex flex-col gap-2";
-const ROW = "flex gap-2";
+/** The settings screen: framed sections stacked like the GitHub integration (BR1.1). */
+const SECTIONS = "flex flex-col gap-8";
 
 /**
- * Builds the M1 settings screen on the host's React and UI kit. The plugin
- * bundles no React; `h` is the host's element factory.
+ * Builds the settings screen of Settings > Integrations > Backlog (M1, FR1)
+ * on the host's React and UI kit: Connection, PR watches, Issue watches,
+ * Saved PR queries, Issue sync, Git access and Projects as framed sections.
+ * The plugin bundles no React; `h` is the host's element factory.
  */
 export function createSettingsScreen(host: PluginHostApi, messages: Messages = en): Component<Props> {
   const hostApi = host; // onSubmit shadows `host` with the typed space host
   const h = host.jsx; // the JSX factory (tsconfig jsxFactory "h")
   const { useCallback, useEffect, useRef, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
+  const {
+    Button,
+    Input,
+    Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    SettingsSection,
+  } = hostUi(host);
   const t = (notice: Notice) => format(messages[notice.key], notice.params);
   const ConfirmDialog = createConfirmDialog(host, messages);
   const ConnectedPanel = createConnectedPanel(host, messages);
   const ProjectPicker = createProjectPicker(host, messages);
+  const PrWatches = createPrWatchesSection(host, messages);
+  const IssueWatches = createIssueWatchesSection(host, messages);
+  const SavedQueries = createSavedQueriesSection(host, messages);
+  const PollInterval = createPollInterval(host, messages);
+  const GitAccess = createGitAccess(host, messages);
+  const section = (id: string, title: string, children: unknown) => (
+    <div data-testid={`backlog-section-${id}`}>
+      <SettingsSection title={title}>{children}</SettingsSection>
+    </div>
+  );
 
   return function BacklogSettings({ workspaceId: routedWorkspaceId }: Props) {
     const workspaceId = routedWorkspaceId ?? host.context.getActiveWorkspaceId();
@@ -59,6 +83,7 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
     const busy = useRef(false);
     const lastInput = useRef<{ spaceUrl: string; apiKey: string } | undefined>(undefined);
     const [method, setMethod] = useState<Method>("api_key");
+    const [gitCheck, setGitCheck] = useState<string | undefined>(undefined);
     const [confirm, setConfirm] = useState<
       { kind: "replace" | "changeSpace"; host: string; impact?: string } | undefined
     >(undefined);
@@ -198,9 +223,17 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
       return (
         <div data-testid="backlog-settings" className={STACK}>
           <p>{messages.loadFailed}</p>
-          <Button type="button" data-testid="backlog-load-retry" onClick={() => void load()}>
-            {messages.retry}
-          </Button>
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              className={BUTTON}
+              data-testid="backlog-load-retry"
+              onClick={() => void load()}
+            >
+              {messages.retry}
+            </Button>
+          </div>
           {announcement}
         </div>
       );
@@ -212,63 +245,61 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
     const signInAgain = isSignInAgain(state.view) && !off;
     const replacing = Boolean(status) || signInAgain;
 
+    // BR1.4: the sign-in method is a dropdown.
     const methodChoice = (
-      <div role="radiogroup" aria-labelledby="backlog-method-label" className={FIELD}>
-        <span id="backlog-method-label">{messages.signInMethodLabel}</span>
-        {(["api_key", "oauth"] as const).map((m) => (
-          <label key={m} className={ROW}>
-            <input
-              type="radio"
-              name="backlog-method"
-              value={m}
-              data-testid={m === "oauth" ? "backlog-method-oauth" : "backlog-method-api-key"}
-              checked={method === m}
-              onChange={() => setMethod(m)}
-            />
-            {m === "oauth" ? messages.methodOAuth : messages.methodApiKey}
-          </label>
-        ))}
+      <div className={FIELD}>
+        <Label htmlFor="backlog-method">{messages.signInMethodLabel}</Label>
+        <Select value={method} onValueChange={(m: Method) => setMethod(m)}>
+          <SelectTrigger id="backlog-method" data-testid="backlog-method">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="api_key" data-testid="backlog-method-api-key">
+              {messages.methodApiKey}
+            </SelectItem>
+            <SelectItem value="oauth" data-testid="backlog-method-oauth">
+              {messages.methodOAuth}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     );
-    return (
-      <div data-testid="backlog-settings" className={STACK}>
+    const connectedOn = Boolean(status) && !off && Boolean(workspaceId);
+    const connection = (
+      <div className={STACK}>
         {status ? <p data-testid="backlog-status">{t(status)}</p> : null}
         {state.view?.state === "error" ? <p data-testid="backlog-incomplete">{messages.incomplete}</p> : null}
         {off ? <p data-testid="backlog-off">{messages.integrationOff}</p> : null}
         {state.isMember && !status && !off ? (
           <p data-testid="backlog-member">{messages.notConnectedMember}</p>
         ) : null}
-        {status && !off && !state.isMember && workspaceId ? (
-          <ConnectedPanel workspaceId={workspaceId} onView={onView} announce={announce} view={state.view} />
-        ) : null}
-        {status && !off && !state.isMember && workspaceId ? (
-          // A new space (a change or a restore) or a new account on the same space
-          // remounts the picker so it reloads and keeps no list or checkbox of the old one
-          // (R-02, R-12). Not the epoch: a project save bumps it. The view carries no user
-          // id, so the account is told apart by its display name.
-          <ProjectPicker
-            key={`${state.view?.spaceHost ?? ""}:${state.view?.connectedUserName ?? ""}`}
-            workspaceId={workspaceId}
+        {connectedOn && !state.isMember ? (
+          <ConnectedPanel
+            workspaceId={workspaceId!}
             onView={onView}
             announce={announce}
+            onGitCheck={setGitCheck}
           />
         ) : null}
         {signInAgain ? (
           <div className={STACK}>
             <p data-testid="backlog-sign-in-again-notice">{messages.signInAgainNotice}</p>
-            <Button
-              type="button"
-              data-testid="backlog-sign-in-again"
-              disabled={state.connecting}
-              onClick={() => void signIn(state.view?.spaceHost ?? "")}
-            >
-              {messages.signInAgain}
-            </Button>
+            <div>
+              <Button
+                type="button"
+                className={BUTTON}
+                data-testid="backlog-sign-in-again"
+                disabled={state.connecting}
+                onClick={() => void signIn(state.view?.spaceHost ?? "")}
+              >
+                {messages.signInAgain}
+              </Button>
+            </div>
           </div>
         ) : null}
         {showForm ? (
           <form data-testid="backlog-connect-form" className={STACK} onSubmit={onSubmit} noValidate>
-            {status ? <h3>{messages.replaceHeading}</h3> : null}
+            {status ? <p className="text-sm font-medium">{messages.replaceHeading}</p> : null}
             {methodChoice}
             {field("spaceUrl", messages.spaceUrlLabel, spaceUrl, setSpaceUrl, {
               placeholder: messages.spaceUrlPlaceholder,
@@ -280,21 +311,115 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
                   autoComplete: "off",
                 })
               : null}
-            {method === "api_key" ? (
-              <Button type="submit" data-testid="backlog-connect" disabled={state.connecting}>
-                {state.connecting
-                  ? messages.connecting
-                  : replacing
-                    ? messages.replaceCredentials
-                    : messages.connect}
-              </Button>
-            ) : (
-              <Button type="submit" data-testid="backlog-sign-in-nulab" disabled={state.connecting}>
-                {state.connecting ? messages.connecting : messages.signInWithNulab}
-              </Button>
-            )}
+            <div>
+              {method === "api_key" ? (
+                <Button
+                  type="submit"
+                  className={BUTTON}
+                  data-testid="backlog-connect"
+                  disabled={state.connecting}
+                >
+                  {state.connecting
+                    ? messages.connecting
+                    : replacing
+                      ? messages.replaceCredentials
+                      : messages.connect}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className={BUTTON}
+                  data-testid="backlog-sign-in-nulab"
+                  disabled={state.connecting}
+                >
+                  {state.connecting ? messages.connecting : messages.signInWithNulab}
+                </Button>
+              )}
+            </div>
           </form>
         ) : null}
+        {state.notice ? (
+          <div data-testid="backlog-notice" className={STACK}>
+            <p>{t(state.notice)}</p>
+            {state.notice.key === "restoredNotice" ? (
+              <div className={STACK}>
+                <p>{messages.restoredWatches}</p>
+                <div>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className={BUTTON}
+                    data-testid="backlog-review-watches"
+                    onClick={() =>
+                      document.getElementById(PR_WATCHES_ANCHOR)?.scrollIntoView({ behavior: "smooth" })
+                    }
+                  >
+                    {messages.reviewWatches}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {state.notice.retry && lastInput.current ? (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={BUTTON}
+                  data-testid="backlog-connect-retry"
+                  onClick={() => lastInput.current && void connect(lastInput.current)}
+                >
+                  {messages.retry}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+
+    // BR1.1, BR1.2: seven sections while connected; members keep the watch,
+    // query and sync sections, admins also Git access and Projects.
+    return (
+      <div data-testid="backlog-settings" className={SECTIONS}>
+        {section("connection", messages.sectionConnection, connection)}
+        {connectedOn ? <PrWatches workspaceId={workspaceId!} /> : null}
+        {connectedOn ? <IssueWatches workspaceId={workspaceId!} /> : null}
+        {connectedOn ? <SavedQueries workspaceId={workspaceId!} /> : null}
+        {connectedOn
+          ? section(
+              "issue-sync",
+              messages.sectionIssueSync,
+              <PollInterval workspaceId={workspaceId!} readOnly={state.isMember} />,
+            )
+          : null}
+        {connectedOn && !state.isMember
+          ? section(
+              "git-access",
+              messages.gitAccessHeading,
+              <GitAccess
+                workspaceId={workspaceId!}
+                hasGitCredential={Boolean(state.view?.hasGitCredential)}
+                gitCheck={gitCheck}
+                announce={announce}
+              />,
+            )
+          : null}
+        {connectedOn && !state.isMember
+          ? section(
+              "projects",
+              messages.projectsLegend,
+              // A new space (a change or a restore) or a new account on the same space
+              // remounts the picker so it reloads and keeps no list or checkbox of the old one
+              // (R-02, R-12). Not the epoch: a project save bumps it. The view carries no user
+              // id, so the account is told apart by its display name.
+              <ProjectPicker
+                key={`${state.view?.spaceHost ?? ""}:${state.view?.connectedUserName ?? ""}`}
+                workspaceId={workspaceId!}
+                onView={onView}
+                announce={announce}
+              />,
+            )
+          : null}
         {confirm ? (
           <ConfirmDialog
             testId={confirm.kind === "replace" ? "backlog-replace-dialog" : "backlog-change-space-dialog"}
@@ -308,32 +433,6 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
             onConfirm={run}
             onClose={() => setConfirm(undefined)}
           />
-        ) : null}
-        {state.notice ? (
-          <div data-testid="backlog-notice" className={STACK}>
-            <p>{t(state.notice)}</p>
-            {state.notice.key === "restoredNotice" ? (
-              <div className={STACK}>
-                <p>{messages.restoredWatches}</p>
-                <Button
-                  type="button"
-                  data-testid="backlog-review-watches"
-                  onClick={() => host.navigate("/backlog/watches")}
-                >
-                  {messages.reviewWatches}
-                </Button>
-              </div>
-            ) : null}
-            {state.notice.retry && lastInput.current ? (
-              <Button
-                type="button"
-                data-testid="backlog-connect-retry"
-                onClick={() => lastInput.current && void connect(lastInput.current)}
-              >
-                {messages.retry}
-              </Button>
-            ) : null}
-          </div>
         ) : null}
         {announcement}
       </div>

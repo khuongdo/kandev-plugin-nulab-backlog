@@ -1,5 +1,7 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { hostUi } from "../host-ui";
+import { BUTTON } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { badgeDetail, badgeText } from "./issues-state";
 import type { LinksStore } from "./links-store";
@@ -22,6 +24,7 @@ export function createIssueBadge(
 ): Component<CardProps> {
   const h = host.jsx;
   const { useEffect, useState } = host.React;
+  const { Button } = hostUi(host);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
 
   return function IssueBadge({ slotProps }: CardProps) {
@@ -44,10 +47,12 @@ export function createIssueBadge(
     const detail = badgeDetail(link, relative, messages);
     return (
       <span className="inline-flex flex-col gap-1">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
+          className={`${BUTTON} h-auto px-2 text-xs`}
           data-testid={`backlog-issue-badge-${taskId}`}
-          className="rounded border px-2 text-xs"
           aria-label={format(messages.issueBadgeSr, { label })}
           aria-expanded={open}
           onFocus={() => setOpen(true)}
@@ -58,7 +63,7 @@ export function createIssueBadge(
           }}
         >
           {label}
-        </button>
+        </Button>
         {open && detail ? (
           <span role="status" data-testid={`backlog-issue-badge-detail-${taskId}`} className="text-xs">
             {detail}

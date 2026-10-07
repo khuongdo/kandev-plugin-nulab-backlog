@@ -1,14 +1,12 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { createGitAccess } from "../git/git-access";
 import { withImpact } from "../git/git-state";
+import { hostUi } from "../host-ui";
 import { loadImpactText } from "../issues/issues-state";
-import { createPollInterval } from "../issues/poll-interval";
+import { BUTTON, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { createConfirmDialog } from "./confirm-dialog";
 import { failureNotice, type ConnectionView, type Notice } from "./state";
-
-type AnyProps = Record<string, unknown>;
 
 export interface ConnectedPanelProps {
   workspaceId: string;
@@ -16,12 +14,9 @@ export interface ConnectedPanelProps {
   onView: (view: ConnectionView) => void;
   /** Sends a message to the screen's live region. */
   announce: (notice: Notice) => void;
-  /** U4: the current view, for the Git access block (US5.5). */
-  view?: ConnectionView;
+  /** U4: the Git check of the last Test connection, for the Git access section (AC5.5.2). */
+  onGitCheck?: (gitCheck: string | undefined) => void;
 }
-
-const STACK = "flex flex-col gap-4";
-const ROW = "flex gap-2";
 
 /** Test connection and Disconnect for a connected workspace (US1.5). */
 export function createConnectedPanel(
@@ -30,17 +25,14 @@ export function createConnectedPanel(
 ): Component<ConnectedPanelProps> {
   const h = host.jsx;
   const { useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
+  const { Button } = hostUi(host);
   const ConfirmDialog = createConfirmDialog(host, messages);
-  const GitAccess = createGitAccess(host, messages);
-  const PollInterval = createPollInterval(host, messages);
   const t = (n: Notice) => format(messages[n.key], n.params);
 
-  return function ConnectedPanel({ workspaceId, onView, announce, view }: ConnectedPanelProps) {
+  return function ConnectedPanel({ workspaceId, onView, announce, onGitCheck }: ConnectedPanelProps) {
     const [testing, setTesting] = useState(false);
     const [result, setResult] = useState<Notice | undefined>(undefined);
     const [confirming, setConfirming] = useState(false);
-    const [gitCheck, setGitCheck] = useState<string | undefined>(undefined);
     const [impact, setImpact] = useState("");
 
     const test = async () => {
@@ -51,7 +43,7 @@ export function createConnectedPanel(
       try {
         const view = await host.api.invokeAction<ConnectionView>("connection.test", { workspaceId });
         notice = { key: "testSucceeded", params: { name: view.connectedUserName ?? "" } };
-        setGitCheck(view.gitCheck);
+        onGitCheck?.(view.gitCheck);
         onView(view);
       } catch (error) {
         notice = failureNotice(error).notice ?? { key: "actionFailed" };
@@ -71,6 +63,8 @@ export function createConnectedPanel(
         <div className={ROW}>
           <Button
             type="button"
+            variant="outline"
+            className={BUTTON}
             data-testid="backlog-test-connection"
             disabled={testing}
             onClick={() => void test()}
@@ -79,6 +73,8 @@ export function createConnectedPanel(
           </Button>
           <Button
             type="button"
+            variant="destructive"
+            className={BUTTON}
             data-testid="backlog-disconnect"
             onClick={() => {
               setImpact("");
@@ -90,19 +86,13 @@ export function createConnectedPanel(
           </Button>
         </div>
         {result ? <p data-testid="backlog-test-result">{t(result)}</p> : null}
-        <PollInterval workspaceId={workspaceId} />
-        <GitAccess
-          workspaceId={workspaceId}
-          hasGitCredential={Boolean(view?.hasGitCredential)}
-          gitCheck={gitCheck}
-          announce={announce}
-        />
         {confirming ? (
           <ConfirmDialog
             testId="backlog-disconnect-dialog"
             title={messages.disconnectTitle}
             body={withImpact(messages.disconnectBody, impact)}
             confirmLabel={messages.disconnect}
+            destructive
             onConfirm={disconnect}
             onClose={() => setConfirming(false)}
           />

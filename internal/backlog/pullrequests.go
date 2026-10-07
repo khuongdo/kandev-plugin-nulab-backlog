@@ -20,6 +20,8 @@ type PullRequest struct {
 	AssigneeName string
 	IssueID      int64
 	Created      string
+	AuthorName   string // the creator's display name (PR list, FR4.2)
+	Updated      string
 }
 
 // String hides the description, which is user content.
@@ -112,7 +114,11 @@ type rawPullRequest struct {
 	Issue *struct {
 		ID int64 `json:"id"`
 	} `json:"issue"`
-	Created string `json:"created"`
+	Created     string `json:"created"`
+	Updated     string `json:"updated"`
+	CreatedUser *struct {
+		Name string `json:"name"`
+	} `json:"createdUser"`
 }
 
 func (r rawPullRequest) pullRequest() (PullRequest, bool) {
@@ -120,7 +126,10 @@ func (r rawPullRequest) pullRequest() (PullRequest, bool) {
 		return PullRequest{}, false
 	}
 	pr := PullRequest{ID: r.ID, RepositoryID: *r.RepositoryID, Number: *r.Number, Summary: r.Summary,
-		Description: r.Description, Base: r.Base, Branch: r.Branch, StatusID: r.Status.ID, Created: r.Created}
+		Description: r.Description, Base: r.Base, Branch: r.Branch, StatusID: r.Status.ID, Created: r.Created, Updated: r.Updated}
+	if r.CreatedUser != nil {
+		pr.AuthorName = r.CreatedUser.Name
+	}
 	if r.Assignee != nil {
 		pr.AssigneeName = r.Assignee.Name
 	}

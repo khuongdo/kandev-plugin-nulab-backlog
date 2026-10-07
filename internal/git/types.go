@@ -184,9 +184,11 @@ type QueryInput struct {
 	RepoName   string   `json:"repoName"`
 	Statuses   []string `json:"statuses"`
 	Assignee   string   `json:"assignee"`
+	// Creator is the PR list's creator filter (FR2.6); empty means anyone.
+	Creator string `json:"creator,omitempty"`
 }
 
-// Validate trims the name and checks the fields.
+// Validate trims the name and checks the fields; no creator means anyone.
 func (q *QueryInput) Validate(selected []string) error {
 	q.Name = strings.TrimSpace(q.Name)
 	if n := utf8.RuneCountInString(q.Name); n == 0 || n > 100 {
@@ -202,6 +204,12 @@ func (q *QueryInput) Validate(selected []string) error {
 	q.Statuses = statuses
 	if !validWho(q.Assignee) {
 		return invalid(FieldAssignee)
+	}
+	if q.Creator == "" {
+		q.Creator = WhoAnyone
+	}
+	if !validWho(q.Creator) {
+		return invalid(FieldCreator)
 	}
 	return nil
 }

@@ -71,10 +71,11 @@ test: check-sdk
 	go test -race $(GO_PKGS)
 	cd ui && npx vitest run
 
+# The profile stays under build/, never at the repository root.
 coverage: check-sdk
 	@mkdir -p $(BUILD)
-	go test -race -coverprofile=coverage.out $(GO_PKGS)
-	@grep -v -F $(foreach f,$(COVERAGE_EXCLUDE),-e '$(MODULE)/$(f):') coverage.out > $(BUILD)/coverage.filtered.out
+	go test -race -coverprofile=$(BUILD)/coverage.out $(GO_PKGS)
+	@grep -v -F $(foreach f,$(COVERAGE_EXCLUDE),-e '$(MODULE)/$(f):') $(BUILD)/coverage.out > $(BUILD)/coverage.filtered.out
 	@total=$$(go tool cover -func=$(BUILD)/coverage.filtered.out | awk '/^total:/ {sub("%","",$$3); print $$3}'); \
 	echo "coverage: $$total% (floor $(COVERAGE_MIN)%, excluded: $(COVERAGE_EXCLUDE))"; \
 	awk -v t="$$total" -v m="$(COVERAGE_MIN)" 'BEGIN { exit (t + 0 >= m + 0) ? 0 : 1 }' || { echo "coverage: below the $(COVERAGE_MIN)% floor"; exit 1; }
@@ -87,7 +88,7 @@ check-secrets: check-sdk
 ## ui-build: one self-contained ES module; React comes from the host, never the bundle.
 ui-build:
 	cd ui && npx esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 \
-		--jsx=transform --jsx-factory=h --outfile=../$(BUILD)/ui/bundle.js
+		--jsx=transform --jsx-factory=h --jsx-fragment=Fragment --outfile=../$(BUILD)/ui/bundle.js
 	@if grep -q 'react-dom\|__SECRET_INTERNALS\|react.production' $(BUILD)/ui/bundle.js; then echo "ui-build: React was bundled"; exit 1; fi
 
 build: check-sdk
