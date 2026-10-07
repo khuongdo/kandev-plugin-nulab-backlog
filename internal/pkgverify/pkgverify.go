@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -27,17 +28,19 @@ import (
 const (
 	checksumsName    = "checksums.txt"
 	checksumsSigName = "checksums.txt.sig"
-	// maxEntry bounds one archive entry; the executables are about 16 MiB.
+	// maxEntry bounds one archive entry; each of the four executables is
+	// about 16 MiB uncompressed.
 	maxEntry = 128 << 20
 )
 
-// executables is the exact runtime.executables map (BR5.1).
+// executables is the exact runtime.executables map (BR5.1): Linux and macOS
+// on amd64 and arm64. Windows is not packaged, which keeps the package small
+// enough to upload within Kandev's 30 s server read limit.
 var executables = map[string]string{
-	"linux-amd64":   "server/plugin-linux-amd64",
-	"linux-arm64":   "server/plugin-linux-arm64",
-	"darwin-amd64":  "server/plugin-darwin-amd64",
-	"darwin-arm64":  "server/plugin-darwin-arm64",
-	"windows-amd64": "server/plugin-windows-amd64.exe",
+	"linux-amd64":  "server/plugin-linux-amd64",
+	"linux-arm64":  "server/plugin-linux-arm64",
+	"darwin-amd64": "server/plugin-darwin-amd64",
+	"darwin-arm64": "server/plugin-darwin-arm64",
 }
 
 // nulabAssetURL matches a URL on a Nulab or Backlog domain. The logo is
@@ -53,8 +56,9 @@ type Expect struct {
 
 // Verify fails unless the archive matches its dist checksums line, every file
 // matches the in-archive checksums.txt with nothing unlisted or missing, the
-// required files are present, the UI bundle references no Nulab or Backlog
-// asset URL, and the manifest has the expected identity and exactly the five
+// required files are present, nothing under server/ other than the four
+// executables is packaged, the UI bundle references no Nulab or Backlog asset
+// URL, and the manifest has the expected identity and exactly the four
 // executables.
 func Verify(archivePath, distChecksumsPath string, want Expect) error {
 	raw, err := os.ReadFile(archivePath) //nolint:gosec // G304: the path is the operator's own build output
@@ -74,6 +78,11 @@ func Verify(archivePath, distChecksumsPath string, want Expect) error {
 	for _, name := range append([]string{"manifest.yaml", "ui/bundle.js"}, values(executables)...) {
 		if _, ok := files[name]; !ok {
 			return fmt.Errorf("missing required file: %s", name)
+		}
+	}
+	for name := range files {
+		if strings.HasPrefix(name, "server/") && !slices.Contains(values(executables), name) {
+			return fmt.Errorf("unexpected executable: %s", name)
 		}
 	}
 	if nulabAssetURL.Match(files["ui/bundle.js"]) {
@@ -210,7 +219,7 @@ func checkManifest(data []byte, want Expect) error {
 		return fmt.Errorf("manifest is %s@%s, expected %s@%s", m.ID, m.Version, want.ID, want.Version)
 	}
 	if !maps.Equal(m.Runtime.Executables, executables) {
-		return errors.New("manifest must list exactly the 5 executables of BR5.1")
+		return errors.New("manifest must list exactly the four executables of BR5.1")
 	}
 	return nil
 }

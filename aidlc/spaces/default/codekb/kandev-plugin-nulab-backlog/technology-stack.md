@@ -1,23 +1,22 @@
 # Technology Stack — kandev-plugin-nulab-backlog
 
-## Languages and Runtimes
-
-| Item | Version | Source |
+| Layer | Technology | Version |
 |---|---|---|
-| Go | `go 1.26.0` | `go.mod` |
-| Node.js | 22 | `.nvmrc`, CI |
-| TypeScript | ~6.0.3, `strict` | `ui/package.json`, `ui/tsconfig.json` |
-| Kandev host | min `0.96.0`; SDK pin `f099a46dc7aab16f6ff5806cd29b2b480296303f` (tag `v0.96.0`) | `manifest.yaml`, `.kandev-sdk-ref` |
+| Backend language | Go | `go 1.26.0` (go.mod) |
+| Plugin SDK | `github.com/kandev/kandev/pkg/pluginsdk` (local `replace` to `../kandev/apps/backend`) | Kandev `v0.96.0`, commit `f099a46dc7aab16f6ff5806cd29b2b480296303f` (`.kandev-sdk-ref`) |
+| RPC (indirect) | `hashicorp/go-plugin` / gRPC | v1.8.0 / v1.83.1 |
+| HTTP | Go stdlib `net/http` | — |
+| UI language | TypeScript (strict), TSX with host-provided React | ~6.0.3 |
+| UI bundler | esbuild | ^0.28.2 |
+| Node | `.nvmrc` | 22 |
+| Tests | Go `testing` + testify; Vitest + jsdom | testify v1.12.1; vitest ^5.0.3 |
+| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 |
+| CI/CD | GitHub Actions | `.github/workflows/ci.yml`, `release.yml` |
 
-## Frameworks and Libraries
+## Runtime Environment (observed, self-hosted)
 
-- Backend: Kandev `pkg/pluginsdk` (go-plugin over gRPC, incl. `GitCredentialHandler`); stdlib `net/http` for Backlog. No third-party HTTP client and no vendor SDK (team rule) — a GitHub/Bitbucket client would also be stdlib-only. Versions: [dependencies.md](dependencies.md).
-- UI runtime: React 19 and `host.ui` supplied by the host; types from `@kandev/plugin-sdk` (path-mapped). No React and no CSS in the bundle.
-- UI build: esbuild ^0.28.2 to `build/ui/bundle.js`.
+- Kandev v0.97.0, systemd user service `kandev --headless` on `:38429`.
+- Fronted by `tailscale serve` `https://webfrontier.tail152aaa.ts.net` -> `http://localhost:38429`.
+- Drift: runtime 0.97.0 vs SDK pin and `min_kandev_version` 0.96.0.
 
-## Build, Test and Quality Tooling
-
-- Build: `Makefile` targets (`check-sdk`, `check-format`, `vet`, `lint`, `test`, `coverage`, `check-secrets`, `ui-build`, `build`, `package`, `verify-package`, `contract-test`, `release-preflight`, `marketplace-entry`); CI calls them.
-- Test: Go `testing` + testify, always `-race`, `httptest`; Vitest ^5.0.3 + jsdom + axe-core.
-- Lint and format: `gofmt`, `go vet`, golangci-lint + `gosec`; ESLint ^10.12.0, Prettier ^3.9.9.
-- CI/CD: GitHub Actions (`ci.yml`, `release.yml`), SHA-pinned actions, build provenance attestation.
+Library inventory: [dependencies.md](dependencies.md).

@@ -2,190 +2,111 @@
 
 ## System Overview
 
-Two halves run inside the Kandev host:
-
-- **Go backend** — a plugin binary served by `pluginsdk.Serve` (hashicorp go-plugin over gRPC). Handles 55 actions, the OAuth webhook, the `task.deleted` event, the Git credential gRPC extension (`ResolveGitCredential`, `GetGitCredentialBinding`) and three background loops (issue status sync, issue watcher, PR watcher). All state and secrets go through the host.
-- **UI bundle** — `build/ui/bundle.js` (esbuild, ES module) registers screens and extension points with Kandev web. React and every `host.ui` component come from the host; the bundle never contains React.
-
-Every outbound call (Backlog REST v2 and the Backlog Git smart-HTTP probe) goes through one gateway, `internal/backlog`.
+A Kandev plugin made of two deliverables packed into one archive: a Go server binary (one per platform) that Kandev launches as a child process and talks to over the plugin SDK RPC, and an ESM UI bundle that the Kandev web app loads and renders with the host's React. All Backlog and SCM traffic leaves from the Go binary; the UI calls plugin actions through the host.
 
 ## Architectural Style
 
-Hexagonal (ports and adapters) modular monolith in one plugin binary, plus a host-rendered UI bundle:
-
-- Inbound adapter: KandevAdapter (`internal/plugin`) — the only package besides `server/` that imports `pluginsdk`; one `handlers` map; maps domain errors to `ActionError`; implements `pluginsdk.GitCredentialHandler` (`credential.go`); host port adapters let the domain call back into Kandev.
-- Domain services: Connection, Issues, Git — each with workspace-scoped state documents (`{schemaVersion, items}`).
-- Outbound adapter: BacklogGateway, stateless about credentials (passed on every call). One `backlog.Client` satisfies the `connection`, `git` and `issues` gateway ports together (`internal/plugin/runtime.go:135-139`).
-- Cross-cutting: Redact.
-
-Internal Go edges are acyclic ([dependencies.md](dependencies.md#internal-dependencies)).
+Modular monolith inside a host-plugin architecture. Evidence: one binary (`server/main.go` calls `pluginsdk.Serve(plugin.NewRuntime())`), domain packages under `internal/`, a single adapter package (`internal/plugin`) that alone imports `pluginsdk` (ports-and-adapters). Deployment is "install a package on a Kandev server"; there is no service of its own.
 
 ## Component Relationships
 
 ```mermaid
 flowchart LR
-  subgraph Host["Kandev host (external)"]
-    WEB["Kandev web + host.ui"]
-    CORE["Kandev backend: state, secrets, tasks, repositories, events"]
+  subgraph Host["Kandev server (v0.97.0 running, min 0.96.0)"]
+    KB[Kandev backend :38429]
+    KW[Kandev web app]
   end
-  subgraph UI["ui bundle"]
-    REG["index.ts registration"]
-    KIT["shared kit"]
-    SET["settings"]
-    ISS["issues"]
-    GITUI["git"]
-    PAGE["page /backlog"]
-    SW["switch"]
+  subgraph Plugin["nulab-backlog package"]
+    UI[UI Bundle]
+    SE[Server Entrypoint]
+    KA[KandevAdapter]
+    CO[Connection]
+    IS[Issues]
+    GI[Git]
+    SC[SCM]
+    BG[BacklogGateway]
+    SCL[SCM Clients]
+    RE[Redact]
   end
-  subgraph BE["Go plugin binary"]
-    AD["KandevAdapter"]
-    CONN["Connection"]
-    ISSUES["Issues"]
-    GIT["Git"]
-    GW["BacklogGateway"]
-    RED["Redact"]
-  end
-  BL["Backlog API v2 + Backlog Git (external)"]
-  WEB --> REG
-  REG --> SET
-  REG --> PAGE
-  REG --> ISS
-  REG --> GITUI
-  REG --> SW
-  PAGE --> ISS
-  PAGE --> GITUI
-  SET --> GITUI
-  SET --> KIT
-  ISS --> KIT
-  GITUI --> KIT
-  SET -- "invokeAction" --> CORE
-  ISS -- "invokeAction" --> CORE
-  GITUI -- "invokeAction" --> CORE
-  CORE -- "gRPC action, webhook, event, Git credential RPC" --> AD
-  AD --> CONN
-  AD --> ISSUES
-  AD --> GIT
-  ISSUES --> CONN
-  GIT --> CONN
-  CONN --> GW
-  ISSUES --> GW
-  GIT --> GW
-  GW --> BL
-  AD -. "host port" .-> CORE
-  GW --> RED
+  KW --> UI
+  UI -- plugin actions --> KB
+  KB -- SDK RPC --> SE --> KA
+  KA --> CO & IS & GI & SC
+  CO & IS & GI --> BG
+  SC --> SCL
+  KA & CO & IS & GI & BG --> RE
+  BG --> BL[(Backlog REST v2)]
+  SCL --> EXT[(GitHub / GitLab / Bitbucket)]
 ```
 
-Text fallback: Kandev web loads the bundle; `index.ts` registers the settings, page, issues, git and switch modules (plus the repository and review providers from `git`). Screens call plugin actions through `host.api.invokeAction`; the Kandev backend forwards them over gRPC to KandevAdapter, which also receives the Git credential RPCs. KandevAdapter dispatches to Connection, Issues and Git. Issues and Git read the Backlog snapshot and credentials from Connection. All three call BacklogGateway, the only outbound client. KandevAdapter calls back into Kandev through the host port. Redact is used by the gateway and the domain services.
+Text fallback: browser -> Kandev web -> UI Bundle -> Kandev backend -> (RPC) -> Server Entrypoint -> KandevAdapter -> Connection / Issues / Git / SCM -> BacklogGateway or SCM Clients -> external REST APIs. Redact is used by every outbound path. Full list: [component-inventory.md](component-inventory.md).
+
+Build-time components (CI Tooling, PackageVerify) are not in the runtime graph; see [code-structure.md](code-structure.md#build-and-packaging).
 
 ## Data Flow
 
-- **Persistence**: plugin state store (`capabilities.state`) holds the connection record and switch, issue links/settings/index/watches/quick actions/queries, and Git documents `git.links` (max 500), `git.watches` (50) with ledger, `git.queries` (50), all `schemaVersion: 1` with **no provider field**. Secret store (`capabilities.secrets`) holds `backlog.connection.<ws>` (API key / OAuth token) and `backlog.git.<ws>` = `{username, password, spaceHost, revision}`. Task metadata key `nulab_backlog_pr` (`internal/git/host.go:9`) marks linked PRs on live tasks.
-- **UI to backend**: UI modules keep light caches (`git/git-state.ts`, `settings/state.ts`, `settings/use-list.ts`); every change is an action call.
-- **Background**: issue `Syncer` and issue watcher (1-minute ticks), `internal/git/watcher.go` (5-minute ticker) call Backlog through the gateway's per-group rate limiter.
-- **Events in-process**: Connection publishes `ConnectionChanged`; Git and Issues subscribe and disable items whose host/project are no longer covered.
+- UI -> host -> plugin action (JSON, `max_body_bytes` 8-256 KiB) -> domain service -> gateway -> external API; responses mapped back to `pluginsdk` error codes only in `internal/plugin`.
+- State and secrets live in the host (`capabilities.state`, `secrets`); the plugin keeps no database.
+- Host events in: `task.deleted`; webhook in: `oauth-callback` (public GET).
 
 ## Interaction Diagrams
 
-### Connect with an API key
+### Install the package (the failing transaction for this intent)
 
 ```mermaid
 sequenceDiagram
-  participant U as Admin in SettingsScreen
+  participant B as Browser (Kandev web UI)
+  participant T as tailscale serve (HTTPS proxy)
+  participant K as Kandev backend :38429
+  participant P as pkgtar / install service
+  B->>T: POST /api/plugins/install multipart "package" (29.5 MB)
+  T->>K: forward body stream
+  Note over K: http.Server ReadTimeout = 30 s (server.readTimeout)
+  alt body fully read within 30 s
+    K->>P: parse multipart, verify archive, pick platform binary
+    P-->>K: installed
+    K-->>T: 201 Created
+    T-->>B: 201
+  else upload slower than 30 s
+    K--xK: read cut, FormFile fails
+    K-->>T: 400 {"error":"missing multipart field \"package\""} (47 B), connection closed
+    T-->>B: 502 Bad Gateway
+    Note over B: UI shows "Plugin install failed: 502"
+  end
+```
+
+Text fallback: the browser uploads the whole package through `tailscale serve`; if the backend has not received the full body after 30 s, the read is cut, the backend answers 400 and drops the connection, and the proxy reports 502 to the browser.
+
+### Plugin action (e.g. list issues)
+
+```mermaid
+sequenceDiagram
+  participant UI as UI Bundle
   participant K as Kandev backend
   participant A as KandevAdapter
-  participant C as Connection
+  participant I as Issues
   participant G as BacklogGateway
-  participant B as Backlog API
-  U->>K: invokeAction connection.connect_api_key
-  K->>A: action (admin, workspace)
-  A->>C: Connect(space, key)
-  C->>C: validate https and allowed domain
-  C->>G: Myself(creds)
-  G->>B: GET /api/v2/users/myself
-  B-->>G: user
-  C->>K: save record and secret via host port
-  A-->>U: connected name and space, no secret
+  UI->>K: call action issues.list
+  K->>A: RPC HandleAction
+  A->>I: List(ctx, filter)
+  I->>G: GET /api/v2/issues (credentials per call)
+  G-->>I: issues JSON (LimitReader)
+  I-->>A: result
+  A-->>K: JSON / pluginsdk error code
+  K-->>UI: response
 ```
 
-Text fallback: the admin submits space and key; Kandev forwards `connection.connect_api_key`; Connection validates the address and checks the key with `GET /users/myself` through the gateway; on success the record and secret are stored through the host and the UI receives only display data.
-
-### Clone or push a Backlog Git repository (credential lease)
-
-```mermaid
-sequenceDiagram
-  participant K as Kandev backend
-  participant A as KandevAdapter
-  participant Gt as Git
-  participant C as Connection
-  K->>A: ResolveGitCredential(ProviderID, Host, Path, TaskID, workspace)
-  A->>C: RequireEnabled (fail closed while off)
-  A->>Gt: ResolveCredential(scope)
-  Gt->>Gt: refuse if ProviderID is not nulab-backlog
-  Gt->>C: Current (space host, selected projects)
-  Gt->>Gt: refuse if host or /git/PROJ/repo outside the connected space
-  Gt->>C: GitCredential (backlog.git.ws, must match space host)
-  Gt-->>A: lease username/password, binding epoch.revision
-  A-->>K: credential (never logged)
-```
-
-Text fallback: when Kandev clones or pushes a repository owned by provider `nulab-backlog`, it calls `ResolveGitCredential`. The adapter refuses while Backlog is off, then Git refuses any other provider id, any host other than the connected space host and any project not selected, and finally returns the single workspace Git credential bound to `<connectionEpoch>.<revision>`. `GetGitCredentialBinding` returns only the binding.
-
-### Link a PR to a task
-
-```mermaid
-sequenceDiagram
-  participant P as PR link task action (ui/src/git/pr-link.ts)
-  participant A as KandevAdapter
-  participant Gt as Git
-  participant C as Connection
-  participant G as BacklogGateway
-  participant K as Kandev backend
-  P->>A: git.prs.link (taskId, PR URL or project/repo/number)
-  A->>Gt: Link
-  Gt->>C: Current + Credentials
-  Gt->>Gt: parse /git/PROJ/repo/pullRequests/n, check space and project
-  Gt->>G: PullRequest(projectKey, repo, n)
-  Gt->>K: store link (key spaceHost|repositoryId|number), task metadata nulab_backlog_pr
-  A-->>P: link with status
-```
-
-Text fallback: the task action sends the PR reference; Git parses the Backlog PR URL, checks it belongs to the connected space and a selected project, fetches the PR with the Backlog credentials, stores the link keyed by `spaceHost|repositoryId|number` and writes the `nulab_backlog_pr` task metadata.
-
-### Create a task from an issue, PR list, watches
-
-Unchanged from the previous store and not re-verified this run: `issues.create_task` builds the task server-side and stores the link; the issue sync loop updates link status; `task.deleted` drops links. The PR list loads saved queries (default applied on open since v0.2.0) and calls `git.prs.list` for one repository. PR and issue watchers list Backlog on their tick and create tasks deduplicated by a ledger/index.
-
-## Source Control Coupling (intent 261007-source-control-agnostic)
-
-The Kandev SDK side is provider-neutral; the plugin side is Backlog-only. Seams and couplings that the intent must move (evidence and file/line citations in the developer scan `aidlc/spaces/default/intents/261007-source-control-agnostic/inception/reverse-engineering/developer-scan.md` § Technical Debt Signals):
-
-| Layer | Today | Host support at v0.96.0 |
-|---|---|---|
-| Provider identity | One id `nulab-backlog` for repository, review and credential provider (`internal/git/types.go:19`, `ui/src/switch/enabled-events.ts` `PLUGIN_ID`, `manifest.yaml:31`) | A plugin may declare several `repository_providers` and register one UI repository/review provider per declared id; ownership is exclusive across active plugins; `github`, `gitlab`, `azure_devops` are reserved for Kandev's native integrations |
-| Credential RPC | `ResolveCredential` rejects `ProviderID != "nulab-backlog"` (`internal/git/service.go:612-614, 649`) | Each request carries `ProviderID`, `Host`, `Path`, so per-provider dispatch fits here; Kandev's native GitHub resolver runs before plugin resolvers |
-| Domain model | `Link`/`Watch`/`Query`/`RepoRef` keyed by `SpaceHost` + Backlog `ProjectKey` + repo + Backlog numeric `RepositoryID`; Backlog-only regexes and URL shapes; PR state ids `1/2/3` | — |
-| Gateway | `git.Gateway` takes `backlog.Credentials` and returns `backlog.*` types; one implementation | — |
-| Scope and auth | Every Git call reads the Backlog connection (`Current`, `Credentials`) and is gated by the Backlog switch and `ConnectionChanged` | — |
-| Settings | One admin "Git access" username/password section, shown only while Backlog is connected (`ui/src/settings/SettingsScreen.tsx:398-409`); repository picker built from Backlog selected projects | `config_schema` for operator-level app credentials; secrets need no manifest change |
-| Actions | `git.*`, `repositories.inspect/branches` take no provider argument; Kandev calls `repositories.*` with a descriptor that already carries `provider_id` | — |
-
-Natural extension seam (description of the current code, not a decision): the `provider_id` already present on credential RPCs and repository descriptors is the dispatch point; a per-provider port beside `git.Gateway` and a provider field on Git documents (defaulting to Backlog Git when absent) would let existing v0.3.0 data read unchanged. Whether new providers are owned by this plugin (plugin-prefixed ids such as `nulab-backlog-github`) or only referenced (Kandev's native `github` repositories as PR references) is an open requirements decision ([code-quality-assessment.md](code-quality-assessment.md#intent-261007-source-control-agnostic-risks)).
+Text fallback: UI -> host -> adapter -> domain service -> gateway -> Backlog, and back.
 
 ## Key Design Decisions
 
-- Only `internal/plugin` imports the SDK; the host is an external dependency behind a port, so domain code is tested with fakes.
-- The gateway holds no credentials, avoiding a Connection-Gateway cycle; callers fetch credentials per call.
-- Git is a Backlog-only bounded context layered on the Backlog connection: it reuses the Backlog connection's credentials, scope and switch rather than owning a source-control connection of its own. This keeps U4 small but is the main obstacle for this intent.
-- The Git credential is a separate secret from the API key/OAuth token, bound to the connection epoch so a space change invalidates every lease.
-- The UI never bundles React and draws every control from `host.ui`; it is tied to SDK v0.96.0's `PluginUIShape`.
-
-## External Reference: Kandev GitHub Integration (v0.96.0)
-
-Recorded by intent 261007-github-parity-actions (not re-verified this run): the GitHub integration's quick actions, default query presets and page layout served as the model for v0.2.0; source `/home/k_do_webfrontier/repo/kandev`, tag `v0.96.0`, commit `f099a46`, paths under `apps/web/components/github/` and `apps/web/components/integrations/`. Provider-ownership facts for this intent are in [Source Control Coupling](#source-control-coupling-intent-261007-source-control-agnostic).
+- Only `internal/plugin` and `server` import `pluginsdk`; domain packages stay host-agnostic.
+- BacklogGateway is stateless about credentials (passed per call) to avoid a Connection-Gateway cycle.
+- One package carries all 5 platform binaries (`manifest.yaml` `runtime.executables`); Kandev picks the host platform at install time and rejects a package missing it (`pkgtar.ErrPlatformNotSupported`). Consequence: a ~29.5 MB upload.
+- React is supplied by the host; the bundle fails the build if React is bundled.
+- Package verification is done by an in-repo verifier because Kandev v0.96.0 ships no verify CLI.
 
 ## Improvement Opportunities
 
-- Introduce a source-control provider concept inside `internal/git` (provider id on documents and scopes, per-provider gateway and credential) instead of reading the Backlog connection directly.
-- Separate a source-control connection/credential store from the Backlog issue-tracker connection, keeping Backlog Git as the default provider for existing data.
-- Add a new outbound client package per external vendor (stdlib `net/http`, own error type mapped to the same `ActionError` codes); keep `internal/backlog` Backlog-only.
-- Large files to split when touched: `internal/git/service.go`, `ui/src/settings/SettingsScreen.tsx`.
+- Install without a large browser upload: install by URL (`POST /api/plugins/install` JSON `{"url": ...}` to the GitHub Release asset; backend downloads it, 100 MiB cap), or document raising `KANDEV_SERVER_READTIMEOUT`.
+- Shrink the package (fewer platforms or per-platform packages); requires coordinated change of `manifest.yaml`, `Makefile` `PLATFORMS`, `internal/pkgverify`. Trade-offs belong to the bugfix design, not here.

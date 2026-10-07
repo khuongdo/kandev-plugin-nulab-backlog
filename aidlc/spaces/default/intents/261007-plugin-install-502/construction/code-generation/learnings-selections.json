@@ -1,0 +1,3 @@
+{"stage_slug":"code-generation","space":"default","intent":"261007-plugin-install-502","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"The package platform list lives in four places: manifest.yaml runtime.executables, Makefile PLATFORMS, internal/pkgverify executables, and internal/plugin/manifest_test.go; internal/plugin/testdata/v030/manifest.yaml is a frozen 0.3.0 snapshot and stays unchanged"}
+]}

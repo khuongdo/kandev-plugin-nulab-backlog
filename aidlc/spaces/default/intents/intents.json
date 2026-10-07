@@ -40,5 +40,12 @@
     "dirName": "261007-backlog-panel-retouch",
     "scope": "refactor",
     "status": "complete"
+  },
+  {
+    "uuid": "01a11881-de30-7876-a5d1-34652c4c8bb2",
+    "slug": "plugin-install-502",
+    "dirName": "261007-plugin-install-502",
+    "scope": "bugfix",
+    "status": "in-flight"
   }
 ]

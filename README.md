@@ -32,6 +32,18 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.4.2: smaller package, install From URL
+
+- The package is smaller (about 23 MB instead of 29.5 MB): it now carries server
+  executables for Linux and macOS on amd64 and arm64 only.
+- **Windows servers are no longer supported.** Kandev running on Windows cannot install
+  or upgrade to 0.4.2; stay on 0.4.1 there.
+- Install **From URL** (Settings > Plugins > Install plugin) with the GitHub Release
+  package URL. Uploading the file still works, but Kandev stops reading an upload after
+  30 seconds, which shows as `Plugin install failed: 502` on slow connections (see
+  "Troubleshooting" below).
+- Nothing else changes: no data, setting or permission changes.
+
 ### 0.4.1: GitHub-style lists
 
 - Issue search runs when you press **Enter** (or leave the search box after editing), not while
@@ -119,10 +131,34 @@ and `make coverage` fails below 80% line coverage.
 
 ## Install on Kandev
 
+Supported Kandev server platforms: Linux and macOS, on amd64 and arm64. Windows servers
+are not supported: the package carries no Windows executable, so Kandev on Windows
+refuses to install it.
+
 1. Sign in to your Kandev server (0.96.0 or later) as an admin.
-2. Open **Settings > Plugins** and upload `dist/nulab-backlog-<version>.tar.gz`.
+2. Open **Settings > Plugins**, click **Install plugin** and install the package in one of
+   two ways:
+   - **From URL** (recommended): paste the package URL of the GitHub Release, for example
+     `https://github.com/khuongdo/kandev-plugin-nulab-backlog/releases/download/v<version>/nulab-backlog-<version>.tar.gz`.
+     The Kandev server downloads the package itself, so the speed of your own connection
+     does not matter.
+   - **Upload file**: upload `nulab-backlog-<version>.tar.gz` (from the GitHub Release or
+     your own `dist/`). The whole upload must finish within the server's read limit
+     (30 seconds by default).
 3. Open **Settings > Integrations > Backlog**, turn the switch on and click **Save**
    (Backlog is off until an admin turns it on).
+
+### Troubleshooting: `Plugin install failed: 502`
+
+If an upload fails with `Plugin install failed: 502` after about 30 seconds, and the
+Kandev server log shows a 400 response with `missing multipart field "package"`, the
+upload was slower than the server's read limit: Kandev stopped reading the request after
+30 seconds, and a proxy in front of it (for example `tailscale serve`) reported 502.
+Either:
+
+- install **From URL** instead (see above), or
+- raise the limit on the Kandev server with `KANDEV_SERVER_READTIMEOUT` (in seconds, for
+  example `KANDEV_SERVER_READTIMEOUT=120`) and restart Kandev.
 
 ## Connect with an API key
 
