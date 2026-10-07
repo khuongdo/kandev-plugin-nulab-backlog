@@ -42,7 +42,7 @@ export function createIntegrationSwitch(
         .invokeAction<ConnectionView>("connection.get", { workspaceId })
         .then((view) => {
           if (!live) return;
-          const value = view.enabled !== false;
+          const value = view.enabled === true; // opt-in: anything but an explicit on is off
           setEnabled(value);
           publishEnabled(host, workspaceId, value);
         })

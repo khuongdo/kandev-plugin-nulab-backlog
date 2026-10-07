@@ -69,6 +69,14 @@ describe("integration switch (card action)", () => {
     expect(none.host.api.invokeAction).not.toHaveBeenCalled();
   });
 
+  it("shows Off and publishes off when the view has no enabled field (opt-in)", async () => {
+    const noField: View = { ...connected };
+    delete noField.enabled;
+    const { host, control } = await renderSwitch(scripted(noField));
+    expect(control()).toMatchObject({ enabled: false });
+    expect(host.setIntegrationEnabled).toHaveBeenCalledWith("nulab-backlog", "ws-9", false);
+  });
+
   it("publishes the loaded value after a successful load", async () => {
     const { host } = await renderSwitch(scripted({ ...connected, enabled: false }));
     expect(host.setIntegrationEnabled).toHaveBeenCalledWith("nulab-backlog", "ws-9", false);

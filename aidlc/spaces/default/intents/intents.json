@@ -19,5 +19,12 @@
     "dirName": "261007-github-parity-actions",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a114d8-0997-7d2e-8f8a-a32d9310e7e4",
+    "slug": "opt-in-default",
+    "dirName": "261007-opt-in-default",
+    "scope": "bugfix",
+    "status": "complete"
   }
 ]

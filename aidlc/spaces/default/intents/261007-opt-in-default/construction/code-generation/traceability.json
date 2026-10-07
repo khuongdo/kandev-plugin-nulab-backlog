@@ -1,0 +1,85 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR2",
+    "FR3",
+    "FR4",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR6",
+    "NFR1",
+    "NFR2",
+    "NFR3"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "OK",
+      "target": "internal/connection/store.go"
+    },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "internal/connection/store_test.go"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "internal/plugin/opt_in_test.go"
+    },
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "internal/plugin/opt_in_test.go"
+    },
+    {
+      "id": "FR3",
+      "status": "OK",
+      "target": "ui/src/switch/integration-switch.tsx"
+    },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "README.md"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "README.md"
+    },
+    {
+      "id": "FR5.2",
+      "status": "Deferred",
+      "target": "Deployment Pipeline stage release notes (reuses the README 'Upgrading from v0.1.x' note)"
+    },
+    {
+      "id": "FR6",
+      "status": "OK",
+      "target": "internal/ci/contract.go"
+    },
+    {
+      "id": "NFR1",
+      "status": "OK",
+      "target": "internal/plugin/opt_in_test.go"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/connection/fakes_test.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/ci/contract_test.go"
+    }
+  ]
+}

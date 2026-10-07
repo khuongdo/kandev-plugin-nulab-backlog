@@ -1,0 +1,66 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "internal/ci/contract.go"
+    },
+    {
+      "path": "internal/ci/contract_test.go"
+    },
+    {
+      "path": "internal/connection/fakes_test.go"
+    },
+    {
+      "path": "internal/connection/oauth_flow_test.go"
+    },
+    {
+      "path": "internal/connection/service_test.go"
+    },
+    {
+      "path": "internal/connection/store.go"
+    },
+    {
+      "path": "internal/connection/store_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/opt_in_test.go"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/index.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-page.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/state.ts"
+    },
+    {
+      "path": "ui/src/switch/integration-switch.tsx"
+    },
+    {
+      "path": "ui/src/switch/switch.test.tsx"
+    }
+  ]
+}

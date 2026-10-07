@@ -180,12 +180,36 @@ type rig struct {
 	verifier string // the browser cookie of the last startState
 }
 
+// newRig is a rig whose workspace ws-1 an admin has switched on.
 func newRig(t *testing.T) *rig {
 	t.Helper()
+	r := newFreshRig()
+	switchOn(t, r.host, "ws-1")
+	return r
+}
+
+// newFreshRig is a freshly installed plugin: no switch record, so Backlog
+// is off in every workspace until an admin turns it on.
+func newFreshRig() *rig {
 	gw, logs, host := &fakeGateway{}, &syncBuffer{}, newFakeHost()
 	rt := newRuntime(gw, logs, "debug")
 	rt.SetHost(host)
 	return &rig{rt: rt, host: host, gw: gw, logs: logs}
+}
+
+// switchOn turns Backlog on for each workspace through SaveSwitch, as an
+// admin does with connection.set_enabled. No switch record means off
+// (opt-in), so rigs that exercise on-behaviour call this first. The write
+// counter is reset so assertions about later writes stay exact.
+func switchOn(t *testing.T, host *fakeHost, workspaces ...string) {
+	t.Helper()
+	store := connection.NewStore(host, host)
+	for _, w := range workspaces {
+		require.NoError(t, store.SaveSwitch(context.Background(), w, true))
+	}
+	host.mu.Lock()
+	host.writes = 0
+	host.mu.Unlock()
 }
 
 func (r *rig) call(t *testing.T, key string, body any) (*pluginsdk.PluginActionResponse, map[string]any) {

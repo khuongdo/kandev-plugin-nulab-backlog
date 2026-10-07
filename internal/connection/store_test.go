@@ -294,10 +294,17 @@ func switchOf(state *fakeState, workspaceID string) (map[string]any, bool) {
 	return v, ok
 }
 
-func TestSwitchWithNoRecordIsEnabled(t *testing.T) {
+func TestSwitchWithNoRecordIsOff(t *testing.T) {
 	enabled, err := newTestStore(newFakeSecrets(), newFakeState()).LoadSwitch(context.Background(), ws)
 	require.NoError(t, err)
-	require.True(t, enabled, "an absent IntegrationSwitch means on (BR7.1)")
+	require.False(t, enabled, "an absent IntegrationSwitch means off: Backlog is opt-in after installation")
+}
+
+func TestSwitchWithNoRecordViewReportsOff(t *testing.T) {
+	view, err := newTestStore(newFakeSecrets(), newFakeState()).Load(context.Background(), ws)
+	require.NoError(t, err)
+	require.Equal(t, StateNotConnected, view.State)
+	require.False(t, view.Enabled, "connection.get on a fresh workspace reports enabled: false")
 }
 
 func TestSwitchSaveRoundTripsWithChangedAtFromTheClock(t *testing.T) {

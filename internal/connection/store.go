@@ -210,14 +210,17 @@ func (s *Store) readPair(ctx context.Context, workspaceID string) (pair, error) 
 }
 
 // LoadSwitch reports whether Backlog is on for the workspace. No record means
-// on (BR7.1); a record that cannot be decoded is an error, never "on" (NFR3.9).
+// off: Backlog is opt-in after installation until an admin turns it on with
+// connection.set_enabled (intent 261007-opt-in-default, superseding BR7.1 of
+// intent 261006). A record that cannot be decoded is an error, never "on"
+// (NFR3.9).
 func (s *Store) LoadSwitch(ctx context.Context, workspaceID string) (bool, error) {
 	value, found, err := s.getState(ctx, workspaceID, switchKeyName)
 	if err != nil {
 		return false, s.storeErr(ctx, "read switch", err)
 	}
 	if !found {
-		return true, nil
+		return false, nil
 	}
 	var rec switchRecord
 	if decode(value, &rec) != nil || rec.SchemaVersion != schemaVersion || rec.Enabled == nil {

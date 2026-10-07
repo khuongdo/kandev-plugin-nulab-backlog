@@ -24,6 +24,8 @@ afterEach(unmount);
 
 const SETTINGS_HREF = "/settings/workspaces/ws-1/integrations/nulab-backlog";
 const off: View = { ...connected, enabled: false };
+const noEnabledField: View = { ...connected };
+delete noEnabledField.enabled;
 
 /** U3: once connected, /backlog lists the issues; these tests answer with an empty list. */
 const withIssues =
@@ -49,6 +51,7 @@ async function renderPage(invoke: Invoke, workspace: string | null = "ws-1", mes
 /** The states that show the alert instead of the lists (BR2.3). */
 const alertStates: [string, View, string][] = [
   ["Off", off, en.pageOff],
+  ["Off when the view has no enabled field (opt-in)", noEnabledField, en.pageOff],
   ["Not connected", notConnected, en.pageNotConnected],
   ["Incomplete", incomplete, en.incomplete],
 ];
@@ -60,6 +63,11 @@ describe("pageState (WF7)", () => {
     ["loading", { workspaceId: "ws-1", load: "loading" as const }, "loading"],
     ["failed", { workspaceId: "ws-1", load: "failed" as const }, "failed"],
     ["off wins over the connection state", { workspaceId: "ws-1", load: "ready" as const, view: off }, "off"],
+    [
+      "no enabled field is off (opt-in)",
+      { workspaceId: "ws-1", load: "ready" as const, view: noEnabledField },
+      "off",
+    ],
     ["not connected", { workspaceId: "ws-1", load: "ready" as const, view: notConnected }, "not_connected"],
     ["connected", { workspaceId: "ws-1", load: "ready" as const, view: connected }, "connected"],
     ["incomplete", { workspaceId: "ws-1", load: "ready" as const, view: incomplete }, "incomplete"],

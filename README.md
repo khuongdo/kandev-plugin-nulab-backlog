@@ -31,6 +31,15 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.3.0: Backlog is now off by default (upgrading from v0.2.0 or earlier)
+
+Backlog is now opt-in: after installation it is off in every workspace until an admin turns
+it on. A workspace that never touched the switch on v0.1.0 to v0.2.0 turns **off** after the
+upgrade. Its saved connection is kept, but issue sync, issue and PR watches and Git
+credentials pause. To resume, a Kandev admin turns on the switch on the Backlog card and
+clicks **Save**; there is no need to connect again. Workspaces where the switch was saved
+(on or off) keep their setting.
+
 ### 0.2.0
 
 - Rows on `/backlog` get a **+ Task** quick action menu. The issue row's old **Create task** item
@@ -56,10 +65,11 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Turn Backlog on or off
 
-Backlog is on by default in every workspace. A Kandev admin can turn it off for one workspace
-with the switch on the Backlog card, then **Save**. While it is off, the plugin refuses to
-connect or call Backlog for that workspace, but it keeps the existing connection: turning it
-back on restores it without connecting again. The home entry and the `/backlog` page stay
+Backlog is off by default after installation, in every workspace. A Kandev admin turns it on
+for one workspace with the switch on the Backlog card, then **Save**, and then connects. The
+same switch turns it off again. While it is off, the plugin refuses to connect or call Backlog
+for that workspace, but it keeps the existing connection: turning it back on restores it
+without connecting again. The home entry and the `/backlog` page stay
 available, so Backlog can always be turned back on.
 
 The plugin icon is an original outline drawing, not the Nulab logo; see
@@ -86,7 +96,8 @@ and `make coverage` fails below 80% line coverage.
 
 1. Sign in to your Kandev server (0.96.0 or later) as an admin.
 2. Open **Settings > Plugins** and upload `dist/nulab-backlog-<version>.tar.gz`.
-3. Open **Settings > Integrations > Backlog**.
+3. Open **Settings > Integrations > Backlog**, turn the switch on and click **Save**
+   (Backlog is off until an admin turns it on).
 
 ## Connect with an API key
 
