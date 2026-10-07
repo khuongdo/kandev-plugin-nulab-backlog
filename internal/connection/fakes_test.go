@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 var errInjected = errors.New("injected store failure")
@@ -162,6 +165,19 @@ func (f *fakeState) snapshot() map[string]map[string]any {
 	return out
 }
 
+// nonSwitch is the snapshot without the IntegrationSwitch records that
+// switchOn writes, so "nothing was stored" checks stay exact on a harness
+// whose workspaces were switched on first.
+func (f *fakeState) nonSwitch() map[string]map[string]any {
+	out := f.snapshot()
+	for k := range out {
+		if strings.HasSuffix(k, "/"+switchKeyName) {
+			delete(out, k)
+		}
+	}
+	return out
+}
+
 // syncBuffer is a goroutine-safe log sink.
 type syncBuffer struct {
 	mu  sync.Mutex
@@ -192,4 +208,19 @@ func newTestStore(secrets *fakeSecrets, state *fakeState) *Store {
 	s := NewStore(secrets, state)
 	s.Now = func() time.Time { return fixedNow }
 	return s
+}
+
+// switchOn turns Backlog on for each workspace through SaveSwitch, as an
+// admin does with connection.set_enabled. No switch record means off
+// (opt-in), so a test that exercises on-behaviour calls this first. The
+// write counter is reset so assertions about later writes stay exact.
+func switchOn(t *testing.T, state *fakeState, workspaces ...string) {
+	t.Helper()
+	store := newTestStore(newFakeSecrets(), state)
+	for _, w := range workspaces {
+		require.NoError(t, store.SaveSwitch(context.Background(), w, true))
+	}
+	state.mu.Lock()
+	state.setCalls = 0
+	state.mu.Unlock()
 }

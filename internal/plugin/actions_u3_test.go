@@ -122,6 +122,7 @@ func newU3Rig(t *testing.T) *u3rig {
 				Created: "2026-10-02T09:00:00Z"},
 		}}
 	logs, host := &syncBuffer{}, newFakeHost()
+	switchOn(t, host, "ws-1")
 	rt := newRuntime(gw, logs, "debug")
 	data := &hostData{tasks: []pluginsdk.Task{{ID: "task-17", WorkspaceID: "ws-1", Title: "Login work", Identifier: "T-17"}}}
 	rt.SetHost(&u4Host{fakeHost: host, data: data})

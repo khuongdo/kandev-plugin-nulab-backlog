@@ -39,6 +39,8 @@
 
 <!-- Project-specific specialisation. -->
 
+- ALWAYS check the latest GitHub release (gh release list) and origin/main before asking the release-version question, not only manifest.yaml on the working branch (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:12964151cf0ce3bec78bd3f03e2d6bd8c45cf5181838d6e854009164f19858e6 -->
+
 ## Code Style
 
 <!-- Project-specific specialisation. -->
@@ -110,3 +112,4 @@
 - Read the issue watch answers as at most one new task per watch per run, with a per-watch interval (default 5 minutes) set in the watch dialog (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:f11570a4a09290d2e3f6bc0632c4cded73c1830d1ec39718fcc29028381a185d -->
 - In refactor scope (no units or domain design), treated the existing code structure from the code knowledge base as the domain design for Functional Design (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:2369d780bf4e1983217919608f3224e7182dc767c72884e45a728feca8091cd3 -->
 - For Deployment Pipeline, asked only release-specific questions (version, upgrade notes) because the team Deployment practice already settles strategy, gates, approvals, rollback and feature flags (learned 2026-10-07) <!-- cid:261007-uiux-github-style:deployment-pipeline:da684d7f076fb85473387dd397f644dc998ea4caacd02a2228d75b67c5f951d5 -->
+- v0.2.0 was released on main while this intent ran, so the first version question (0.1.2/0.2.0) was wrong and was corrected to 0.3.0 via Request changes; rebase onto origin/main before release (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:d44f93a1dd652c310b3d3e63ff829ad927ccd6d55fa160f7ea85d37099d787ab -->

@@ -29,7 +29,7 @@ function publishSwitches(host: PluginHostApi, workspaceIds: readonly string[]): 
   for (const workspaceId of workspaceIds) {
     host.api
       .invokeAction<ConnectionView>("connection.get", { workspaceId })
-      .then((view) => publishEnabled(host, workspaceId, view.enabled !== false))
+      .then((view) => publishEnabled(host, workspaceId, view.enabled === true))
       .catch(() => console.warn(`nulab-backlog: could not load the switch for workspace ${workspaceId}`));
   }
 }

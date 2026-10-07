@@ -4,7 +4,7 @@ import type { OAuthOutcome } from "./oauth";
 /** The ConnectionView fields the M1 screen reads (contract C5). */
 export interface ConnectionView {
   connected: boolean;
-  /** IntegrationSwitch value; absent means on (BR7.1). */
+  /** IntegrationSwitch value; absent means off (opt-in, intent 261007-opt-in-default). */
   enabled?: boolean;
   state: "not_connected" | "connected" | "error" | string;
   spaceHost?: string;
@@ -157,9 +157,9 @@ export function readFailure(error: unknown): ActionFailure {
   };
 }
 
-/** True while Backlog is off for the workspace. */
+/** True while Backlog is off for a loaded view; opt-in, so only an explicit on is on. */
 export function isOff(view: ConnectionView | undefined): boolean {
-  return view?.enabled === false;
+  return view !== undefined && view.enabled !== true;
 }
 
 function classify(error: unknown): Pick<ScreenState, "fieldError" | "notice" | "isMember"> {

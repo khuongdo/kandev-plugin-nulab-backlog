@@ -17,7 +17,7 @@ beforeAll(async () => {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(views: Record<string, { enabled: boolean } | Error>) {
+function setup(views: Record<string, { enabled?: boolean } | Error>) {
   const registry = {
     registerIntegrationSettings: vi.fn(),
     registerNavItem: vi.fn(),
@@ -159,6 +159,13 @@ describe("plugin entry", () => {
     expect(s.host.api.invokeAction).toHaveBeenCalledWith("connection.get", { workspaceId: "ws-2" });
     expect(s.host.setIntegrationEnabled).toHaveBeenCalledTimes(1);
     expect(s.host.setIntegrationEnabled).toHaveBeenCalledWith("nulab-backlog", "ws-1", true);
+  });
+
+  it("publishes off for a workspace whose view has no enabled field (opt-in)", async () => {
+    const s = setup({ "ws-1": {} });
+    await s.init();
+    await flush();
+    expect(s.host.setIntegrationEnabled).toHaveBeenCalledWith("nulab-backlog", "ws-1", false);
   });
 
   it("loads and publishes again when the workspace list changes", async () => {

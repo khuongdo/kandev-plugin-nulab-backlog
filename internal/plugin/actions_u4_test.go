@@ -227,6 +227,7 @@ func newU4Rig(t *testing.T) *u4rig {
 	t.Helper()
 	gw := &u4Gateway{fakeGateway: &fakeGateway{projects: []backlog.Project{{ID: 101, Key: "PROJ"}}}}
 	logs, host := &syncBuffer{}, newFakeHost()
+	switchOn(t, host, "ws-1")
 	rt := newRuntime(gw, logs, "debug")
 	data := &hostData{repos: []pluginsdk.Repository{{ID: "repo-gh", ProviderID: "github"}, backlogRepo()}}
 	rt.SetHost(&u4Host{fakeHost: host, data: data})
