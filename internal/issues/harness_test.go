@@ -37,6 +37,8 @@ type fakeGateway struct {
 	attachments []backlog.Attachment
 	statuses    map[string][]backlog.Status
 	users       map[string][]backlog.ProjectUser
+	creators    map[int64]int64 // issue id -> creator user id (createdUserId[] filter)
+	myself      backlog.User
 	errs        map[string]error // by op, or "issue:<key>"
 	delay       time.Duration    // every call takes this long (virtual time)
 	block       chan struct{}    // when set, Issue calls wait for it to close
@@ -53,7 +55,8 @@ type fakeGateway struct {
 
 func newFakeGateway() *fakeGateway {
 	g := &fakeGateway{errs: map[string]error{}, calls: map[string]int{}, classes: map[string][]backlog.CallClass{},
-		statuses: map[string][]backlog.Status{}, users: map[string][]backlog.ProjectUser{}}
+		statuses: map[string][]backlog.Status{}, users: map[string][]backlog.ProjectUser{}, creators: map[int64]int64{},
+		myself: backlog.User{ID: 1, Name: "Test User"}}
 	g.projects = []backlog.Project{{ID: 101, Key: "PROJ", Name: "Test Project"}, {ID: 102, Key: "DEMO", Name: "Demo Project"}}
 	g.issues = []backlog.Issue{
 		{ID: 5118, ProjectID: 101, IssueKey: "PROJ-118", Summary: "Fix login timeout", Description: "Steps in the attachment.",
@@ -146,11 +149,35 @@ func (g *fakeGateway) match(q backlog.IssueQuery) []backlog.Issue {
 	var out []backlog.Issue
 	kw := strings.ToLower(q.Keyword)
 	for _, i := range g.issues {
-		if Matches(i, q) && (kw == "" || strings.Contains(strings.ToLower(i.Summary), kw)) {
-			out = append(out, i)
+		if !Matches(i, q) || (kw != "" && !strings.Contains(strings.ToLower(i.Summary), kw)) {
+			continue
 		}
+		if len(q.CreatedUserIDs) > 0 && !slices.Contains(q.CreatedUserIDs, g.creators[i.ID]) {
+			continue
+		}
+		if q.CreatedSince != "" && (len(i.Created) < 10 || i.Created[:10] < q.CreatedSince) {
+			continue
+		}
+		out = append(out, i)
+	}
+	if q.Sort == "created" { // the issue watch: oldest created first, like Backlog with order=asc
+		slices.SortStableFunc(out, func(a, b backlog.Issue) int {
+			if c := strings.Compare(a.Created, b.Created); c != 0 {
+				return c
+			}
+			return int(a.ID - b.ID)
+		})
 	}
 	return out
+}
+
+func (g *fakeGateway) Myself(ctx context.Context, _ backlog.Credentials) (backlog.User, error) {
+	if err := g.enter(ctx, "myself", backlog.Interactive); err != nil {
+		return backlog.User{}, err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.myself, nil
 }
 
 func (g *fakeGateway) Issues(ctx context.Context, _ backlog.Credentials, class backlog.CallClass, q backlog.IssueQuery) ([]backlog.Issue, error) {
@@ -299,7 +326,8 @@ type fakeHost struct {
 	tasks     []TaskInfo
 	creates   []NewTask
 	next      int
-	failNth   int // the Nth create fails (1-based); 0 = never
+	failNth   int   // the Nth create fails (1-based); 0 = never
+	failErr   error // the error of a failing create; nil = a permission error
 	listErr   error
 	listCalls int
 }
@@ -309,6 +337,9 @@ func (h *fakeHost) CreateTask(_ context.Context, in NewTask) (TaskRef, error) {
 	defer h.mu.Unlock()
 	h.creates = append(h.creates, in)
 	if h.failNth == len(h.creates) {
+		if h.failErr != nil {
+			return TaskRef{}, h.failErr
+		}
 		return TaskRef{}, fmt.Errorf("rpc error: code = PermissionDenied")
 	}
 	h.next++

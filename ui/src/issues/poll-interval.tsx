@@ -1,13 +1,11 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
-import { en, type Messages } from "../messages/en";
+import { hostUi } from "../host-ui";
+import { BUTTON, FIELD } from "../layout";
+import { en, format, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
 import { issueNotice } from "./issues-state";
-
-type AnyProps = Record<string, unknown>;
-
-const FIELD = "flex flex-col gap-2";
 
 /** A whole number of minutes from 1 to 1440, or undefined (AC4.2.2). */
 function parseMinutes(raw: string): number | undefined {
@@ -16,18 +14,22 @@ function parseMinutes(raw: string): number | undefined {
   return n >= 1 && n <= 1440 ? n : undefined;
 }
 
-/** The sync interval field of the connected settings (M1, US4.2). */
+export interface PollIntervalProps {
+  workspaceId: string;
+  /** Members see the interval but cannot change it (admin only, BR1.2). */
+  readOnly?: boolean;
+}
+
+/** The sync interval of the Issue sync section (M1, US4.2). */
 export function createPollInterval(
   host: PluginHostApi,
   messages: Messages = en,
-): Component<{ workspaceId: string }> {
+): Component<PollIntervalProps> {
   const h = host.jsx;
   const { useEffect, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
+  const { Button, Input, Label } = hostUi(host);
 
-  return function PollInterval({ workspaceId }: { workspaceId: string }) {
+  return function PollInterval({ workspaceId, readOnly }: PollIntervalProps) {
     const [value, setValue] = useState("5");
     const [invalid, setInvalid] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -57,6 +59,11 @@ export function createPollInterval(
       setSaving(false);
     };
 
+    if (readOnly) {
+      return (
+        <p data-testid="backlog-poll-interval">{format(messages.issueSyncReadOnly, { minutes: value })}</p>
+      );
+    }
     return (
       <div data-testid="backlog-poll-interval" className={FIELD}>
         <Label htmlFor="backlog-poll-minutes">{messages.pollLabel}</Label>
@@ -80,7 +87,14 @@ export function createPollInterval(
           </p>
         ) : null}
         <div>
-          <Button type="button" data-testid="backlog-poll-save" disabled={saving} onClick={() => void save()}>
+          <Button
+            type="button"
+            variant="outline"
+            className={BUTTON}
+            data-testid="backlog-poll-save"
+            disabled={saving}
+            onClick={() => void save()}
+          >
             {saving ? messages.saving : messages.pollSave}
           </Button>
         </div>

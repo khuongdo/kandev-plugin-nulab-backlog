@@ -35,7 +35,8 @@ async function render(host: ReturnType<typeof fakeHost>, announce = vi.fn()) {
   return { c, announce };
 }
 
-const box = (c: HTMLElement, key: string) => byTestId(c, `backlog-project-${key}`) as HTMLInputElement;
+const box = (c: HTMLElement, key: string) => byTestId(c, `backlog-project-${key}`) as HTMLButtonElement;
+const checked = (c: HTMLElement, key: string) => box(c, key).getAttribute("aria-checked") === "true";
 
 describe("Project picker (US1.7, US1.9)", () => {
   it("lists projects as checkboxes in a fieldset with a legend, and filters them", async () => {
@@ -43,8 +44,9 @@ describe("Project picker (US1.7, US1.9)", () => {
     const { c } = await render(host);
     const fieldset = c.querySelector("fieldset")!;
     expect(fieldset.querySelector("legend")!.textContent).toBe(en.projectsLegend);
-    expect(box(c, "PROJ").checked).toBe(true);
-    expect(box(c, "DEMO").checked).toBe(false);
+    expect(box(c, "PROJ").getAttribute("data-host")).toBe("Checkbox");
+    expect(checked(c, "PROJ")).toBe(true);
+    expect(checked(c, "DEMO")).toBe(false);
     expect(c.querySelector('label[for="backlog-project-PROJ"]')!.textContent).toBe("Test Project (PROJ)");
     await act(async () => setValue(byTestId(c, "backlog-project-search") as HTMLInputElement, "demo"));
     expect(box(c, "PROJ")).toBeNull();

@@ -32,6 +32,11 @@ function scripted(view: View, handlers: Record<string, Handler> = {}) {
     // U3: issue links in the dialogs and the sync interval block.
     if (key === "issues.impact" && !handlers[key]) return { issueLinks: 3 };
     if (key === "issues.settings.get" && !handlers[key]) return { pollMinutes: 5 };
+    // Intent 261007: the watch and query sections of the settings.
+    if ((key === "git.watches.list" || key === "issues.watches.list") && !handlers[key])
+      return { watches: [] };
+    if (key === "git.queries.list" && !handlers[key]) return { queries: [] };
+    if (key === "issues.filters" && !handlers[key]) return { projects: [], statuses: [], assignees: [] };
     const h = handlers[key];
     if (!h) throw new Error(`unexpected ${key}`);
     return h(input?.body);
@@ -87,7 +92,7 @@ describe("Connected panel (US1.5, US1.6, US1.8)", () => {
     disconnect.focus();
     await act(async () => disconnect.click());
     const dialog = byTestId(c, "backlog-disconnect-dialog")!;
-    expect(dialog.getAttribute("role")).toBe("alertdialog");
+    expect(dialog.getAttribute("role")).toBe("dialog");
     expect(dialog.textContent).toContain("everyone in the workspace");
     expect(dialog.textContent).toContain("credentials are deleted");
     expect(document.activeElement).toBe(byTestId(c, "backlog-disconnect-dialog-cancel"));
@@ -145,8 +150,10 @@ describe("Connected panel (US1.5, US1.6, US1.8)", () => {
     expect(byTestId(c, "backlog-announcement")!.textContent).toBe(want);
     // U4 (M12): restored watches come back Paused.
     expect(byTestId(c, "backlog-notice")!.textContent).toContain(en.restoredWatches);
+    Element.prototype.scrollIntoView = vi.fn();
     await act(async () => byTestId(c, "backlog-review-watches")!.click());
-    expect(host.navigate).toHaveBeenCalledWith("/backlog/watches");
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled(); // BR1.5: the PR watches section
+    expect(host.navigate).not.toHaveBeenCalled();
   });
 
   it("puts a data-testid on every interactive element of the connected screen", async () => {

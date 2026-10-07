@@ -134,6 +134,22 @@ func (c *Client) PullRequests(ctx context.Context, creds Credentials, class Call
 	return parsePullRequests(body)
 }
 
+// PullRequestCount counts a repository's pull requests with the query's
+// filters (GET .../pullRequests/count, Read group); paging is ignored.
+func (c *Client) PullRequestCount(ctx context.Context, creds Credentials, class CallClass, projectKey, repo string, q PullRequestQuery) (int, error) {
+	if !projectKeyPattern.MatchString(projectKey) {
+		return 0, errBadRef()
+	}
+	v := q.Values()
+	v.Del("offset")
+	v.Del("count")
+	body, err := c.send(ctx, request{method: http.MethodGet, path: pullRequestsPath(projectKey, repo) + "/count", query: v, creds: creds, class: class})
+	if err != nil {
+		return 0, err
+	}
+	return parseCount(body)
+}
+
 // PullRequest returns one pull request by number.
 func (c *Client) PullRequest(ctx context.Context, creds Credentials, class CallClass, projectKey, repo string, number int) (PullRequest, error) {
 	body, err := c.send(ctx, request{method: http.MethodGet, path: fmt.Sprintf("%s/%d", pullRequestsPath(projectKey, repo), number), creds: creds, class: class})

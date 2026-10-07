@@ -35,6 +35,7 @@ const (
 	actionQueriesSave      = "git.queries.save"
 	actionQueriesDelete    = "git.queries.delete"
 	actionQueriesRun       = "git.queries.run"
+	actionPRList           = "git.prs.list" // intent 261007 (FR4)
 )
 
 func init() { maps.Copy(handlers, gitHandlers) }
@@ -196,6 +197,13 @@ var gitHandlers = map[string]handler{
 		rows, err := r.git.RunQuery(ctx, ws, id)
 		return map[string]any{"rows": rows}, err
 	}),
+	actionPRList: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in git.PRListInput
+		if err := decode(body, &in); err != nil {
+			return nil, err
+		}
+		return r.git.ListPullRequests(ctx, ws, in)
+	},
 }
 
 // withID decodes {"id": ...} for the handlers that act on one watch or query.

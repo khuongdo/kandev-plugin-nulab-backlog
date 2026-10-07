@@ -32,6 +32,10 @@ func (g *fakeGateway) PullRequests(context.Context, backlog.Credentials, backlog
 	return nil, nil
 }
 
+func (g *fakeGateway) PullRequestCount(context.Context, backlog.Credentials, backlog.CallClass, string, string, backlog.PullRequestQuery) (int, error) {
+	return 0, nil
+}
+
 func (g *fakeGateway) PullRequest(context.Context, backlog.Credentials, backlog.CallClass, string, string, int) (backlog.PullRequest, error) {
 	return backlog.PullRequest{}, &backlog.Error{Kind: backlog.KindNotFound, Status: 404}
 }
@@ -117,6 +121,7 @@ type hostData struct {
 	repos      []pluginsdk.Repository
 	repoPages  []pluginsdk.Page
 	failCreate bool
+	createErr  error // when set, Create fails with it
 	// crashAfterCreate makes every ledger write fail once a task is created,
 	// like a crash between Tasks().Create and storing the task id.
 	crashAfterCreate bool
@@ -157,6 +162,9 @@ func (f fakeTasks) Create(_ context.Context, in pluginsdk.CreateTaskInput) (*plu
 	defer f.d.mu.Unlock()
 	if f.d.failCreate {
 		return nil, fmt.Errorf("rpc error: code = PermissionDenied")
+	}
+	if f.d.createErr != nil {
+		return nil, f.d.createErr
 	}
 	f.d.creates = append(f.d.creates, in)
 	n := len(f.d.tasks) + 1 // U3: Kandev returns the task's human key as Identifier
@@ -416,4 +424,5 @@ var u4Actions = []string{
 	actionPRLink, actionPRUnlink, actionPRCreate, actionPRStatus, actionLinksList, actionImpact,
 	actionWatchesList, actionWatchesSave, actionWatchesDelete, actionWatchesRun, actionWatchesPause, actionWatchesResume,
 	actionQueriesList, actionQueriesSave, actionQueriesDelete, actionQueriesRun,
+	actionPRList, // intent 261007 (FR4)
 }

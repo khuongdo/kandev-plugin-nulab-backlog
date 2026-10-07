@@ -22,6 +22,14 @@ const (
 	actionIssuesGet       = "issues.get"
 	actionIssuesComments  = "issues.comments"
 	actionSetPollInterval = "issues.set_poll_interval"
+
+	// Intent 261007: issue watches (FR3), for any signed-in member (FR1.4).
+	actionIssueWatchesList   = "issues.watches.list"
+	actionIssueWatchesSave   = "issues.watches.save"
+	actionIssueWatchesDelete = "issues.watches.delete"
+	actionIssueWatchesRun    = "issues.watches.run"
+	actionIssueWatchesPause  = "issues.watches.pause"
+	actionIssueWatchesResume = "issues.watches.resume"
 )
 
 func init() { maps.Copy(handlers, issueHandlers) }
@@ -108,4 +116,27 @@ var issueHandlers = map[string]handler{
 		}
 		return r.issues.SetPollInterval(ctx, ws, in.Minutes)
 	},
+	actionIssueWatchesList: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		w, err := r.issues.ListWatches(ctx, ws)
+		return map[string]any{"watches": w}, err
+	},
+	actionIssueWatchesSave: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in issues.IssueWatchInput
+		if err := decode(body, &in); err != nil {
+			return nil, err
+		}
+		return r.issues.SaveWatch(ctx, ws, in)
+	},
+	actionIssueWatchesDelete: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
+		return ok, r.issues.DeleteWatch(ctx, ws, id)
+	}),
+	actionIssueWatchesRun: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
+		return map[string]bool{"queued": true}, r.issueWatcher.Run(ctx, ws, id)
+	}),
+	actionIssueWatchesPause: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
+		return r.issues.PauseWatch(ctx, ws, id)
+	}),
+	actionIssueWatchesResume: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
+		return r.issues.ResumeWatch(ctx, ws, id)
+	}),
 }

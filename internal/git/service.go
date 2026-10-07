@@ -60,6 +60,7 @@ type Gateway interface {
 	Myself(ctx context.Context, creds backlog.Credentials) (backlog.User, error)
 	Repositories(ctx context.Context, creds backlog.Credentials, projectKey string) ([]backlog.Repository, error)
 	PullRequests(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, projectKey, repo string, q backlog.PullRequestQuery) ([]backlog.PullRequest, error)
+	PullRequestCount(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, projectKey, repo string, q backlog.PullRequestQuery) (int, error)
 	PullRequest(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, projectKey, repo string, number int) (backlog.PullRequest, error)
 	CreatePullRequest(ctx context.Context, creds backlog.Credentials, projectKey, repo string, in backlog.NewPullRequest) (backlog.PullRequest, error)
 	Issue(ctx context.Context, creds backlog.Credentials, class backlog.CallClass, issueKey string) (backlog.Issue, error)

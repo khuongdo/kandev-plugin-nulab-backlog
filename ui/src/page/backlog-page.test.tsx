@@ -11,7 +11,6 @@ import {
   deferred,
   expectOnlyCatalogueText,
   fakeHost,
-  HOST,
   incomplete,
   mount,
   notConnected,
@@ -47,12 +46,13 @@ async function renderPage(invoke: Invoke, workspace: string | null = "ws-1", mes
   return { c, host };
 }
 
-const viewStates: [string, View, string][] = [
+/** The states that show the alert instead of the lists (BR2.3). */
+const alertStates: [string, View, string][] = [
   ["Off", off, en.pageOff],
   ["Not connected", notConnected, en.pageNotConnected],
-  ["Connected", connected, `Connected as Test User @ ${HOST}`],
   ["Incomplete", incomplete, en.incomplete],
 ];
+const viewStates: [string, View, string][] = [...alertStates, ["Connected", connected, ""]];
 
 describe("pageState (WF7)", () => {
   it.each([
@@ -90,17 +90,17 @@ describe("Backlog page (/backlog)", () => {
     expect(text(c)).toContain(en.pageLoadFailed);
     fail = false;
     await act(async () => byTestId(c, "backlog-page-retry")!.click());
-    expect(text(c)).toContain(`Connected as Test User @ ${HOST}`);
+    expect(byTestId(c, "backlog-scope-tabs")).not.toBeNull();
     expect(host.api.invokeAction).toHaveBeenCalledWith("connection.get", { workspaceId: "ws-1" });
   });
 
-  it.each(viewStates)(
-    "shows %s with a link to that workspace's Backlog settings",
+  it.each(alertStates)(
+    "shows %s in an alert with a link to that workspace's Backlog settings",
     async (_, view, message) => {
       const { c, host } = await renderPage(async () => view);
       expect(byTestId(c, "backlog-page-status")!.textContent).toBe(message);
-      const link = byTestId(c, "backlog-page-settings-link") as HTMLAnchorElement;
-      expect(link.getAttribute("href")).toBe(SETTINGS_HREF);
+      const link = byTestId(c, "backlog-page-settings-link")!;
+      expect(link.getAttribute("data-variant")).toBe("link");
       expect(link.textContent).toBe(en.openSettings);
       await act(async () => link.click());
       expect(host.navigate).toHaveBeenCalledWith(SETTINGS_HREF);
@@ -190,10 +190,8 @@ describe("BacklogPage workspace changes (R-03)", () => {
 
     await act(async () => replies["ws-2"].resolve(connected));
     await act(async () => replies["ws-1"].resolve(off));
-    expect(text(byTestId(c, "backlog-page-status")!)).toBe(`Connected as Test User @ ${HOST}`);
-    expect(byTestId(c, "backlog-page-settings-link")!.getAttribute("href")).toBe(
-      "/settings/workspaces/ws-2/integrations/nulab-backlog",
-    );
+    expect(byTestId(c, "backlog-scope-tabs")).not.toBeNull();
+    expect(byTestId(c, "backlog-page-alert")).toBeNull();
   });
 
   it("ignores a late failure for the previous workspace", async () => {

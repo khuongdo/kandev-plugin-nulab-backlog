@@ -1,0 +1,249 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    {
+      "path": "Makefile"
+    },
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "docs/brand/backlog-logo.md"
+    },
+    {
+      "path": "internal/backlog/client.go"
+    },
+    {
+      "path": "internal/backlog/issues.go"
+    },
+    {
+      "path": "internal/backlog/issues_types_test.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests.go"
+    },
+    {
+      "path": "internal/backlog/pullrequests_types_test.go"
+    },
+    {
+      "path": "internal/backlog/testdata/pullrequests_count_ok.json"
+    },
+    {
+      "path": "internal/backlog/watch_queries_test.go"
+    },
+    {
+      "path": "internal/git/harness_test.go"
+    },
+    {
+      "path": "internal/git/prs.go"
+    },
+    {
+      "path": "internal/git/prs_test.go"
+    },
+    {
+      "path": "internal/git/service.go"
+    },
+    {
+      "path": "internal/git/types.go"
+    },
+    {
+      "path": "internal/git/types_test.go"
+    },
+    {
+      "path": "internal/issues/events.go"
+    },
+    {
+      "path": "internal/issues/harness_test.go"
+    },
+    {
+      "path": "internal/issues/service.go"
+    },
+    {
+      "path": "internal/issues/watch.go"
+    },
+    {
+      "path": "internal/issues/watch_store.go"
+    },
+    {
+      "path": "internal/issues/watch_store_test.go"
+    },
+    {
+      "path": "internal/issues/watch_test.go"
+    },
+    {
+      "path": "internal/issues/watcher.go"
+    },
+    {
+      "path": "internal/issues/watcher_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_watch_test.go"
+    },
+    {
+      "path": "internal/plugin/git_actions.go"
+    },
+    {
+      "path": "internal/plugin/host_port.go"
+    },
+    {
+      "path": "internal/plugin/issue_actions.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "internal/plugin/runtime.go"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "ui/src/brand/backlog-logo.test.tsx"
+    },
+    {
+      "path": "ui/src/brand/backlog-logo.tsx"
+    },
+    {
+      "path": "ui/src/controls.test.ts"
+    },
+    {
+      "path": "ui/src/git/dashboard-page.test.tsx"
+    },
+    {
+      "path": "ui/src/git/dashboard-page.tsx"
+    },
+    {
+      "path": "ui/src/git/git-access.test.tsx"
+    },
+    {
+      "path": "ui/src/git/git-access.tsx"
+    },
+    {
+      "path": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "path": "ui/src/git/pr-toolbar.tsx"
+    },
+    {
+      "path": "ui/src/git/save-query-dialog.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.test.tsx"
+    },
+    {
+      "path": "ui/src/git/watch-form.tsx"
+    },
+    {
+      "path": "ui/src/git/watches-page.test.tsx"
+    },
+    {
+      "path": "ui/src/git/watches-page.tsx"
+    },
+    {
+      "path": "ui/src/host-ui.ts"
+    },
+    {
+      "path": "ui/src/icons.tsx"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/index.ts"
+    },
+    {
+      "path": "ui/src/issues/issue-badge.tsx"
+    },
+    {
+      "path": "ui/src/issues/issue-panel.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-page.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-page.tsx"
+    },
+    {
+      "path": "ui/src/issues/link-task-dialog.tsx"
+    },
+    {
+      "path": "ui/src/issues/poll-interval.tsx"
+    },
+    {
+      "path": "ui/src/layout.ts"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-lists.test.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-page.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/confirm-dialog.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/confirm-dialog.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/connected-panel.tsx"
+    },
+    {
+      "path": "ui/src/settings/issue-watch-dialog.tsx"
+    },
+    {
+      "path": "ui/src/settings/issue-watches-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/oauth.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/pr-watches-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/project-picker.tsx"
+    },
+    {
+      "path": "ui/src/settings/saved-queries-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/section-parts.tsx"
+    },
+    {
+      "path": "ui/src/settings/sections.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "path": "ui/src/settings/use-list.ts"
+    },
+    {
+      "path": "ui/src/switch/switch.test.tsx"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    }
+  ]
+}

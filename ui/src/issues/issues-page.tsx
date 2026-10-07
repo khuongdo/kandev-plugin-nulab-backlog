@@ -1,9 +1,13 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
+import { hostUi } from "../host-ui";
+import { icon } from "../icons";
+import { BUTTON, FIELD, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { settingsHref } from "../page/BacklogPage";
 import { createConfirmDialog } from "../settings/confirm-dialog";
+import { createSectionParts } from "../settings/section-parts";
 import type { Notice } from "../settings/state";
 import {
   issueNotice,
@@ -19,12 +23,9 @@ import {
 import { createLinkTaskDialog } from "./link-task-dialog";
 import type { LinksStore } from "./links-store";
 
-type AnyProps = Record<string, unknown>;
-
-const STACK = "flex flex-col gap-4";
-const ROW = "flex flex-wrap gap-2";
-const FIELD = "flex flex-col gap-2";
 const PAGE_SIZE = 20;
+/** The "All" choice of a filter: Radix Select items cannot have an empty value. */
+const ALL = "all";
 const SEARCH_WAIT = 400;
 
 type Load =
@@ -74,10 +75,11 @@ export function createIssuesPage(
 ): Component<{ workspaceId: string }> {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
-  const Input = host.ui.Input as Component<AnyProps>;
-  const Label = host.ui.Label as Component<AnyProps>;
-  const Skeleton = host.ui.Skeleton as Component<AnyProps>;
+  const ui = hostUi(host);
+  const { Button, Input, Label, Skeleton, Pagination, PaginationContent, PaginationItem } = ui;
+  const { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
+  const { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } = ui;
+  const { RowMenu } = createSectionParts(host, messages);
   const ConfirmDialog = createConfirmDialog(host, messages);
   const LinkTaskDialog = createLinkTaskDialog(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
@@ -258,19 +260,28 @@ export function createIssuesPage(
     const select = (name: keyof Filters, label: string, choices: Option[] | undefined, testId: string) => (
       <div className={FIELD}>
         <Label htmlFor={testId}>{label}</Label>
-        <select
-          id={testId}
-          data-testid={testId}
-          value={filters[name]}
-          onChange={(e: { target: { value: string } }) => setFilter(name, e.target.value)}
+        <Select
+          value={filters[name] || ALL}
+          onValueChange={(v: string) => setFilter(name, v === ALL ? "" : v)}
         >
-          <option value="">{messages.filterAll}</option>
-          {(choices ?? []).map((o) => (
-            <option key={o.key ?? o.id} value={o.key ?? String(o.id)}>
-              {o.name}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id={testId} data-testid={testId} className="min-w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL} data-testid={`${testId}-${ALL}`}>
+              {messages.filterAll}
+            </SelectItem>
+            {(choices ?? []).map((o) => (
+              <SelectItem
+                key={o.key ?? o.id}
+                value={o.key ?? String(o.id)}
+                data-testid={`${testId}-${o.key ?? o.id}`}
+              >
+                {o.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     );
     const filterFields = (
@@ -308,31 +319,23 @@ export function createIssuesPage(
       const key = item.issueKey;
       const isCreating = creating.includes(key);
       return (
-        <details>
-          <summary
-            data-testid={`backlog-issue-menu-${key}`}
-            aria-label={format(messages.moreActions, { key })}
-          >
-            {messages.moreActionsShort}
-          </summary>
-          <div className={ROW}>
-            <Button
-              type="button"
-              data-testid={`backlog-issue-create-${key}`}
-              disabled={isCreating}
-              onClick={() => onCreate(item)}
-            >
-              {isCreating ? messages.creatingTask : messages.createTask}
-            </Button>
-            <Button
-              type="button"
-              data-testid={`backlog-issue-link-${key}`}
-              onClick={() => setLinkDialog(item)}
-            >
-              {messages.linkToTask}
-            </Button>
-          </div>
-        </details>
+        <RowMenu
+          testId={`backlog-issue-menu-${key}`}
+          label={format(messages.moreActions, { key })}
+          items={[
+            {
+              testId: `backlog-issue-create-${key}`,
+              label: isCreating ? messages.creatingTask : messages.createTask,
+              disabled: isCreating,
+              onSelect: () => onCreate(item),
+            },
+            {
+              testId: `backlog-issue-link-${key}`,
+              label: messages.linkToTask,
+              onSelect: () => setLinkDialog(item),
+            },
+          ]}
+        />
       );
     };
 
@@ -400,7 +403,13 @@ export function createIssuesPage(
               <p>{messages.issuesLoadFailed}</p>
               <p>{t(load.notice)}</p>
               <div>
-                <Button type="button" data-testid="backlog-issues-retry" onClick={reload}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={BUTTON}
+                  data-testid="backlog-issues-retry"
+                  onClick={reload}
+                >
                   {messages.retry}
                 </Button>
               </div>
@@ -413,7 +422,13 @@ export function createIssuesPage(
           <div data-testid="backlog-issues-empty" className={STACK}>
             <p>{messages.issuesEmpty}</p>
             <div>
-              <Button type="button" data-testid="backlog-issues-reset" onClick={reset}>
+              <Button
+                type="button"
+                variant="outline"
+                className={BUTTON}
+                data-testid="backlog-issues-reset"
+                onClick={reset}
+              >
                 {messages.resetFilters}
               </Button>
             </div>
@@ -445,55 +460,69 @@ export function createIssuesPage(
               ))}
             </ul>
           ) : (
-            <table data-testid="backlog-issues-table">
-              <thead>
-                <tr>
-                  <th scope="col">{messages.colKey}</th>
-                  <th scope="col">{messages.colTitle}</th>
-                  <th scope="col">{messages.filterStatus}</th>
-                  <th scope="col">{messages.filterAssignee}</th>
-                  <th scope="col">{messages.colUpdated}</th>
-                  <th scope="col">{messages.colTasks}</th>
-                  <th scope="col">{messages.colActions}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table data-testid="backlog-issues-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">{messages.colKey}</TableHead>
+                  <TableHead scope="col">{messages.colTitle}</TableHead>
+                  <TableHead scope="col">{messages.filterStatus}</TableHead>
+                  <TableHead scope="col">{messages.filterAssignee}</TableHead>
+                  <TableHead scope="col">{messages.colUpdated}</TableHead>
+                  <TableHead scope="col">{messages.colTasks}</TableHead>
+                  <TableHead scope="col">{messages.colActions}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {items.map((item) => (
-                  <tr
+                  <TableRow
                     key={item.issueKey}
                     data-testid={`backlog-issue-row-${item.issueKey}`}
                     aria-label={rowLabel(item, messages)}
                   >
-                    <td>{keyLink(item)}</td>
-                    <td>{title(item)}</td>
-                    <td>{item.status}</td>
-                    <td>{item.assignee ?? ""}</td>
-                    <td>{item.updatedAt ? relative(item.updatedAt) : ""}</td>
-                    <td>{tasksOf(item)}</td>
-                    <td>{actionsOf(item)}</td>
-                  </tr>
+                    <TableCell>{keyLink(item)}</TableCell>
+                    <TableCell>{title(item)}</TableCell>
+                    <TableCell>{item.status}</TableCell>
+                    <TableCell>{item.assignee ?? ""}</TableCell>
+                    <TableCell>{item.updatedAt ? relative(item.updatedAt) : ""}</TableCell>
+                    <TableCell>{tasksOf(item)}</TableCell>
+                    <TableCell>{actionsOf(item)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
           <div className={ROW}>
             <p data-testid="backlog-issues-showing">{showing}</p>
-            <Button
-              type="button"
-              data-testid="backlog-issues-prev"
-              disabled={page <= 1}
-              onClick={() => goTo(page - 1)}
-            >
-              {messages.previous}
-            </Button>
-            <Button
-              type="button"
-              data-testid="backlog-issues-next"
-              disabled={page * PAGE_SIZE >= total}
-              onClick={() => goTo(page + 1)}
-            >
-              {messages.next}
-            </Button>
+            <Pagination className="mx-0 w-auto">
+              <PaginationContent>
+                <PaginationItem>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={BUTTON}
+                    data-testid="backlog-issues-prev"
+                    disabled={page <= 1}
+                    onClick={() => goTo(page - 1)}
+                  >
+                    {messages.previous}
+                  </Button>
+                </PaginationItem>
+                <PaginationItem>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={BUTTON}
+                    data-testid="backlog-issues-next"
+                    disabled={page * PAGE_SIZE >= total}
+                    onClick={() => goTo(page + 1)}
+                  >
+                    {messages.next}
+                  </Button>
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         </div>
       );
@@ -516,6 +545,9 @@ export function createIssuesPage(
           {isMobile ? (
             <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className={BUTTON}
               data-testid="backlog-issues-filters-toggle"
               aria-expanded={showFilters}
               aria-controls="backlog-issues-filters"
@@ -526,11 +558,15 @@ export function createIssuesPage(
           ) : null}
           <Button
             type="button"
+            variant="ghost"
+            size="icon"
+            className={BUTTON}
             data-testid="backlog-issues-refresh"
+            aria-label={refreshing ? messages.refreshing : messages.refresh}
             disabled={refreshing}
             onClick={() => void refresh()}
           >
-            {refreshing ? messages.refreshing : messages.refresh}
+            {icon(host, "refresh", refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4")}
           </Button>
         </div>
         {!isMobile || showFilters ? <div id="backlog-issues-filters">{filterFields}</div> : null}

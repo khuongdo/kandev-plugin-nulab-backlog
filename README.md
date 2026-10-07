@@ -3,13 +3,15 @@
 A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev workspace to a
 [Nulab Backlog](https://backlog.com) space.
 
-## What it does today (walking skeleton)
+## What it does
 
-- Adds a **Backlog** card under **Settings > Integrations**, with the Backlog logo and an
-  on/off switch.
-- Adds a **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
-  `/backlog` page, which shows whether Backlog is on, the connection status of the current
-  workspace, and a link to its Backlog settings.
+- Adds a **Backlog** card under **Settings > Integrations**, with the plugin's outline icon and
+  an on/off switch. The card holds every Backlog setting as framed sections: Connection,
+  PR watches, Issue watches, Saved PR queries, Issue sync, Git access and Projects.
+- Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
+  `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration.
+  When the workspace is not connected or Backlog is off, the page shows an alert with a link to
+  the Backlog settings instead.
 - A workspace admin connects the workspace to one Backlog space with an **API key**.
   The plugin checks the key with Backlog (`GET /api/v2/users/myself`) before saving it,
   then shows `Connected as <name> @ <space>`.
@@ -17,7 +19,19 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 - The key is stored only in Kandev's encrypted secret store. It is never returned to the
   browser and never written to logs.
 
-OAuth, project selection, issues and pull requests come in later releases.
+## Upgrade notes
+
+### 0.1.1
+
+- The **Integrations** menu now has a single **Backlog** entry. The `/backlog` page has an
+  **Issues** tab and a **Pull requests** tab (`/backlog?scope=prs`).
+- The `/backlog/watches` and `/backlog/dashboard` pages were removed. Bookmarks to them no
+  longer work.
+- PR watches, the new **issue watches** and saved PR queries now live in
+  **Settings > Integrations > Backlog**. New saved queries are created from the
+  **Pull requests** tab with **Save query**; edit and delete them in Settings.
+- The plugin icon is a new outline icon; the plugin no longer ships the Nulab logo.
+- Existing PR watches, saved queries and issue links are kept. No data migration is needed.
 
 ## Turn Backlog on or off
 
@@ -27,7 +41,7 @@ connect or call Backlog for that workspace, but it keeps the existing connection
 back on restores it without connecting again. The home entry and the `/backlog` page stay
 available, so Backlog can always be turned back on.
 
-The Backlog logo is used under Nulab's brand guidelines; see
+The plugin icon is an original outline drawing, not the Nulab logo; see
 [docs/brand/backlog-logo.md](docs/brand/backlog-logo.md).
 
 ## Build
@@ -149,7 +163,7 @@ in that setup.
 These features need pull requests and Git hosting on the Backlog plan of the space (assumption
 A1). They only use repositories of the projects selected in the Backlog settings.
 
-- **Git access.** In **Settings > Integrations > Backlog**, open **Git access (optional)** and enter
+- **Git access.** In **Settings > Integrations > Backlog**, the **Git access (optional)** section takes
   your Git user name and password: your Backlog password, or the Git password Backlog gives you
   when two-step verification is on. Kandev stores them in its encrypted vault and never shows them
   again; the page only says **Stored**. **Test connection** also checks them against the first
@@ -167,20 +181,27 @@ A1). They only use repositories of the projects selected in the Backlog settings
   the pull request in Backlog, linked to the task. If the title or body names an issue of a selected
   project, the pull request is related to that issue with `Related: <KEY>`; it never closes it. If
   a pull request is already open for the branch, you are asked whether to link it instead.
-- **PR watches.** **Integrations > PR watches** creates Kandev tasks for new pull requests that
-  match a filter (repository, status, assignee, creator, linked issue). Every 5 minutes each watch
-  creates at most 10 tasks, oldest pull request first, and never creates a task twice for one pull
-  request, even after a deleted task or a restart. Disconnecting turns watches off; reconnecting
-  to the same space brings them back **Paused**.
-- **Saved queries.** **Integrations > PR dashboard** saves pull request queries and lists up to 20
-  matching pull requests with their linked tasks.
+- **Pull requests list.** On `/backlog`, **Pull requests** lists the pull requests of one
+  repository of a selected project, 20 per page, newest first, with status, assignee and creator
+  filters (Backlog has no pull request search). Each row shows the number, title, status, author,
+  assignee, last update and the linked Kandev task. `/backlog?scope=prs` opens this list directly.
+- **PR watches.** In **Settings > Integrations > Backlog**, the **PR watches** section creates
+  Kandev tasks for new pull requests that match a filter (repository, status, assignee, creator,
+  linked issue). Add and edit watches in a dialog; each row's menu has Edit, Run now,
+  Pause/Resume and Delete. Every 5 minutes each watch creates at most 10 tasks, oldest pull
+  request first, and never creates a task twice for one pull request, even after a deleted task or
+  a restart. Disconnecting turns watches off; reconnecting to the same space brings them back
+  **Paused**. Any signed-in member can manage watches.
+- **Saved queries.** **Save query** on the Pull requests list saves the current repository and
+  filters; saved queries then appear as presets there. Rename or delete them in the **Saved PR
+  queries** section of the settings.
 
 ## Backlog issues
 
 These features use only the projects selected in the Backlog settings. The plugin only reads
 from Backlog: it never creates, changes or comments on a Backlog issue.
 
-- **Issues page.** **Integrations > Backlog** lists the issues of the selected projects, newest
+- **Issues list.** **Integrations > Backlog** opens on **Issues**: the issues of the selected projects, newest
   updated first, 20 per page. Filter by project, status and assignee, or search; typing a full
   issue key such as `PROJ-123` puts that issue on top. Each row shows the Kandev tasks linked to
   it. On a phone the rows become cards and the filters open from **Filters (n)**.
@@ -196,8 +217,16 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
 - **Backlog panel in the task.** Open the **Backlog issue** panel from the task's **+** panel menu to
   see the issue's status, assignee, priority, due date, comments and attachments, read live from
   Backlog. Attachments open in Backlog; files over 10 MB are not previewed.
+- **Issue watches.** In **Settings > Integrations > Backlog**, the **Issue watches** section creates
+  a Kandev task for each Backlog issue that matches a filter: a selected project, one or more
+  statuses, assignee and creator (anyone or me), and the interval in minutes (default 5). Each run
+  creates at most one task, oldest issue first, including issues that existed before the watch was
+  saved, and links it like **Create task**. An issue that already has a task, or that the watch
+  handled before, never gets another one. A watch stops with a visible error when Backlog refuses
+  the sign-in, the workflow was removed, or its ledger of 5000 handled issues is full. Rows have
+  Edit, Run now, Pause/Resume and Delete; deleting a watch keeps its tasks and links.
 - **Badge and status sync.** A linked task's card shows a badge such as `PROJ-120 · Resolved`. The
   plugin checks the status of linked issues every 5 minutes by default; an admin can set the
-  interval (at least 1 minute) under **Sync interval** in the Backlog settings, and **Refresh** on
-  the Issues page checks at once. A badge says **may be out of date** after three failed checks,
+  interval (at least 1 minute) in the **Issue sync** section of the Backlog settings, and
+  **Refresh** on the Issues list checks at once. A badge says **may be out of date** after three failed checks,
   and **Issue unavailable** when the issue was deleted or hidden. Deleting a task removes its link.

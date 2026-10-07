@@ -1,12 +1,13 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createPrList } from "../git/pr-list";
+import { hostUi } from "../host-ui";
 import { createIssuesPage } from "../issues/issues-page";
 import type { LinksStore } from "../issues/links-store";
-import { en, format, type MessageKey, type Messages } from "../messages/en";
+import { BUTTON, STACK } from "../layout";
+import { en, type MessageKey, type Messages } from "../messages/en";
 import type { ConnectionView } from "../settings/state";
 import { PLUGIN_ID } from "../switch/enabled-events";
-
-type AnyProps = Record<string, unknown>;
 
 export interface PageInput {
   workspaceId?: string;
@@ -41,7 +42,22 @@ const STATUS_KEY: Record<"off" | "not_connected" | "incomplete", MessageKey> = {
   incomplete: "incomplete",
 };
 
-/** The Backlog page at /backlog (WF7, BR7.7); once connected it lists the issues (U3, M2). */
+type Scope = "issues" | "prs";
+
+/** The scope the URL asks for (?scope=prs), Issues by default (BR2.2). */
+function scopeFromUrl(): Scope {
+  try {
+    return new URLSearchParams(window.location.search).get("scope") === "prs" ? "prs" : "issues";
+  } catch {
+    return "issues";
+  }
+}
+
+/**
+ * The Backlog page at /backlog (WF3, WF4, WF7): the one Integrations entry.
+ * Connected, it shows Issues and Pull requests scopes like the GitHub
+ * integration; otherwise an alert with the settings link (BR2.3).
+ */
 export function createBacklogPage(
   host: PluginHostApi,
   messages: Messages = en,
@@ -49,13 +65,22 @@ export function createBacklogPage(
 ): Component {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
-  const Button = host.ui.Button as Component<AnyProps>;
+  const { Alert, AlertDescription, AlertTitle, Button, Tabs, TabsContent, TabsList, TabsTrigger } =
+    hostUi(host);
   const IssuesPage = createIssuesPage(host, messages, store);
+  const PrList = createPrList(host, messages);
 
   return function BacklogPage() {
     const [workspaceId, setWorkspaceId] = useState(host.context.getActiveWorkspaceId());
     const [load, setLoad] = useState<PageInput["load"]>("loading");
     const [view, setView] = useState<ConnectionView | undefined>(undefined);
+    const [scope, setScope] = useState<Scope>(scopeFromUrl);
+    // A scope stays mounted once opened, so each keeps its filters (BR2.2).
+    const [opened, setOpened] = useState<Record<Scope, boolean>>(() => ({
+      issues: false,
+      prs: false,
+      [scope]: true,
+    }));
 
     // Only the latest load may render: a late reply for an earlier load, or for
     // the previous workspace, is dropped (like the switch's live check).
@@ -84,6 +109,12 @@ export function createBacklogPage(
       };
     }, [reload]);
 
+    const switchScope = (next: Scope) => {
+      setScope(next);
+      setOpened((o) => ({ ...o, [next]: true }));
+      host.navigate(next === "prs" ? "/backlog?scope=prs" : "/backlog", { replace: true });
+    };
+
     const state = pageState({ workspaceId, load, view });
     const body = (() => {
       switch (state.kind) {
@@ -97,44 +128,70 @@ export function createBacklogPage(
               {messages.pageLoadFailed}
             </p>,
             <div key="r">
-              <Button type="button" data-testid="backlog-page-retry" onClick={() => void reload()}>
+              <Button
+                type="button"
+                variant="outline"
+                className={BUTTON}
+                data-testid="backlog-page-retry"
+                onClick={() => void reload()}
+              >
                 {messages.retry}
               </Button>
             </div>,
           ];
+        case "connected":
+          return (
+            <Tabs
+              value={scope}
+              onValueChange={switchScope}
+              className={STACK}
+              data-testid="backlog-scope-tabs"
+            >
+              <TabsList aria-label={messages.scopeLabel}>
+                <TabsTrigger value="issues" className={BUTTON} data-testid="backlog-scope-issues">
+                  {messages.scopeIssues}
+                </TabsTrigger>
+                <TabsTrigger value="prs" className={BUTTON} data-testid="backlog-scope-prs">
+                  {messages.scopePRs}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="issues" forceMount hidden={scope !== "issues"}>
+                {opened.issues ? <IssuesPage workspaceId={state.workspaceId} /> : null}
+              </TabsContent>
+              <TabsContent value="prs" forceMount hidden={scope !== "prs"}>
+                {opened.prs ? (
+                  <PrList workspaceId={state.workspaceId} selectedProjects={view?.selectedProjects ?? []} />
+                ) : null}
+              </TabsContent>
+            </Tabs>
+          );
         default: {
           const href = settingsHref(state.workspaceId);
-          const status =
-            state.kind === "connected"
-              ? format(messages.connectedAs, { name: state.name, host: state.host })
-              : messages[STATUS_KEY[state.kind]];
-          return [
-            <p key="s" data-testid="backlog-page-status">
-              {status}
-            </p>,
-            <a
-              key="l"
-              href={href}
-              data-testid="backlog-page-settings-link"
-              onClick={(e: { preventDefault(): void }) => {
-                e.preventDefault();
-                host.navigate(href);
-              }}
-            >
-              {messages.openSettings}
-            </a>,
-            state.kind === "connected" ? (
-              <div key="i">
-                <IssuesPage workspaceId={state.workspaceId} />
+          return (
+            <Alert data-testid="backlog-page-alert">
+              <AlertTitle>{messages.pageAlertTitle}</AlertTitle>
+              <AlertDescription data-testid="backlog-page-status">
+                {messages[STATUS_KEY[state.kind]]}
+              </AlertDescription>
+              <div>
+                <Button
+                  type="button"
+                  variant="link"
+                  className={`${BUTTON} px-0`}
+                  data-testid="backlog-page-settings-link"
+                  onClick={() => host.navigate(href)}
+                >
+                  {messages.openSettings}
+                </Button>
               </div>
-            ) : null,
-          ];
+            </Alert>
+          );
         }
       }
     })();
 
     return (
-      <div data-testid="backlog-page" className="flex flex-col gap-4">
+      <div data-testid="backlog-page" className={STACK}>
         {body}
       </div>
     );

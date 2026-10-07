@@ -1,0 +1,433 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR2.5",
+    "FR2.6",
+    "FR2.7",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR4",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR1.5",
+    "BR2.1",
+    "BR2.2",
+    "BR2.3",
+    "BR2.4",
+    "BR2.5",
+    "BR3.1",
+    "BR3.2",
+    "BR3.3",
+    "BR3.4",
+    "BR3.5",
+    "BR3.6",
+    "BR3.7",
+    "BR3.8",
+    "BR3.9",
+    "BR3.10",
+    "BR3.11",
+    "BR3.12",
+    "BR3.13",
+    "BR3.14",
+    "BR4.1",
+    "BR4.2",
+    "BR5.1",
+    "BR5.2",
+    "BR6.1",
+    "BR7.1",
+    "BR7.2"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "ui/src/settings/pr-watches-section.tsx"
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "ui/src/settings/issue-watches-section.tsx"
+    },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "manifest.yaml"
+    },
+    {
+      "id": "FR1.5",
+      "status": "OK",
+      "target": "ui/src/settings/sections.test.tsx"
+    },
+    {
+      "id": "FR1.6",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "ui/src/index.ts"
+    },
+    {
+      "id": "FR2.2",
+      "status": "OK",
+      "target": "ui/src/index.test.ts"
+    },
+    {
+      "id": "FR2.3",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR2.4",
+      "status": "OK",
+      "target": "ui/src/issues/issues-page.tsx"
+    },
+    {
+      "id": "FR2.5",
+      "status": "OK",
+      "target": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "id": "FR2.6",
+      "status": "OK",
+      "target": "ui/src/git/save-query-dialog.tsx"
+    },
+    {
+      "id": "FR2.7",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR3",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "internal/issues/watch.go"
+    },
+    {
+      "id": "FR3.2",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "internal/issues/watcher_test.go"
+    },
+    {
+      "id": "FR3.4",
+      "status": "OK",
+      "target": "internal/issues/watch_store.go"
+    },
+    {
+      "id": "FR3.5",
+      "status": "OK",
+      "target": "internal/plugin/issue_actions.go"
+    },
+    {
+      "id": "FR3.6",
+      "status": "OK",
+      "target": "internal/plugin/host_port.go"
+    },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "internal/git/prs.go"
+    },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "internal/git/prs.go"
+    },
+    {
+      "id": "FR4.2",
+      "status": "OK",
+      "target": "internal/git/prs_test.go"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "internal/plugin/git_actions.go"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "ui/src/controls.test.ts"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "ui/src/controls.test.ts"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "ui/src/settings/section-parts.tsx"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "ui/src/settings/issue-watch-dialog.tsx"
+    },
+    {
+      "id": "FR6",
+      "status": "OK",
+      "target": "ui/src/brand/backlog-logo.tsx"
+    },
+    {
+      "id": "FR6.1",
+      "status": "OK",
+      "target": "ui/src/brand/backlog-logo.tsx"
+    },
+    {
+      "id": "FR6.2",
+      "status": "OK",
+      "target": "ui/src/index.ts"
+    },
+    {
+      "id": "FR6.3",
+      "status": "OK",
+      "target": "ui/src/brand/backlog-logo.test.tsx"
+    },
+    {
+      "id": "NFR1",
+      "status": "OK",
+      "target": "Makefile"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/plugin/actions_watch_test.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "ui/src/page/backlog-lists.test.tsx"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "ui/src/host-ui.ts"
+    },
+    {
+      "id": "NFR6",
+      "status": "OK",
+      "target": "internal/plugin/actions_watch_test.go"
+    },
+    {
+      "id": "BR1.1",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "BR1.2",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "BR1.3",
+      "status": "OK",
+      "target": "manifest.yaml"
+    },
+    {
+      "id": "BR1.4",
+      "status": "Deferred",
+      "target": "Sign-in method dropdown done in ui/src/settings/SettingsScreen.tsx; hiding OAuth when it is not configured needs a ConnectionView flag the backend does not send, so choosing OAuth still shows oauthNotConfigured"
+    },
+    {
+      "id": "BR1.5",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "BR2.1",
+      "status": "OK",
+      "target": "ui/src/index.ts"
+    },
+    {
+      "id": "BR2.2",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "BR2.3",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "BR2.4",
+      "status": "OK",
+      "target": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "id": "BR2.5",
+      "status": "OK",
+      "target": "ui/src/settings/saved-queries-section.tsx"
+    },
+    {
+      "id": "BR3.1",
+      "status": "OK",
+      "target": "internal/issues/watch.go"
+    },
+    {
+      "id": "BR3.2",
+      "status": "OK",
+      "target": "internal/issues/watch.go"
+    },
+    {
+      "id": "BR3.3",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.4",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.5",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.6",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.7",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.8",
+      "status": "OK",
+      "target": "internal/issues/watch.go"
+    },
+    {
+      "id": "BR3.9",
+      "status": "OK",
+      "target": "internal/issues/watch.go"
+    },
+    {
+      "id": "BR3.10",
+      "status": "OK",
+      "target": "internal/issues/watch_store.go"
+    },
+    {
+      "id": "BR3.11",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.12",
+      "status": "OK",
+      "target": "internal/issues/watcher.go"
+    },
+    {
+      "id": "BR3.13",
+      "status": "OK",
+      "target": "internal/issues/watch_store.go"
+    },
+    {
+      "id": "BR3.14",
+      "status": "OK",
+      "target": "internal/plugin/host_port.go"
+    },
+    {
+      "id": "BR4.1",
+      "status": "OK",
+      "target": "internal/git/prs.go"
+    },
+    {
+      "id": "BR4.2",
+      "status": "OK",
+      "target": "internal/git/prs.go"
+    },
+    {
+      "id": "BR5.1",
+      "status": "OK",
+      "target": "ui/src/controls.test.ts"
+    },
+    {
+      "id": "BR5.2",
+      "status": "OK",
+      "target": "ui/src/settings/section-parts.tsx"
+    },
+    {
+      "id": "BR6.1",
+      "status": "OK",
+      "target": "ui/src/brand/backlog-logo.tsx"
+    },
+    {
+      "id": "BR7.1",
+      "status": "OK",
+      "target": "ui/src/settings/section-parts.tsx"
+    },
+    {
+      "id": "BR7.2",
+      "status": "OK",
+      "target": "ui/src/git/pr-list.tsx"
+    }
+  ]
+}
