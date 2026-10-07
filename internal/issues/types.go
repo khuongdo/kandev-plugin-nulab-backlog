@@ -73,6 +73,9 @@ type Query struct {
 	StatusIDs   []int64  `json:"statusIds"`
 	AssigneeIDs []int64  `json:"assigneeIds"`
 	Keyword     string   `json:"keyword"`
+	// Assignee "me" filters on the connected user, resolved on the server
+	// (FR4.2); it replaces AssigneeIDs. Empty means use AssigneeIDs.
+	Assignee string `json:"assignee,omitempty"`
 }
 
 // ValidateQuery checks a query against the selected projects and fills the
@@ -90,6 +93,8 @@ func ValidateQuery(q Query, selected []string) (Query, error) {
 		return Query{}, invalid(FieldStatusIDs)
 	case len(q.AssigneeIDs) > maxFilterIDs:
 		return Query{}, invalid(FieldAssigneeIDs)
+	case q.Assignee != "" && q.Assignee != WhoMe:
+		return Query{}, invalid(FieldAssignee)
 	}
 	for _, k := range q.ProjectKeys {
 		if !slices.Contains(selected, k) {

@@ -90,7 +90,7 @@ describe("Backlog page (/backlog)", () => {
     expect(text(c)).toContain(en.pageLoadFailed);
     fail = false;
     await act(async () => byTestId(c, "backlog-page-retry")!.click());
-    expect(byTestId(c, "backlog-scope-tabs")).not.toBeNull();
+    expect(byTestId(c, "backlog-scope-bar")).not.toBeNull();
     expect(host.api.invokeAction).toHaveBeenCalledWith("connection.get", { workspaceId: "ws-1" });
   });
 
@@ -190,7 +190,7 @@ describe("BacklogPage workspace changes (R-03)", () => {
 
     await act(async () => replies["ws-2"].resolve(connected));
     await act(async () => replies["ws-1"].resolve(off));
-    expect(byTestId(c, "backlog-scope-tabs")).not.toBeNull();
+    expect(byTestId(c, "backlog-scope-bar")).not.toBeNull();
     expect(byTestId(c, "backlog-page-alert")).toBeNull();
   });
 

@@ -13,6 +13,7 @@ import { createIssueWatchesSection } from "./issue-watches-section";
 import { normalizeHost, startOAuth, takeOAuthReturn } from "./oauth";
 import { createPrWatchesSection, PR_WATCHES_ANCHOR } from "./pr-watches-section";
 import { createProjectPicker } from "./project-picker";
+import { createQuickActionsSection } from "./quick-actions-section";
 import { createSavedQueriesSection } from "./saved-queries-section";
 import {
   connectedNotice,
@@ -67,6 +68,7 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
   const PrWatches = createPrWatchesSection(host, messages);
   const IssueWatches = createIssueWatchesSection(host, messages);
   const SavedQueries = createSavedQueriesSection(host, messages);
+  const QuickActions = createQuickActionsSection(host, messages);
   const PollInterval = createPollInterval(host, messages);
   const GitAccess = createGitAccess(host, messages);
   const section = (id: string, title: string, children: unknown) => (
@@ -377,14 +379,15 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
       </div>
     );
 
-    // BR1.1, BR1.2: seven sections while connected; members keep the watch,
-    // query and sync sections, admins also Git access and Projects.
+    // BR1.1, BR1.2: eight sections while connected; members keep the watch,
+    // query, quick action and sync sections, admins also Git access and Projects.
     return (
       <div data-testid="backlog-settings" className={SECTIONS}>
         {section("connection", messages.sectionConnection, connection)}
         {connectedOn ? <PrWatches workspaceId={workspaceId!} /> : null}
         {connectedOn ? <IssueWatches workspaceId={workspaceId!} /> : null}
         {connectedOn ? <SavedQueries workspaceId={workspaceId!} /> : null}
+        {connectedOn ? <QuickActions workspaceId={workspaceId!} /> : null}
         {connectedOn
           ? section(
               "issue-sync",

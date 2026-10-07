@@ -335,7 +335,7 @@ function ChangeRequestList({ loading, error, emptyMessage, isEmpty, children }: 
   return React.createElement("div", { "data-host": "ChangeRequestList" }, content);
 }
 
-function ChangeRequestRow({ stateIcon, title, href, metadata, taskIndicator, testId }: Props) {
+function ChangeRequestRow({ stateIcon, title, href, metadata, taskIndicator, action, testId }: Props) {
   return React.createElement(
     "div",
     { "data-host": "ChangeRequestRow", "data-testid": testId },
@@ -346,7 +346,192 @@ function ChangeRequestRow({ stateIcon, title, href, metadata, taskIndicator, tes
       title as string,
     ),
     React.createElement("div", null, metadata as React.ReactNode, taskIndicator as React.ReactNode),
+    action
+      ? React.createElement("div", { "data-testid": `${testId}-action` }, action as React.ReactNode)
+      : null,
   );
+}
+
+interface FakePreset {
+  id: string;
+  label: string;
+  hint: string;
+  iconName?: string;
+}
+
+/** github-parity-actions: the "+ Task" menu, always open; one button per preset. */
+function IntegrationStartTaskMenu({
+  presets,
+  onSelect,
+  triggerLabel,
+  triggerAriaLabel,
+  triggerTestId,
+  itemTestId,
+}: Props) {
+  const list = (presets as FakePreset[]) ?? [];
+  if (list.length === 0) return null;
+  return React.createElement(
+    "div",
+    { "data-host": "IntegrationStartTaskMenu" },
+    React.createElement(
+      "button",
+      { type: "button", "data-host": "Button", "data-testid": triggerTestId, "aria-label": triggerAriaLabel },
+      (triggerLabel as string) ?? "Task",
+    ),
+    list.map((p) =>
+      React.createElement(
+        "button",
+        {
+          key: p.id,
+          type: "button",
+          "data-host": "IntegrationStartTaskMenuItem",
+          "data-testid": itemTestId,
+          "data-preset-id": p.id,
+          "data-icon": p.iconName,
+          onClick: () => (onSelect as (p: FakePreset) => void)(p),
+        },
+        `${p.label} ${p.hint}`,
+      ),
+    ),
+  );
+}
+
+/** github-parity-actions: Kandev's create-task dialog; Create calls onSuccess with task t-1. */
+function TaskCreateDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+  initialValues,
+  workflowId,
+  defaultStepId,
+}: Props) {
+  if (!open) return null;
+  const values = (initialValues as { title: string; description?: string }) ?? { title: "" };
+  const close = () => (onOpenChange as (o: boolean) => void)(false);
+  return React.createElement(
+    "div",
+    {
+      role: "dialog",
+      "aria-label": "Create task",
+      "data-host": "TaskCreateDialog",
+      "data-testid": "fake-task-create-dialog",
+      "data-workflow": `${workflowId as string}/${defaultStepId as string}`,
+    },
+    React.createElement("p", { "data-testid": "fake-task-create-title" }, values.title),
+    React.createElement("p", { "data-testid": "fake-task-create-description" }, values.description ?? ""),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "data-host": "Button",
+        "data-testid": "fake-task-create-confirm",
+        onClick: () => {
+          (onSuccess as (t: { id: string }, mode: string) => void)?.({ id: "t-1" }, "create");
+          close();
+        },
+      },
+      "Create",
+    ),
+    React.createElement(
+      "button",
+      { type: "button", "data-host": "Button", "data-testid": "fake-task-create-cancel", onClick: close },
+      "Cancel",
+    ),
+  );
+}
+
+interface FakeSelection {
+  kind: string;
+  source: "preset" | "saved";
+  id: string;
+}
+
+/** github-parity-actions: the scope bar with kind buttons, preset pills and an always-open Saved menu. */
+function IntegrationScopeBar(props: Props) {
+  const selected = props.selected as FakeSelection;
+  const onSelect = props.onSelect as (s: FakeSelection) => void;
+  const presetsByKind = props.presetsByKind as (k: string) => { value: string; label: string }[];
+  const kinds = props.kinds as { value: string; label: string }[];
+  const saved = (
+    props.savedPresets as { id: string; kind: string; label: string; isDefault?: boolean }[]
+  ).filter((p) => p.kind === selected.kind);
+  const testId = props.testId as string;
+  const menu = props.savedMenuTestId as string;
+  const toggle = props.onToggleSavedDefault as ((id: string) => void) | undefined;
+  const button = (id: string, label: string, onClick: () => void, extra: Record<string, unknown> = {}) =>
+    React.createElement(
+      "button",
+      {
+        key: id,
+        type: "button",
+        "data-host": "IntegrationScopeBarButton",
+        "data-testid": id,
+        onClick,
+        ...extra,
+      },
+      label,
+    );
+  return React.createElement(
+    "div",
+    { "data-host": "IntegrationScopeBar", "data-testid": testId, className: props.className },
+    kinds.map((k) =>
+      button(
+        `${testId}-kind-${k.value}`,
+        k.label,
+        () => {
+          if (k.value === selected.kind) return;
+          if (props.onKindChange) (props.onKindChange as (k: string) => void)(k.value);
+          else onSelect({ kind: k.value, source: "preset", id: presetsByKind(k.value)[0]?.value ?? "" });
+        },
+        { "aria-pressed": k.value === selected.kind },
+      ),
+    ),
+    presetsByKind(selected.kind).map((p) =>
+      button(
+        `${testId}-preset-${p.value}`,
+        p.label,
+        () => onSelect({ kind: selected.kind, source: "preset", id: p.value }),
+        {
+          "aria-pressed": selected.source === "preset" && selected.id === p.value,
+        },
+      ),
+    ),
+    React.createElement(
+      "div",
+      { "data-testid": menu, role: "group", "aria-label": "Saved" },
+      saved.map((p) =>
+        React.createElement(
+          "div",
+          { key: p.id },
+          button(
+            `${menu}-item-${p.id}`,
+            p.label,
+            () => onSelect({ kind: p.kind, source: "saved", id: p.id }),
+            {
+              "aria-pressed": selected.source === "saved" && selected.id === p.id,
+            },
+          ),
+          toggle
+            ? button(`saved-query-default-${p.id}`, "", () => toggle(p.id), {
+                "aria-pressed": p.isDefault === true,
+                "aria-label": `Default: ${p.label}`,
+              })
+            : null,
+          button(`${menu}-delete-${p.id}`, "", () => (props.onDeleteSaved as (id: string) => void)(p.id), {
+            "aria-label": `Delete ${p.label}`,
+          }),
+        ),
+      ),
+      button(`${menu}-save`, "", props.onSaveCurrent as () => void, {
+        disabled: !props.canSaveCurrent,
+        "aria-label": "Save current",
+      }),
+    ),
+  );
+}
+
+function Textarea(props: Props) {
+  return React.createElement("textarea", { "data-host": "Textarea", ...props });
 }
 
 function IntegrationIcon({ name, className }: Props) {
@@ -406,6 +591,10 @@ export const fakeUi = {
   ChangeRequestList,
   ChangeRequestRow,
   IntegrationIcon,
+  IntegrationStartTaskMenu,
+  TaskCreateDialog,
+  IntegrationScopeBar,
+  Textarea,
 };
 
 /** Picks value in the host Select whose trigger has data-testid triggerId. */

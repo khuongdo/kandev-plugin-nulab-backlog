@@ -84,3 +84,43 @@ func TestU4_Queries_UnselectedProjectIsRefused(t *testing.T) {
 	_, err := r.svc.SaveQuery(r.ctx, ws, QueryInput{Name: "x", ProjectKey: "DEMO", RepoName: "demo-app", Statuses: []string{"open"}, Assignee: WhoAnyone})
 	require.Equal(t, FieldRepository, fieldOf(t, err))
 }
+
+func TestQueries_SetDefaultMovesTheStarAndSaveKeepsIt(t *testing.T) {
+	r := newRig(t)
+	a := saveQuery(t, r, func(in *QueryInput) { in.Name = "A" })
+	b := saveQuery(t, r, func(in *QueryInput) { in.Name = "B"; in.IsDefault = true })
+	require.False(t, b.IsDefault, "save never sets the star")
+	defaults := func(list []Query) (out []string) {
+		for _, q := range list {
+			if q.IsDefault {
+				out = append(out, q.ID)
+			}
+		}
+		return out
+	}
+	list, err := r.svc.SetQueryDefault(r.ctx, ws, a.ID, true)
+	require.NoError(t, err)
+	require.Equal(t, []string{a.ID}, defaults(list))
+	list, err = r.svc.SetQueryDefault(r.ctx, ws, b.ID, true)
+	require.NoError(t, err)
+	require.Equal(t, []string{b.ID}, defaults(list), "at most one default")
+	saveQuery(t, r, func(in *QueryInput) { in.ID, in.Name = b.ID, "B renamed" })
+	list, err = r.svc.ListQueries(r.ctx, ws)
+	require.NoError(t, err)
+	require.Equal(t, []string{b.ID}, defaults(list), "an edit keeps the star")
+	list, err = r.svc.SetQueryDefault(r.ctx, ws, b.ID, false)
+	require.NoError(t, err)
+	require.Empty(t, defaults(list))
+	_, err = r.svc.SetQueryDefault(r.ctx, ws, "missing", true)
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestQueries_OldDocumentWithoutIsDefaultStillReads(t *testing.T) {
+	r := newRig(t)
+	r.state.set("workspace/"+ws+"/git.queries", map[string]any{"schemaVersion": float64(1), "items": []any{
+		map[string]any{"id": "q1", "name": "Old", "projectKey": "PROJ", "repoName": "web-app", "statuses": []any{"open"}, "assignee": "anyone"}}})
+	list, err := r.svc.ListQueries(r.ctx, ws)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.False(t, list[0].IsDefault)
+}

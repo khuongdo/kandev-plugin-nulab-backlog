@@ -2,18 +2,21 @@
 
 ## Kandev Plugin Actions
 
-Declared in `manifest.yaml`, routed in `internal/plugin/` (`runtime.go` + `git_actions.go` + `issue_actions.go`). 41 actions, all workspace-scoped (some task-scoped); 7 `admin`, 34 `authenticated`. Keys must match `^[a-z0-9][a-z0-9._-]*$`.
+Declared in `manifest.yaml`, routed in `internal/plugin/` (`runtime.go` `handlers` map, merged from `git_actions.go` and `issue_actions.go` in `init()`). 48 actions, all workspace-scoped (some task-scoped); 7 `admin`, 41 `authenticated`. Keys must match `^[a-z0-9][a-z0-9._-]*$`; `internal/plugin/manifest_test.go` asserts the action list and access.
 
 | Group | Actions | Access |
 |---|---|---|
 | `connection.*` (9) | `get`, `test`, `list_projects`; `connect_api_key`, `set_enabled`, `start_oauth`, `disconnect`, `set_projects`, `set_git_credential` | first three `authenticated`; the rest `admin` |
 | `repositories.*` (2) | `inspect`, `branches` | `authenticated` |
-| `git.*` (17) | `repositories.list`; `prs.link`, `prs.unlink`, `prs.create`, `prs.status`; `links.list`; `impact`; `watches.list`, `watches.save`, `watches.delete`, `watches.run`, `watches.pause`, `watches.resume`; `queries.list`, `queries.save`, `queries.delete`, `queries.run` | `authenticated` |
-| `issues.*` (13) | `list`, `filters`, `create_task`, `tasks.search`, `links.list`, `refresh`, `impact`, `settings.get`, `link`, `unlink`, `get`, `comments`; `set_poll_interval` | `authenticated`; `set_poll_interval` `admin` |
+| `git.*` (18) | `repositories.list`; `prs.link`, `prs.unlink`, `prs.create`, `prs.status`, `prs.list`; `links.list`; `impact`; `watches.list`, `watches.save`, `watches.delete`, `watches.run`, `watches.pause`, `watches.resume`; `queries.list`, `queries.save`, `queries.delete`, `queries.run` | `authenticated` |
+| `issues.*` (19) | `list`, `filters`, `create_task`, `tasks.search`, `links.list`, `refresh`, `impact`, `settings.get`, `link`, `unlink`, `get`, `comments`; `watches.list`, `watches.save`, `watches.delete`, `watches.run`, `watches.pause`, `watches.resume`; `set_poll_interval` | `authenticated`; `set_poll_interval` `admin` |
 
-Gaps relevant to intent 261007:
-- No action lists a repository's PRs without a saved query: `git.queries.run` needs a saved query id and returns at most 20 PRs of one repository (`internal/git/service.go:868`), no paging.
-- No issue-watch action (auto-create tasks from new issues).
+Contracts relevant to intent 261007-github-parity-actions:
+- `git.queries.save` takes `QueryInput{ID, Name, ProjectKey, RepoName, Statuses, Assignee, Creator}`; no id = create (`newID()`), id = replace. Validation in [business-overview.md](business-overview.md#business-rules-locked-by-code-and-tests). No default flag, no ordering field.
+- `git.prs.list` lists PRs of ONE repository with filters (Backlog's PR API is per repository).
+- `issues.list` filters by project, status, keyword and numeric assignee ids (`issues.Query.AssigneeIDs`); no "me" value. `issues.watches.*` does have `assignee: anyone|me`.
+- `issues.create_task {issueKey, workflowId, workflowStepId, force?}` builds the task with `NewTaskFor` (`internal/issues/types.go:151-160`); no prompt or preset field.
+- Missing: any action for quick actions (task prompt presets), saved issue queries, or a default query.
 
 ## Webhook, Events, Manifest Surfaces
 
@@ -23,22 +26,26 @@ Gaps relevant to intent 261007:
 - `capabilities`: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`.
 - `config_schema`: OAuth client id, OAuth client secret (secret), public base URL. `ui.bundle`.
 
+## Kandev Host Data API (Go, used through the host port)
+
+`Tasks().Create` with `pluginsdk.CreateTaskInput{Title, Description, Priority, Metadata, WorkflowStepID}` and `Tasks().List`. At v0.96.0 `CreateTaskInput` also offers `StartAgent bool` and `Launch *PluginTaskLaunchOptions{AgentProfileID, ExecutorProfileID, Prompt, PlanMode}` (`apps/backend/pkg/pluginsdk/data_types.go:1120-1136, 1264-1269` in the Kandev checkout); the plugin uses neither.
+
 ## Kandev UI Extension Points
 
-Registered in `ui/src/index.ts`:
+Registered in `ui/src/index.ts` (10 calls):
 
-| Extension point | Use today | Lock |
-|---|---|---|
-| `registerIntegrationSettings` | Card `nulab-backlog`, `Component` = `SettingsScreen`, `action` = switch | Independent of enabled state (BR5.4/BR7.6/BR7.8, `index.ts:48-49`); `settingsHref()` = `/settings/workspaces/{ws}/integrations/nulab-backlog` |
-| `registerNavItem` x3, `section: "integrations"` | `backlog` → `/backlog` (`index.ts:58-64`); `backlog-watches` → `/backlog/watches`, `backlog-dashboard` → `/backlog/dashboard` (`index.ts:72-83`) | `index.test.ts:104-105,120-122` asserts 3 calls and both extra paths |
-| `registerRoute` x3 | Same paths, `topbar: { title, icon }` | same test |
-| `registerRepositoryProvider`, `registerTaskAction` (PR link), `registerReviewProvider` | Git / PR | `review-provider.tsx` uses `host.ui.ChangeRequestDetail` |
-| `registerComponent("task-card-tags")`, `registerTaskMenuAction`, `registerTaskPanel` | Issue badge, menu, panel | |
-| `registerTranslations` | `messages/en.ts` | |
+| Extension point | Use today |
+|---|---|
+| `registerTranslations` | `messages/en.ts` (via `issues/i18n.ts`) |
+| `registerIntegrationSettings` | Card `nulab-backlog`, `Component` = `SettingsScreen`, `action` = switch; independent of enabled state (BR5.4/BR7.6/BR7.8); `settingsHref()` = `/settings/workspaces/{ws}/integrations/nulab-backlog` |
+| `registerNavItem` x1 | `backlog` → `/backlog`, section `integrations` |
+| `registerRoute` x1 | `/backlog` (Issues / Pull requests tabs, `?scope=prs`), `topbar: { title, icon }` |
+| `registerRepositoryProvider`, `registerTaskAction` (PR link), `registerReviewProvider` | Git / PR |
+| `registerComponent("task-card-tags")`, `registerTaskMenuAction` (Unlink only, `group: "primary"`), `registerTaskPanel` | Issue badge, menu, panel |
 
-Host API used: `api.invokeAction`, `context.*` (active workspace, task-creation context), `navigate`, `setIntegrationEnabled`, `useResponsiveBreakpoint`, `utils.formatRelativeTime`, `i18n`.
+Host API used: `api.invokeAction`, `context.getActiveWorkspaceId/subscribeActiveWorkspace/getWorkspaceIds/subscribeWorkspaces/getTaskCreationContext`, `navigate`, `toast`, `i18n.t`, `setIntegrationEnabled`, `useResponsiveBreakpoint`, `utils.formatRelativeTime`.
 
-`host.ui` used in non-test code: `Button` (13 files), `Input` (8), `Label` (8), `Skeleton` (1), `IntegrationEnabledControl` (1), `ChangeRequestDetail` (1). Everything else SDK v0.96.0 offers is unused; the offer and its limits are in [architecture.md](architecture.md#external-reference-kandev-github-integration-ui).
+`host.ui` used: Tabs, Table, Select, Dialog, DropdownMenu, Pagination, Empty, Alert, Skeleton, Checkbox, Label, Input, Button, Card, SettingsSection, ChangeRequestList, ChangeRequestRow (no `action`), ChangeRequestDetail, IntegrationIcon, IntegrationRepositoryFilter, IntegrationEnabledControl. Offered at v0.96.0 but unused: `IntegrationStartTaskMenu`, `IntegrationListToolbar`, `IntegrationScopeBar`, `IntegrationSaveQueryDialog`, `TaskCreateDialog`, `IntegrationCursorPagination`, `TaskRowIndicator`, `Combobox`, `Textarea`, `PageTopbar`. How GitHub uses them (external reference): [architecture.md](architecture.md#external-reference-kandev-github-integration-v0960).
 
 ## Backlog API v2 (outbound)
 

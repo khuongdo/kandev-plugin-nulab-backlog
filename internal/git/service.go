@@ -827,6 +827,7 @@ func (s *Service) SaveQuery(ctx context.Context, ws string, in QueryInput) (Quer
 	if err := in.Validate(snap.SelectedProjects); err != nil {
 		return Query{}, err
 	}
+	in.IsDefault = false
 	err = s.store.UpdateQueries(ctx, ws, func(list []Query) ([]Query, error) {
 		if in.ID == "" {
 			in.ID = newID()
@@ -836,10 +837,33 @@ func (s *Service) SaveQuery(ctx context.Context, ws string, in QueryInput) (Quer
 		if i < 0 {
 			return nil, ErrNotFound
 		}
+		in.IsDefault = list[i].IsDefault
 		list[i] = in
 		return list, nil
 	})
 	return in, err
+}
+
+// SetQueryDefault stars (isDefault) or un-stars a saved query and returns
+// the list. Starring clears every other star in the same write, so at most
+// one query is the default (FR3.3).
+func (s *Service) SetQueryDefault(ctx context.Context, ws, id string, isDefault bool) ([]Query, error) {
+	var out []Query
+	err := s.store.UpdateQueries(ctx, ws, func(list []Query) ([]Query, error) {
+		i := slices.IndexFunc(list, func(q Query) bool { return q.ID == id })
+		if i < 0 {
+			return nil, ErrNotFound
+		}
+		if isDefault {
+			for j := range list {
+				list[j].IsDefault = false
+			}
+		}
+		list[i].IsDefault = isDefault
+		out = list
+		return list, nil
+	})
+	return out, err
 }
 
 // DeleteQuery removes a saved query.

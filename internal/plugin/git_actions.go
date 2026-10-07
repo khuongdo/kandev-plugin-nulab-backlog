@@ -35,7 +35,8 @@ const (
 	actionQueriesSave      = "git.queries.save"
 	actionQueriesDelete    = "git.queries.delete"
 	actionQueriesRun       = "git.queries.run"
-	actionPRList           = "git.prs.list" // intent 261007 (FR4)
+	actionPRList           = "git.prs.list"            // intent 261007 (FR4)
+	actionQueriesDefault   = "git.queries.set_default" // intent 261007-github-parity-actions (FR3.3)
 )
 
 func init() { maps.Copy(handlers, gitHandlers) }
@@ -204,6 +205,10 @@ var gitHandlers = map[string]handler{
 		}
 		return r.git.ListPullRequests(ctx, ws, in)
 	},
+	actionQueriesDefault: withDefault(func(r *Runtime, ctx context.Context, ws string, in defaultBody) (any, error) {
+		q, err := r.git.SetQueryDefault(ctx, ws, in.ID, in.IsDefault)
+		return map[string]any{"queries": q}, err
+	}),
 }
 
 // withID decodes {"id": ...} for the handlers that act on one watch or query.
@@ -214,5 +219,22 @@ func withID(fn func(r *Runtime, ctx context.Context, ws, id string) (any, error)
 			return nil, err
 		}
 		return fn(r, ctx, ws, in.ID)
+	}
+}
+
+// defaultBody is the {"id", "isDefault"} body of the *.queries.set_default actions.
+type defaultBody struct {
+	ID        string `json:"id"`
+	IsDefault bool   `json:"isDefault"`
+}
+
+// withDefault decodes a defaultBody for the handlers that star a saved query.
+func withDefault(fn func(r *Runtime, ctx context.Context, ws string, in defaultBody) (any, error)) handler {
+	return func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in defaultBody
+		if err := decode(body, &in); err != nil {
+			return nil, err
+		}
+		return fn(r, ctx, ws, in)
 	}
 }

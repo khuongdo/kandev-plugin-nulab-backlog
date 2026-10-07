@@ -1,0 +1,163 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5"
+  ],
+  "coverage": [
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "ui/src/page/start-task.tsx"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "ui/src/page/quick-actions.ts"
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "ui/src/page/start-task.test.tsx"
+    },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "ui/src/issues/issues-page.tsx"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "internal/issues/quick_actions.go"
+    },
+    {
+      "id": "FR2.2",
+      "status": "OK",
+      "target": "internal/issues/quick_actions_test.go"
+    },
+    {
+      "id": "FR2.3",
+      "status": "OK",
+      "target": "ui/src/settings/quick-actions-section.tsx"
+    },
+    {
+      "id": "FR2.4",
+      "status": "OK",
+      "target": "internal/issues/quick_actions.go"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "id": "FR3.2",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "internal/git/service.go"
+    },
+    {
+      "id": "FR3.4",
+      "status": "OK",
+      "target": "ui/src/page/backlog-lists.test.tsx"
+    },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "ui/src/issues/issues-state.ts"
+    },
+    {
+      "id": "FR4.2",
+      "status": "OK",
+      "target": "internal/issues/service.go"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "internal/issues/queries.go"
+    },
+    {
+      "id": "FR4.4",
+      "status": "OK",
+      "target": "internal/issues/queries_test.go"
+    },
+    {
+      "id": "FR4.5",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "ui/src/git/pr-toolbar.tsx"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "ui/src/layout.ts"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "ui/src/settings/settings.test.tsx"
+    },
+    {
+      "id": "NFR1",
+      "status": "OK",
+      "target": "internal/plugin/actions_watch_test.go"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/plugin/manifest_test.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/issues/list_test.go"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "ui/src/page/backlog-lists.test.tsx"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "ui/src/page/start-task.test.tsx"
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "internal/git/queries_test.go"
+    },
+    {
+      "path": "internal/git/service.go"
+    },
+    {
+      "path": "internal/git/types.go"
+    },
+    {
+      "path": "internal/issues/list_test.go"
+    },
+    {
+      "path": "internal/issues/queries.go"
+    },
+    {
+      "path": "internal/issues/queries_test.go"
+    },
+    {
+      "path": "internal/issues/quick_actions.go"
+    },
+    {
+      "path": "internal/issues/quick_actions_test.go"
+    },
+    {
+      "path": "internal/issues/service.go"
+    },
+    {
+      "path": "internal/issues/types.go"
+    },
+    {
+      "path": "internal/plugin/actions_u3_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_u4_test.go"
+    },
+    {
+      "path": "internal/plugin/actions_watch_test.go"
+    },
+    {
+      "path": "internal/plugin/git_actions.go"
+    },
+    {
+      "path": "internal/plugin/issue_actions.go"
+    },
+    {
+      "path": "internal/plugin/manifest_test.go"
+    },
+    {
+      "path": "manifest.yaml"
+    },
+    {
+      "path": "ui/src/git/pr-list.tsx"
+    },
+    {
+      "path": "ui/src/git/pr-toolbar.tsx"
+    },
+    {
+      "path": "ui/src/git/save-query-dialog.tsx"
+    },
+    {
+      "path": "ui/src/icons.tsx"
+    },
+    {
+      "path": "ui/src/index.test.ts"
+    },
+    {
+      "path": "ui/src/issues/i18n.test.ts"
+    },
+    {
+      "path": "ui/src/issues/issues-page.test.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-page.tsx"
+    },
+    {
+      "path": "ui/src/issues/issues-state.test.ts"
+    },
+    {
+      "path": "ui/src/issues/issues-state.ts"
+    },
+    {
+      "path": "ui/src/layout.ts"
+    },
+    {
+      "path": "ui/src/messages/en.ts"
+    },
+    {
+      "path": "ui/src/page/BacklogPage.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-lists.test.tsx"
+    },
+    {
+      "path": "ui/src/page/backlog-page.test.tsx"
+    },
+    {
+      "path": "ui/src/page/quick-actions.test.ts"
+    },
+    {
+      "path": "ui/src/page/quick-actions.ts"
+    },
+    {
+      "path": "ui/src/page/start-task.test.tsx"
+    },
+    {
+      "path": "ui/src/page/start-task.tsx"
+    },
+    {
+      "path": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "path": "ui/src/settings/quick-actions-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/saved-queries-section.tsx"
+    },
+    {
+      "path": "ui/src/settings/sections.test.tsx"
+    },
+    {
+      "path": "ui/src/testing/harness.ts"
+    }
+  ]
+}

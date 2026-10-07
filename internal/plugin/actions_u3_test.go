@@ -294,4 +294,69 @@ var u3Actions = []string{
 	// Intent 261007: issue watches (FR3).
 	actionIssueWatchesList, actionIssueWatchesSave, actionIssueWatchesDelete, actionIssueWatchesRun,
 	actionIssueWatchesPause, actionIssueWatchesResume,
+	// Intent 261007-github-parity-actions: quick actions and saved issue queries.
+	actionQuickActionsGet, actionQuickActionsSave,
+	actionIssueQueriesList, actionIssueQueriesSave, actionIssueQueriesDelete, actionIssueQueriesDefault,
+}
+
+// FR2.2-FR2.4: quick actions come back resolved; a save replaces one kind.
+func TestQuickActionActions_GetSaveAndValidate(t *testing.T) {
+	r := newU3Rig(t)
+	resp, out := r.call(t, actionQuickActionsGet, nil)
+	require.Equal(t, 200, resp.Status)
+	require.Len(t, out["issue"], 3)
+	require.Len(t, out["pr"], 3)
+	require.Equal(t, "implement", out["issue"].([]any)[0].(map[string]any)["id"])
+
+	resp, out = r.call(t, actionQuickActionsSave, map[string]any{"kind": "issue", "actions": []map[string]any{
+		{"label": "Triage", "hint": "Sort it", "icon": "check", "promptTemplate": "Triage {{url}}"}}})
+	require.Equal(t, 200, resp.Status)
+	require.Len(t, out["issue"], 1)
+	first := out["issue"].([]any)[0].(map[string]any)
+	require.Equal(t, "Triage", first["label"])
+	require.NotEmpty(t, first["id"])
+	require.Len(t, out["pr"], 3, "the PR defaults stay")
+
+	resp, out = r.call(t, actionQuickActionsSave, map[string]any{"kind": "issue", "actions": []map[string]any{{"label": "", "icon": "eye"}}})
+	require.Equal(t, 400, resp.Status)
+	require.Equal(t, "label", errorOf(t, out)["field"])
+	resp, out = r.call(t, actionQuickActionsSave, []byte(`{"kind":1}`))
+	require.Equal(t, 400, resp.Status)
+	require.Equal(t, "validation", errorOf(t, out)["code"])
+}
+
+// FR4.3, FR4.4: saved issue queries with one starred default.
+func TestIssueQueryActions_CRUDAndDefault(t *testing.T) {
+	r := newU3Rig(t)
+	resp, out := r.call(t, actionIssueQueriesSave, map[string]any{"name": "My bugs", "assignee": "me", "statusIds": []int{1, 2}, "keyword": "login"})
+	require.Equal(t, 200, resp.Status)
+	id := out["id"].(string)
+	require.Equal(t, "me", out["assignee"])
+
+	resp, out = r.call(t, actionIssueQueriesDefault, map[string]any{"id": id, "isDefault": true})
+	require.Equal(t, 200, resp.Status)
+	queries := out["queries"].([]any)
+	require.Equal(t, true, queries[0].(map[string]any)["isDefault"])
+
+	_, out = r.call(t, actionIssueQueriesList, nil)
+	require.Len(t, out["queries"], 1)
+
+	resp, out = r.call(t, actionIssueQueriesSave, map[string]any{"name": "Bad", "assignee": "someone"})
+	require.Equal(t, 400, resp.Status)
+	require.Equal(t, "assignee", errorOf(t, out)["field"])
+	resp, out = r.call(t, actionIssueQueriesDefault, map[string]any{"id": "missing", "isDefault": true})
+	require.Equal(t, 404, resp.Status)
+	require.Equal(t, "not_found", errorOf(t, out)["code"])
+
+	resp, _ = r.call(t, actionIssueQueriesDelete, map[string]string{"id": id})
+	require.Equal(t, 200, resp.Status)
+	resp, out = r.call(t, actionIssueQueriesDelete, map[string]string{"id": id})
+	require.Equal(t, 404, resp.Status)
+	require.Equal(t, "not_found", errorOf(t, out)["code"])
+
+	resp, out = r.call(t, actionIssuesList, map[string]any{"assignee": "nobody"})
+	require.Equal(t, 400, resp.Status, "FR4.2: issues.list only accepts me")
+	require.Equal(t, "assignee", errorOf(t, out)["field"])
+	resp, _ = r.call(t, actionIssuesList, map[string]any{"assignee": "me"})
+	require.Equal(t, 200, resp.Status)
 }

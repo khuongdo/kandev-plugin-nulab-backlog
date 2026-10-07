@@ -2,6 +2,7 @@ import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, STACK } from "../layout";
+import type { IssueQuery } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
 import { gitNotice, noticeText, stateText } from "./git-state";
@@ -15,6 +16,7 @@ export interface Query {
   statuses: string[];
   assignee: string;
   creator?: string;
+  isDefault?: boolean;
 }
 
 /** "PROJ / web-app · Open, Merged · assignee Me · creator Anyone". */
@@ -33,12 +35,17 @@ export function queryFilters(q: Query, messages: Messages = en): string {
 export interface SaveQueryDialogProps {
   workspaceId: string;
   /** The filters to save; with an id the query is renamed (Settings, WF6). */
-  query: Query;
-  onSaved: (query: Query) => void;
+  query: Query | IssueQuery;
+  /** The save action: git.queries.save (default) or issues.queries.save (FR4.3). */
+  action?: string;
+  /** The filter summary; a PR query's by default. */
+  description?: string;
+  // Method syntax: callers handle the query type of their own action.
+  onSaved(query: Query | IssueQuery): void;
   onClose: () => void;
 }
 
-/** Saves the PR list's filters as a query, or renames one (BR2.5). */
+/** Saves a list's filters as a query, or renames one (BR2.5, FR4.3). */
 export function createSaveQueryDialog(
   host: PluginHostApi,
   messages: Messages = en,
@@ -58,7 +65,14 @@ export function createSaveQueryDialog(
   } = hostUi(host);
   const ID = "backlog-save-query";
 
-  return function SaveQueryDialog({ workspaceId, query, onSaved, onClose }: SaveQueryDialogProps) {
+  return function SaveQueryDialog({
+    workspaceId,
+    query,
+    action = "git.queries.save",
+    description,
+    onSaved,
+    onClose,
+  }: SaveQueryDialogProps) {
     const [name, setName] = useState(query.name);
     const [saving, setSaving] = useState(false);
     const [nameError, setNameError] = useState(false);
@@ -72,7 +86,7 @@ export function createSaveQueryDialog(
       setSaving(true);
       try {
         onSaved(
-          await host.api.invokeAction<Query>("git.queries.save", {
+          await host.api.invokeAction<Query | IssueQuery>(action, {
             workspaceId,
             body: { ...query, name: trimmed },
           }),
@@ -96,7 +110,9 @@ export function createSaveQueryDialog(
             <DialogTitle id={`${ID}-title`}>
               {query.id ? messages.editQueryTitle : messages.saveQueryTitle}
             </DialogTitle>
-            <DialogDescription id={`${ID}-filters`}>{queryFilters(query, messages)}</DialogDescription>
+            <DialogDescription id={`${ID}-filters`}>
+              {description ?? queryFilters(query as Query, messages)}
+            </DialogDescription>
           </DialogHeader>
           <div className={STACK}>
             <div className={FIELD}>

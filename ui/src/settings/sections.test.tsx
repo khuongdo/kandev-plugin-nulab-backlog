@@ -26,10 +26,40 @@ const SECTIONS = [
   "backlog-section-pr-watches",
   "backlog-section-issue-watches",
   "backlog-section-saved-queries",
+  "backlog-section-quick-actions",
   "backlog-section-issue-sync",
   "backlog-section-git-access",
   "backlog-section-projects",
 ];
+
+const DEFAULT_ACTIONS = {
+  issue: [
+    {
+      id: "implement",
+      label: "Implement",
+      hint: "Build and open a PR",
+      icon: "code",
+      promptTemplate: "Implement {{url}}",
+    },
+    {
+      id: "investigate",
+      label: "Investigate",
+      hint: "Find the root cause",
+      icon: "search",
+      promptTemplate: "Investigate {{url}}",
+    },
+    {
+      id: "reproduce",
+      label: "Reproduce",
+      hint: "Document repro steps",
+      icon: "bug",
+      promptTemplate: "Reproduce {{url}}",
+    },
+  ],
+  pr: [
+    { id: "review", label: "Review", hint: "Read the diff", icon: "eye", promptTemplate: "Review {{url}}" },
+  ],
+};
 
 const PR_WATCH = {
   id: "w1",
@@ -65,6 +95,15 @@ const QUERY = {
   statuses: ["merged"],
   assignee: "me",
   creator: "anyone",
+};
+
+const ISSUE_QUERY = {
+  id: "iq1",
+  name: "My bugs",
+  projectKey: "PROJ",
+  statusIds: [1],
+  assignee: "me",
+  keyword: "login",
 };
 
 type Handler = (body: Record<string, unknown>) => Promise<unknown>;
@@ -103,6 +142,10 @@ function scripted(view: View, handlers: Record<string, Handler> = {}, lists: Rec
         return { prLinks: 0, prWatches: 0 };
       case "issues.impact":
         return { issueLinks: 0 };
+      case "issues.quick_actions.get":
+        return DEFAULT_ACTIONS;
+      case "issues.queries.list":
+        return { queries: lists.issueQueries ?? [ISSUE_QUERY] };
     }
     throw new Error(`unexpected ${key}`);
   });
@@ -121,7 +164,7 @@ beforeEach(() => {
 afterEach(unmount);
 
 describe("Settings sections (FR1, BR1.1, BR1.2)", () => {
-  it("stacks the seven sections in order when connected", async () => {
+  it("stacks the eight sections in order when connected", async () => {
     const c = await render(scripted(connected));
     expect(sections(c)).toEqual(SECTIONS);
     expect(byTestId(c, "backlog-settings")!.className).toContain("gap-8");
@@ -150,6 +193,7 @@ describe("Settings sections (FR1, BR1.1, BR1.2)", () => {
       "backlog-section-pr-watches",
       "backlog-section-issue-watches",
       "backlog-section-saved-queries",
+      "backlog-section-quick-actions",
       "backlog-section-issue-sync",
     ]);
     expect(byTestId(c, "backlog-pr-watches-add")).not.toBeNull();
@@ -310,6 +354,129 @@ describe("Saved PR queries section (WF6, BR2.5)", () => {
     await act(async () => byTestId(c, "backlog-saved-query-delete-dialog-confirm")!.click());
     expect(calls(host, "git.queries.delete")[0]![1]).toEqual({ workspaceId: "ws-1", body: { id: "q1" } });
     expect(byTestId(c, "backlog-saved-queries-empty")!.textContent).toContain(en.savedQueriesEmpty);
+  });
+});
+
+describe("Saved issue queries in Settings (FR4.3, FR4.4, FR3.3)", () => {
+  it("lists issue queries next to PR queries, renames, stars and deletes them", async () => {
+    const save = vi.fn(async (body: Record<string, unknown>) => body);
+    const host = scripted(connected, {
+      "issues.queries.save": save,
+      "issues.queries.delete": async () => ({ ok: true }),
+      "issues.queries.set_default": async (b) => ({ queries: [{ ...ISSUE_QUERY, isDefault: b.isDefault }] }),
+      "git.queries.set_default": async (b) => ({ queries: [{ ...QUERY, isDefault: b.isDefault }] }),
+    });
+    const c = await render(host);
+    const row = byTestId(c, "backlog-saved-issue-query-row-iq1")!;
+    expect(row.textContent).toContain("My bugs");
+    expect(row.textContent).toContain("PROJ");
+    expect(row.textContent).toContain(en.whoMe);
+
+    await act(async () => byTestId(c, "backlog-saved-issue-query-star-iq1")!.click());
+    expect(calls(host, "issues.queries.set_default")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { id: "iq1", isDefault: true },
+    });
+    expect(byTestId(c, "backlog-saved-issue-query-row-iq1")!.textContent).toContain(en.defaultQuery);
+    await act(async () => byTestId(c, "backlog-saved-query-star-q1")!.click());
+    expect(calls(host, "git.queries.set_default")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { id: "q1", isDefault: true },
+    });
+
+    await act(async () => byTestId(c, "backlog-saved-issue-query-edit-iq1")!.click());
+    await act(async () => setValue(byTestId(c, "backlog-save-query-name") as HTMLInputElement, "Bugs"));
+    await act(async () => byTestId(c, "backlog-save-query-save")!.click());
+    expect(save).toHaveBeenCalledWith({ ...ISSUE_QUERY, isDefault: true, name: "Bugs" });
+    expect(byTestId(c, "backlog-saved-issue-query-row-iq1")!.textContent).toContain("Bugs");
+
+    await act(async () => byTestId(c, "backlog-saved-issue-query-delete-iq1")!.click());
+    await act(async () => byTestId(c, "backlog-saved-query-delete-dialog-confirm")!.click());
+    expect(calls(host, "issues.queries.delete")[0]![1]).toEqual({ workspaceId: "ws-1", body: { id: "iq1" } });
+    expect(byTestId(c, "backlog-saved-issue-queries-empty")).not.toBeNull();
+  });
+});
+
+describe("Quick actions section (FR2.3, FR2.4)", () => {
+  const labels = (c: HTMLElement) =>
+    [...c.querySelectorAll<HTMLInputElement>('[data-testid^="backlog-quick-action-label-"]')].map(
+      (i) => i.value,
+    );
+
+  it("shows the Issues tab with the defaults and saves edits, additions and deletions", async () => {
+    const save = vi.fn(async (body: Record<string, unknown>) => ({
+      ...DEFAULT_ACTIONS,
+      issue: body.actions,
+    }));
+    const c = await render(scripted(connected, { "issues.quick_actions.save": save }));
+    expect(byTestId(c, "backlog-quick-actions-tab-issue")!.getAttribute("aria-selected")).toBe("true");
+    expect(labels(c)).toEqual(["Implement", "Investigate", "Reproduce"]);
+    expect((byTestId(c, "backlog-quick-action-prompt-1") as HTMLTextAreaElement).value).toBe(
+      "Investigate {{url}}",
+    );
+
+    await act(async () => setValue(byTestId(c, "backlog-quick-action-label-0") as HTMLInputElement, "Build"));
+    await act(async () => byTestId(c, "backlog-quick-action-delete-2")!.click());
+    await act(async () => byTestId(c, "backlog-quick-actions-add")!.click());
+    expect(labels(c)).toEqual(["Build", "Investigate", en.newQuickAction]);
+    await act(async () => choose(c, "backlog-quick-action-icon-2", "check"));
+    await act(async () => byTestId(c, "backlog-quick-actions-save")!.click());
+    expect(save).toHaveBeenCalledWith({
+      kind: "issue",
+      actions: [
+        { ...DEFAULT_ACTIONS.issue[0], label: "Build" },
+        DEFAULT_ACTIONS.issue[1],
+        { id: "", label: en.newQuickAction, hint: "", icon: "check", promptTemplate: "" },
+      ],
+    });
+    expect(byTestId(c, "backlog-quick-actions-status")!.textContent).toBe(en.quickActionsSaved);
+
+    await act(async () => byTestId(c, "backlog-quick-actions-tab-pr")!.click());
+    expect(labels(c)).toEqual(["Review"]);
+  });
+
+  it("resets a kind by saving an empty list and shows the defaults again", async () => {
+    const save = vi.fn(async () => DEFAULT_ACTIONS);
+    const c = await render(scripted(connected, { "issues.quick_actions.save": save }));
+    await act(async () => byTestId(c, "backlog-quick-action-delete-0")!.click());
+    await act(async () => byTestId(c, "backlog-quick-actions-reset")!.click());
+    expect(save).toHaveBeenCalledWith({ kind: "issue", actions: [] });
+    expect(labels(c)).toEqual(["Implement", "Investigate", "Reproduce"]);
+  });
+
+  it("refuses an empty or over-long label with a message and saves nothing", async () => {
+    const save = vi.fn(async () => DEFAULT_ACTIONS);
+    const c = await render(scripted(connected, { "issues.quick_actions.save": save }));
+    await act(async () =>
+      setValue(byTestId(c, "backlog-quick-action-label-1") as HTMLInputElement, "x".repeat(101)),
+    );
+    await act(async () => byTestId(c, "backlog-quick-actions-save")!.click());
+    expect(byTestId(c, "backlog-quick-action-label-error-1")!.textContent).toBe(en.errorQuickActionLabel);
+    await act(async () => setValue(byTestId(c, "backlog-quick-action-label-1") as HTMLInputElement, " "));
+    await act(async () => byTestId(c, "backlog-quick-actions-save")!.click());
+    expect(byTestId(c, "backlog-quick-action-label-error-1")).not.toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("shows a server refusal without saving and an error when loading fails", async () => {
+    const c = await render(
+      scripted(connected, {
+        "issues.quick_actions.save": async () => {
+          throw actionError(400, { code: "validation", field: "icon" });
+        },
+      }),
+    );
+    await act(async () => byTestId(c, "backlog-quick-actions-save")!.click());
+    expect(byTestId(c, "backlog-quick-actions-notice")!.textContent).toBe(en.errorInput);
+    unmount();
+    const failing = await render(
+      scripted(connected, {
+        "issues.quick_actions.get": async () => {
+          throw actionError(503, { code: "unreachable" });
+        },
+      }),
+    );
+    expect(byTestId(failing, "backlog-quick-actions-error")!.textContent).toContain(en.unreachable);
   });
 });
 

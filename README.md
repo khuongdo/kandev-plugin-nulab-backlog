@@ -7,11 +7,21 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 - Adds a **Backlog** card under **Settings > Integrations**, with the plugin's outline icon and
   an on/off switch. The card holds every Backlog setting as framed sections: Connection,
-  PR watches, Issue watches, Saved PR queries, Issue sync, Git access and Projects.
+  PR watches, Issue watches, Saved queries, Quick actions, Issue sync, Git access and Projects.
 - Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
-  `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration.
+  `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration:
+  a scope bar with the two kinds, a built-in preset and a **Saved** menu, a toolbar with the
+  filters and refresh, and the results below.
   When the workspace is not connected or Backlog is off, the page shows an alert with a link to
   the Backlog settings instead.
+- **Quick actions**: every issue and pull request row has a **+ Task** menu (Implement,
+  Investigate, Reproduce for issues; Review, Address feedback, Fix CI for pull requests). A pick
+  opens Kandev's own create-task dialog with a ready prompt (`{{url}}` and `{{title}}` filled in);
+  the created task is linked to the issue or pull request. Edit, add, delete or reset the
+  actions per workspace under **Settings > Integrations > Backlog > Quick actions**.
+- **Default queries**: the Issues list opens on **Assigned to me, open** and the Pull requests
+  list on **Open, assigned to me** (first repository), unless a saved query of that kind is
+  starred as the default in the **Saved** menu or in Settings.
 - A workspace admin connects the workspace to one Backlog space with an **API key**.
   The plugin checks the key with Backlog (`GET /api/v2/users/myself`) before saving it,
   then shows `Connected as <name> @ <space>`.
@@ -20,6 +30,17 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
   browser and never written to logs.
 
 ## Upgrade notes
+
+### 0.2.0
+
+- Rows on `/backlog` get a **+ Task** quick action menu. The issue row's old **Create task** item
+  is gone; **Link to task** stays in the row menu.
+- The Issues / Pull requests tabs became a scope bar. Saved queries are picked from its
+  **Saved** menu (the saved-query dropdown in the Pull requests toolbar was removed), and
+  issue filters can now be saved too.
+- The lists open on a default query instead of an empty filter. Star a saved query to make it
+  the default.
+- Existing saved PR queries, links and watches keep working; no data migration is needed.
 
 ### 0.1.1
 
