@@ -41,6 +41,8 @@
 
 - ALWAYS check the latest GitHub release (gh release list) and origin/main before asking the release-version question, not only manifest.yaml on the working branch (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:12964151cf0ce3bec78bd3f03e2d6bd8c45cf5181838d6e854009164f19858e6 -->
 
+- ALWAYS re-check gh release list and origin/main right before asking the version question AND again before tagging; v0.4.0 was released on main (PR #9) while this intent ran, after the first version question had proposed 0.4.0, forcing a rebase, a loop-back and release 0.4.1 (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:deployment-pipeline:d702f15b3c44e75136756728f4224aad87d8129a42bc32f0c72b2b2ca9b1f1d1 -->
+
 ## Code Style
 
 <!-- Project-specific specialisation. -->
@@ -113,3 +115,8 @@
 - In refactor scope (no units or domain design), treated the existing code structure from the code knowledge base as the domain design for Functional Design (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:2369d780bf4e1983217919608f3224e7182dc767c72884e45a728feca8091cd3 -->
 - For Deployment Pipeline, asked only release-specific questions (version, upgrade notes) because the team Deployment practice already settles strategy, gates, approvals, rollback and feature flags (learned 2026-10-07) <!-- cid:261007-uiux-github-style:deployment-pipeline:da684d7f076fb85473387dd397f644dc998ea4caacd02a2228d75b67c5f951d5 -->
 - v0.2.0 was released on main while this intent ran, so the first version question (0.1.2/0.2.0) was wrong and was corrected to 0.3.0 via Request changes; rebase onto origin/main before release (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:d44f93a1dd652c310b3d3e63ff829ad927ccd6d55fa160f7ea85d37099d787ab -->
+- Used the local Kandev checkout at ~/repo/kandev (pinned v0.96.0) as the reference for the GitHub integration UI, since ../kandev is not present in this worktree. (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:reverse-engineering:012a437c392e763ed113473c5488daaa3868f835350ed66b0d73434ad1a05b1c -->
+- Take the CodeKB snapshot with directory paths ending in '/' (ui/src/, internal/plugin/, internal/issues/) because codekb-publish treats a path as a directory only with a trailing slash (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:reverse-engineering:fa8ea088dcad376906db8de78ef254b36c4f251a2f3e5ffd212454fa33f29071 -->
+- Read 'show the task clearly' on the Kanban badge as 'the badge clearly shows the linked Backlog issue', since the card already is the task (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:requirements-analysis:a347b258d2db14fbbb91ac3b611230992225e0260caa0cd1ae3f45f13d05afdc -->
+- Treated the later answer that the issue URL works correctly as superseding the first answer that it was wrong (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:requirements-analysis:e94cd5fd3528ce0aa7e19d519763f3d0dab8efe084d1004c6e7e022fd4361981 -->
+- Write AI-DLC stage artifacts with the Write/Edit tools only; a file written through the shell has no recorded write and the review request is refused until it is re-saved (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:functional-design:e6a53d664dc9aab59e2967137ef3878b87121474135ab302162fcb72c7292cb9 -->

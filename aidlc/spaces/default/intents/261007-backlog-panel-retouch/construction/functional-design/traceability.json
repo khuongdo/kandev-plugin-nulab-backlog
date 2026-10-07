@@ -1,0 +1,32 @@
+{
+  "stage": "functional-design",
+  "upstream_ids": ["FR1", "FR1.1", "FR1.2", "FR1.3", "FR1.4", "FR2", "FR2.1", "FR2.2", "FR3", "FR3.1", "FR4", "FR4.1", "FR4.2", "FR4.3", "FR4.4", "FR4.5", "FR4.6", "FR5", "FR5.1", "FR5.2", "NFR1", "NFR2", "NFR3", "NFR4", "NFR5"],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "BR1.1, BR1.2, BR1.3, BR1.4, BR1.5" },
+    { "id": "FR1.1", "status": "OK", "target": "BR1.1, BR1.2" },
+    { "id": "FR1.2", "status": "OK", "target": "BR1.3" },
+    { "id": "FR1.3", "status": "OK", "target": "BR1.4" },
+    { "id": "FR1.4", "status": "OK", "target": "BR1.5" },
+    { "id": "FR2", "status": "OK", "target": "BR2.1, BR2.2, BR2.3" },
+    { "id": "FR2.1", "status": "OK", "target": "BR2.1" },
+    { "id": "FR2.2", "status": "OK", "target": "BR2.2, BR2.3" },
+    { "id": "FR3", "status": "OK", "target": "BR3.1" },
+    { "id": "FR3.1", "status": "OK", "target": "BR3.1" },
+    { "id": "FR4", "status": "OK", "target": "BR4.1, BR4.2, BR4.3, BR4.4, BR4.5, BR4.6, BR4.7, BR4.8" },
+    { "id": "FR4.1", "status": "OK", "target": "BR4.1" },
+    { "id": "FR4.2", "status": "OK", "target": "BR4.2, BR4.3" },
+    { "id": "FR4.3", "status": "OK", "target": "BR4.4" },
+    { "id": "FR4.4", "status": "OK", "target": "BR4.5" },
+    { "id": "FR4.5", "status": "OK", "target": "BR4.6, BR4.7, BR5.4" },
+    { "id": "FR4.6", "status": "OK", "target": "BR4.8" },
+    { "id": "FR5", "status": "OK", "target": "BR1.1, BR1.2, BR1.4, BR5.1, BR5.2, BR5.3, BR5.4" },
+    { "id": "FR5.1", "status": "OK", "target": "BR1.1, BR1.2, BR1.4" },
+    { "id": "FR5.2", "status": "OK", "target": "BR5.1, BR5.2, BR5.3, BR5.4" },
+    { "id": "NFR1", "status": "OK", "target": "BR6.1" },
+    { "id": "NFR2", "status": "Deferred", "target": "Proven by the packaged-host contract test on Kandev v0.96.0 in Build and Test" },
+    { "id": "NFR3", "status": "OK", "target": "BR2.2, BR4.4, BR5.2" },
+    { "id": "NFR4", "status": "Deferred", "target": "Quality gates checked in Code Generation and Build and Test" },
+    { "id": "NFR5", "status": "OK", "target": "BR6.2" }
+  ],
+  "reverse": []
+}

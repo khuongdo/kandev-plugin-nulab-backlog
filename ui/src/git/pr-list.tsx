@@ -1,9 +1,9 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { hostUi } from "../host-ui";
-import { showingText, taskHref } from "../issues/issues-state";
-import { BUTTON, FIELD, RESULTS, ROW, STACK } from "../layout";
-import { en, format, type MessageKey, type Messages } from "../messages/en";
+import { prTaskRowLinks, showingText } from "../issues/issues-state";
+import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
+import { en, format, type Messages } from "../messages/en";
 import type { QuickAction } from "../page/quick-actions";
 import { createStartTask } from "../page/start-task";
 import type { Notice } from "../settings/state";
@@ -22,6 +22,7 @@ import {
 import { createPrToolbar } from "./pr-toolbar";
 import { createScmPrList } from "./scm-pr-list";
 import { createSaveQueryDialog, type Query } from "./save-query-dialog";
+import { createStatusMultiFilter } from "./status-multi-filter";
 
 /** One row of git.prs.list (FR4.2). */
 interface PullRequestRow {
@@ -56,18 +57,13 @@ type Load =
   | { kind: "ready"; page: PullRequestPage; at: string };
 
 const PAGE_SIZE = 20;
-const STATUSES = ["open", "closed", "merged"] as const;
-const STATUS_KEYS: Record<string, MessageKey> = {
-  open: "stateOpen",
-  closed: "stateClosed",
-  merged: "stateMerged",
-};
+const ANYONE = "anyone";
 const ICONS: Record<string, string> = {
   open: "pull-request",
   merged: "merged",
   closed: "pull-request-closed",
 };
-const START: Filters = { repo: "", statuses: ["open"], assignee: "anyone", creator: "anyone" };
+const START: Filters = { repo: "", statuses: ["open"], assignee: ANYONE, creator: ANYONE };
 
 /** The query the list opens on: a saved one, or the "Open, assigned to me" preset. */
 export interface PrSelection {
@@ -100,23 +96,15 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
-  const {
-    Alert,
-    AlertDescription,
-    Button,
-    Checkbox,
-    ChangeRequestList,
-    ChangeRequestRow,
-    Empty,
-    EmptyHeader,
-  } = ui;
-  const { EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, Label, Pagination, PaginationContent } =
-    ui;
+  const { Alert, AlertDescription, Button, ChangeRequestList, ChangeRequestRow, Empty, EmptyHeader } = ui;
+  const { EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, Pagination, PaginationContent } = ui;
   const { PaginationItem, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
+  const { TaskRowIndicator } = ui;
   const PrToolbar = createPrToolbar(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
   const StartTask = createStartTask(host, messages);
   const ScmPrList = createScmPrList(host, messages);
+  const StatusMultiFilter = createStatusMultiFilter(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
 
   return function PrList({
@@ -156,9 +144,9 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
               repo: `${q.projectKey}/${q.repoName}`,
               statuses: q.statuses,
               assignee: q.assignee,
-              creator: q.creator ?? "anyone",
+              creator: q.creator ?? ANYONE,
             }
-          : { repo: repos?.[0]?.value ?? "", statuses: ["open"], assignee: "me", creator: "anyone" },
+          : { repo: repos?.[0]?.value ?? "", statuses: ["open"], assignee: "me", creator: ANYONE },
       );
       setPage(1); // BR2.4
     }, [selection?.key, repos]);
@@ -207,6 +195,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
       setFilters((f) => ({ ...f, ...next }));
       setPage(1);
     };
+    // BR5.3: at least one status stays picked; the last one's checkbox is disabled.
     const toggleStatus = (s: string) =>
       change({
         statuses: filters.statuses.includes(s)
@@ -214,22 +203,24 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
           : [...filters.statuses, s],
       });
 
+    // The provider selector: label-less like the other filters, named for screen readers (NFR3).
     const providerControl = (
-      <div className={FIELD}>
-        <Label htmlFor="backlog-prs-provider">{messages.scmProviderLabel}</Label>
-        <Select value={provider} onValueChange={setProvider}>
-          <SelectTrigger id="backlog-prs-provider" data-testid="backlog-prs-provider" className="min-w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {["backlog", ...providers.map((v) => v.provider)].map((p) => (
-              <SelectItem key={p} value={p} data-testid={`backlog-prs-provider-${p}`}>
-                {providerName(p, messages)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={provider} onValueChange={setProvider}>
+        <SelectTrigger
+          data-testid="backlog-prs-provider"
+          aria-label={messages.scmProviderLabel}
+          className={FILTER_TRIGGER}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {["backlog", ...providers.map((v) => v.provider)].map((p) => (
+            <SelectItem key={p} value={p} data-testid={`backlog-prs-provider-${p}`}>
+              {providerName(p, messages)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     );
 
     if (provider !== "backlog") {
@@ -248,63 +239,46 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
       );
     }
 
-    const who = (field: "assignee" | "creator", label: string) => (
-      <div className={FIELD}>
-        <Label htmlFor={`backlog-prs-${field}`}>{label}</Label>
-        <Select value={filters[field]} onValueChange={(v: string) => change({ [field]: v })}>
-          <SelectTrigger
-            id={`backlog-prs-${field}`}
-            data-testid={`backlog-prs-${field}`}
-            className="min-w-28"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="anyone" data-testid={`backlog-prs-${field}-anyone`}>
-              {messages.whoAnyone}
-            </SelectItem>
-            <SelectItem value="me" data-testid={`backlog-prs-${field}-me`}>
-              {messages.whoMe}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    // BR5.2: GitHub's searchable dropdowns without field labels; "" is the All choice (R-06).
+    const dropdown = (
+      id: string,
+      text: { label: string; all: string },
+      props: { value: string; onChange: (v: string) => void; options: RepoOption[] },
+    ) => (
+      <IntegrationRepositoryFilter
+        value={props.value}
+        onValueChange={props.onChange}
+        options={props.options}
+        ariaLabel={text.label}
+        allLabel={text.all}
+        testId={`backlog-prs-${id}`}
+        triggerClassName={FILTER_TRIGGER}
+        className={FILTER_POPOVER}
+      />
     );
+    // Assignee and Creator: "Anyone" is the All choice ("" maps to anyone) or "Me".
+    const who = (field: "assignee" | "creator", label: string) =>
+      dropdown(
+        field,
+        { label, all: messages.whoAnyone },
+        {
+          value: filters[field] === ANYONE ? "" : filters[field],
+          onChange: (v) => change({ [field]: v || ANYONE }),
+          options: [{ value: "me", label: messages.whoMe }],
+        },
+      );
 
-    const filterControls = [
-      <div key="provider">{providerControl}</div>,
-      <div key="repo" className={FIELD}>
-        <span className="text-sm font-medium">{messages.colRepository}</span>
-        <IntegrationRepositoryFilter
-          value={filters.repo}
-          onValueChange={(v: string) => change({ repo: v })}
-          options={repos ?? []}
-          ariaLabel={messages.colRepository}
-          allLabel={messages.allRepositories}
-          testId="backlog-prs-repo"
-        />
-      </div>,
-      <div key="status" role="group" aria-labelledby="backlog-prs-status-label" className={FIELD}>
-        <span id="backlog-prs-status-label" className="text-sm font-medium">
-          {messages.watchStatusLegend}
-        </span>
-        <div className={ROW}>
-          {STATUSES.map((s) => (
-            <div key={s} className="flex items-center gap-1">
-              <Checkbox
-                id={`backlog-prs-status-${s}`}
-                data-testid={`backlog-prs-status-${s}`}
-                checked={filters.statuses.includes(s)}
-                onCheckedChange={() => toggleStatus(s)}
-              />
-              <Label htmlFor={`backlog-prs-status-${s}`}>{messages[STATUS_KEYS[s]!]}</Label>
-            </div>
-          ))}
-        </div>
-      </div>,
-      <div key="assignee">{who("assignee", messages.assigneeLabel)}</div>,
-      <div key="creator">{who("creator", messages.creatorLabel)}</div>,
-      <div key="save" className="self-end">
+    const filterControls = (
+      <div data-testid="backlog-prs-filters" className={FILTERS}>
+        {providerControl}
+        {dropdown(
+          "repo",
+          { label: messages.colRepository, all: messages.allRepositories },
+          { value: filters.repo, onChange: (v) => change({ repo: v }), options: repos ?? [] },
+        )}
+        <StatusMultiFilter value={filters.statuses} onToggle={toggleStatus} />
+        {who("assignee", messages.assigneeLabel)}
+        {who("creator", messages.creatorLabel)}
         <Button
           type="button"
           variant="outline"
@@ -316,8 +290,8 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
         >
           {messages.saveQuery}
         </Button>
-      </div>,
-    ];
+      </div>
+    );
 
     const empty = (title: string) => (
       <Empty data-testid="backlog-prs-empty">
@@ -343,19 +317,12 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
             <span key="u">{format(messages.updatedRelative, { time: relative(pr.updated) })}</span>
           ) : null,
         ]}
-        taskIndicator={pr.linkedTaskIds.map((id) => (
-          <a
-            key={id}
-            href={taskHref(id)}
-            data-testid={`backlog-pr-task-${pr.number}-${id}`}
-            onClick={(e: { preventDefault(): void }) => {
-              e.preventDefault();
-              host.navigate(taskHref(id));
-            }}
-          >
-            {format(messages.taskLink, { id })}
-          </a>
-        ))}
+        taskIndicator={
+          <TaskRowIndicator
+            tasks={prTaskRowLinks(pr.linkedTaskIds)}
+            testIdPrefix={`backlog-pr-task-${pr.number}`}
+          />
+        }
         action={
           <StartTask
             workspaceId={workspaceId}

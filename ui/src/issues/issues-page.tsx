@@ -1,11 +1,10 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
-import { createPrToolbar } from "../git/pr-toolbar";
 import { createSaveQueryDialog } from "../git/save-query-dialog";
 import { hostUi } from "../host-ui";
 import { icon } from "../icons";
-import { BUTTON, FIELD, RESULTS, ROW, STACK } from "../layout";
+import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { settingsHref } from "../page/BacklogPage";
 import type { QuickAction } from "../page/quick-actions";
@@ -18,7 +17,7 @@ import {
   issuesFailure,
   openStatusIds,
   showingText,
-  taskHref,
+  taskRowLinks,
   type IssueItem,
   type IssueQuery,
   type IssuePage,
@@ -29,12 +28,11 @@ import { createLinkTaskDialog } from "./link-task-dialog";
 import type { LinksStore } from "./links-store";
 
 const PAGE_SIZE = 20;
-/** The "All" choice of a filter: Radix Select items cannot have an empty value. */
-const ALL = "all";
 /** The "Not closed" status choice and the "Me" assignee choice (FR4.1, FR4.2). */
 const OPEN = "open";
 const ME = "me";
-const SEARCH_WAIT = 400;
+/** The status choice of a saved query that picks several statuses. */
+const CUSTOM = "custom";
 
 type Load =
   | { kind: "loading" }
@@ -61,6 +59,12 @@ interface Filters {
 }
 
 const NO_FILTERS: Filters = { projectKey: "", statusIds: [], assignee: "" };
+
+/** The toolbar's last-fetched time: a Date, or null when unknown or not a valid time. */
+function fetchedAt(at: string | undefined): Date | null {
+  const d = at ? new Date(at) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : null;
+}
 
 /** The issues.list body: only the filters in use; "me" is resolved by the server. */
 function listBody(page: number, keyword: string, f: Filters): Record<string, unknown> {
@@ -93,9 +97,11 @@ export interface IssuesPageProps {
 
 /**
  * The issue list at /backlog once connected (M2, M2m; US2.1, US2.2, US2.3,
- * US4.2; FR1, FR5.3): filters, a search that waits 400 ms, 20 rows per page
- * in the host's change request rows, linked tasks, the "+ Task" quick action
- * menu and Link to task per row, and Refresh. Phones get a Filters (n) drawer.
+ * US4.2; FR1, FR4, FR5.3): the host's list toolbar with the query box
+ * (committed on Enter or blur) and GitHub-style dropdown filters, 20 rows per
+ * page in the host's change request rows, linked tasks through the host's
+ * task indicator, the "+ Task" quick action menu and Link to task per row,
+ * and Refresh. Phones get the same toolbar stacked, all filters visible.
  */
 export function createIssuesPage(
   host: PluginHostApi,
@@ -105,14 +111,13 @@ export function createIssuesPage(
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
-  const { Button, Input, Label, Skeleton, Pagination, PaginationContent, PaginationItem } = ui;
-  const { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
-  const { ChangeRequestList, ChangeRequestRow } = ui;
+  const { Button, Skeleton, Pagination, PaginationContent, PaginationItem } = ui;
+  const { ChangeRequestList, ChangeRequestRow, IntegrationListToolbar, IntegrationRepositoryFilter } = ui;
+  const { TaskRowIndicator } = ui;
   const { RowMenu } = createSectionParts(host, messages);
   const LinkTaskDialog = createLinkTaskDialog(host, messages);
   const StartTask = createStartTask(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
-  const ListToolbar = createPrToolbar(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
 
@@ -123,26 +128,29 @@ export function createIssuesPage(
     onSavedQuery,
     saveRequest = 0,
   }: IssuesPageProps) {
-    const { isMobile } = host.useResponsiveBreakpoint?.() ?? { isMobile: false };
     // Undefined until the selection is applied: the preset needs the statuses first.
     const [filters, setFilters] = useState<Filters | undefined>(selection ? undefined : NO_FILTERS);
-    const [search, setSearch] = useState("");
-    const [keyword, setKeyword] = useState("");
+    // FR4.2: the query box holds a draft; Enter or leaving the box commits it.
+    const [draftQuery, setDraftQuery] = useState("");
+    const [committedQuery, setCommittedQuery] = useState("");
     const [page, setPage] = useState(1);
     const [nonce, setNonce] = useState(0);
     const [load, setLoad] = useState<Load>({ kind: "loading" });
+    // R-04: the toolbar keeps the last count and time while another page or filter loads.
+    const [shown, setShown] = useState<IssuePage | undefined>(undefined);
     const [options, setOptions] = useState<FilterOptions | undefined>(undefined);
     const [saving, setSaving] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const [countdown, setCountdown] = useState<number | undefined>(undefined);
     const [linkDialog, setLinkDialog] = useState<IssueItem | undefined>(undefined);
     const [refreshing, setRefreshing] = useState(false);
-    const [showFilters, setShowFilters] = useState(false);
     const [notice, setNotice] = useState<Notice | undefined>(undefined);
     const latest = useRef(0);
     const focusList = useRef(false);
-    const list = useRef<HTMLHeadingElement | null>(null);
+    const results = useRef<HTMLDivElement | null>(null);
     const applied = useRef("");
+    // R-01: true from a pointer press on a filter dropdown until the pointer is released.
+    const pickingFilter = useRef(false);
 
     useEffect(() => {
       host.api
@@ -162,8 +170,8 @@ export function createIssuesPage(
           ? { projectKey: q.projectKey ?? "", statusIds: q.statusIds ?? [], assignee: q.assignee ?? "" }
           : { projectKey: "", statusIds: openStatusIds(options?.statuses), assignee: ME },
       );
-      setSearch(q?.keyword ?? "");
-      setKeyword(q?.keyword ?? "");
+      setDraftQuery(q?.keyword ?? "");
+      setCommittedQuery(q?.keyword ?? "");
       setPage(1);
     }, [selection?.key, options]);
 
@@ -172,26 +180,20 @@ export function createIssuesPage(
     }, [saveRequest]);
 
     useEffect(() => {
-      const id = setTimeout(() => {
-        if (search.trim() !== keyword) {
-          setKeyword(search.trim());
-          setPage(1);
-        }
-      }, SEARCH_WAIT);
-      return () => clearTimeout(id);
-    }, [search]);
-
-    useEffect(() => {
       if (!filters) return;
       const seq = ++latest.current;
       setLoad({ kind: "loading" });
       setAnnouncement(messages.issuesLoading);
       host.api
-        .invokeAction<IssuePage>("issues.list", { workspaceId, body: listBody(page, keyword, filters) })
+        .invokeAction<IssuePage>("issues.list", {
+          workspaceId,
+          body: listBody(page, committedQuery, filters),
+        })
         .then((r) => {
           if (seq !== latest.current) return;
           const ready = { ...r, items: r?.items ?? [] };
           setLoad({ kind: "ready", page: ready });
+          setShown(ready);
           setAnnouncement(
             showingText({ page, pageSize: PAGE_SIZE, total: ready.total ?? 0 }, messages) ||
               messages.issuesEmpty,
@@ -206,12 +208,12 @@ export function createIssuesPage(
             setAnnouncement(t(f.notice)); // once; the visible countdown changes every second
           }
         });
-    }, [workspaceId, page, keyword, filters, nonce]);
+    }, [workspaceId, page, committedQuery, filters, nonce]);
 
     useEffect(() => {
       if (load.kind === "ready" && focusList.current) {
         focusList.current = false;
-        list.current?.focus();
+        results.current?.focus();
       }
     }, [load]);
 
@@ -231,23 +233,38 @@ export function createIssuesPage(
     const reload = useCallback(() => setNonce((n) => n + 1), []);
     const current = filters ?? NO_FILTERS;
     const openIds = openStatusIds(options?.statuses);
+    // BR4.5: a filter change reloads from page 1, taking a typed but uncommitted query along (R-04).
     const setFilter = (next: Partial<Filters>) => {
+      pickingFilter.current = false;
       setFilters((f) => ({ ...(f ?? NO_FILTERS), ...next }));
+      setDraftQuery(draftQuery.trim());
+      setCommittedQuery(draftQuery.trim());
       setPage(1);
     };
-    // The status choice: All, Not closed (every status but Closed), or one status.
+    // The status choice: All (""), Not closed (every status but Closed), one status, or a saved set.
     const statusValue = (() => {
       const ids = current.statusIds;
-      if (ids.length === 0) return ALL;
+      if (ids.length === 0) return "";
       if (ids.length === openIds.length && ids.every((id) => openIds.includes(id))) return OPEN;
-      return ids.length === 1 ? String(ids[0]) : "";
+      return ids.length === 1 ? String(ids[0]) : CUSTOM;
     })();
     const reset = () => {
       setFilters(NO_FILTERS);
-      setSearch("");
-      setKeyword("");
+      setDraftQuery("");
+      setCommittedQuery("");
       setPage(1);
       reload();
+    };
+    // BR4.2, BR4.3: commit the trimmed draft; the same value does not reload, blank clears the keyword.
+    // R-01: pressing a filter dropdown blurs the box first; that blur leaves the draft for the pick,
+    // so a typed query and the following pick make one reload. Enter and other blurs commit at once.
+    const commitQuery = () => {
+      if (pickingFilter.current) return;
+      const next = draftQuery.trim();
+      setDraftQuery(next);
+      if (next === committedQuery) return;
+      setCommittedQuery(next);
+      setPage(1);
     };
     const goTo = (p: number) => {
       focusList.current = true;
@@ -283,89 +300,93 @@ export function createIssuesPage(
       reload();
     };
 
-    const filterCount = [current.projectKey, current.statusIds.length > 0, current.assignee].filter(
-      Boolean,
-    ).length;
-    const select = (
-      label: string,
-      value: string,
-      onChange: (v: string) => void,
-      choices: Option[] | undefined,
-      testId: string,
-      extra?: { value: string; label: string },
+    // BR4.4: GitHub's searchable dropdowns without field labels; "" is the All choice (R-06).
+    const filter = (
+      id: string,
+      text: { label: string; all: string },
+      props: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] },
     ) => (
-      <div className={FIELD}>
-        <Label htmlFor={testId}>{label}</Label>
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger id={testId} data-testid={testId} className="min-w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL} data-testid={`${testId}-${ALL}`}>
-              {messages.filterAll}
-            </SelectItem>
-            {extra ? (
-              <SelectItem value={extra.value} data-testid={`${testId}-${extra.value}`}>
-                {extra.label}
-              </SelectItem>
-            ) : null}
-            {(choices ?? []).map((o) => (
-              <SelectItem
-                key={o.key ?? o.id}
-                value={o.key ?? String(o.id)}
-                data-testid={`${testId}-${o.key ?? o.id}`}
-              >
-                {o.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <IntegrationRepositoryFilter
+        value={props.value}
+        onValueChange={props.onChange}
+        options={props.options}
+        ariaLabel={text.label}
+        allLabel={text.all}
+        testId={`backlog-issues-${id}`}
+        triggerClassName={FILTER_TRIGGER}
+        className={FILTER_POPOVER}
+      />
     );
+    const choices = (list: Option[] | undefined) =>
+      (list ?? []).map((o) => ({ value: o.key ?? String(o.id), label: o.name }));
+    // A saved query may pick several statuses: shown as "n statuses", not as All.
+    const savedSet =
+      statusValue === CUSTOM
+        ? [{ value: CUSTOM, label: format(messages.statusCount, { count: current.statusIds.length }) }]
+        : [];
     const filterFields = (
-      <div className={ROW}>
-        {select(
-          messages.filterProject,
-          current.projectKey || ALL,
-          (v) => setFilter({ projectKey: v === ALL ? "" : v }),
-          options?.projects,
-          "backlog-issues-project",
-        )}
-        {select(
-          messages.filterStatus,
-          statusValue,
-          (v) => setFilter({ statusIds: v === ALL ? [] : v === OPEN ? openIds : [Number(v)] }),
-          options?.statuses,
-          "backlog-issues-status",
-          { value: OPEN, label: messages.statusNotClosed },
-        )}
-        {select(
-          messages.filterAssignee,
-          current.assignee || ALL,
-          (v) => setFilter({ assignee: v === ALL ? "" : v }),
-          options?.assignees,
-          "backlog-issues-assignee",
-          { value: ME, label: messages.whoMe },
-        )}
+      <div id="backlog-issues-filters" data-testid="backlog-issues-filters" className={FILTERS}>
+        <div
+          className="contents"
+          onPointerDownCapture={() => {
+            pickingFilter.current = true;
+            document.addEventListener("pointerup", () => (pickingFilter.current = false), { once: true });
+          }}
+        >
+          {filter(
+            "project",
+            { label: messages.filterProject, all: messages.filterAllProjects },
+            {
+              value: current.projectKey,
+              onChange: (v) => setFilter({ projectKey: v }),
+              options: choices(options?.projects),
+            },
+          )}
+          {filter(
+            "status",
+            { label: messages.filterStatus, all: messages.filterAllStatuses },
+            {
+              value: statusValue,
+              onChange: (v) => {
+                if (v !== CUSTOM) setFilter({ statusIds: !v ? [] : v === OPEN ? openIds : [Number(v)] });
+              },
+              options: [
+                { value: OPEN, label: messages.statusNotClosed },
+                ...savedSet,
+                ...choices(options?.statuses),
+              ],
+            },
+          )}
+          {filter(
+            "assignee",
+            { label: messages.filterAssignee, all: messages.filterAllAssignees },
+            {
+              value: current.assignee,
+              onChange: (v) => setFilter({ assignee: v }),
+              options: [{ value: ME, label: messages.whoMe }, ...choices(options?.assignees)],
+            },
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={BUTTON}
+          data-testid="backlog-issues-save-query"
+          disabled={!filters}
+          onClick={() => setSaving(true)}
+        >
+          {messages.saveQuery}
+        </Button>
       </div>
     );
 
+    // FR1, BR1.1-BR1.5: the host shows the task (title, or key/id) and opens it; nothing when empty.
     const tasksOf = (item: IssueItem) => (
-      <span className={ROW}>
-        {item.linkedTasks.map((task) => (
-          <a
-            key={task.taskId}
-            href={taskHref(task.taskId)}
-            data-testid={`backlog-issue-task-${item.issueKey}-${task.taskId}`}
-            onClick={(e: { preventDefault(): void }) => {
-              e.preventDefault();
-              host.navigate(taskHref(task.taskId));
-            }}
-          >
-            {task.taskKey ?? task.taskId}
-          </a>
-        ))}
-      </span>
+      <TaskRowIndicator
+        tasks={taskRowLinks(item.linkedTasks)}
+        testIdPrefix={`backlog-issue-task-${item.issueKey}`}
+      />
     );
 
     const actionsOf = (item: IssueItem) => {
@@ -538,57 +559,25 @@ export function createIssuesPage(
       );
     })();
 
-    const refreshedAt = load.kind === "ready" ? load.page.refreshedAt : undefined;
     return (
       <div data-testid="backlog-issues" className="flex min-w-0 flex-col">
-        <ListToolbar
-          idPrefix="backlog-issues"
+        <IntegrationListToolbar
           title={messages.issuesListLabel}
-          headingRef={list}
-          count={load.kind === "ready" ? load.page.total : undefined}
-          loading={refreshing}
-          lastFetchedAt={refreshedAt}
-          refreshLabel={refreshing ? messages.refreshing : messages.refresh}
+          count={shown?.total ?? 0}
+          loading={refreshing || (load.kind === "loading" && !shown)}
+          lastFetchedAt={fetchedAt(shown?.refreshedAt)}
+          customQuery={draftQuery}
+          committedQuery={committedQuery}
+          onCustomQueryChange={setDraftQuery}
+          onCommitCustomQuery={commitQuery}
           onRefresh={() => void refresh()}
-        >
-          <div className={FIELD}>
-            <Label htmlFor="backlog-issues-search">{messages.searchIssues}</Label>
-            <Input
-              id="backlog-issues-search"
-              data-testid="backlog-issues-search"
-              type="search"
-              value={search}
-              onChange={(e: { target: { value: string } }) => setSearch(e.target.value)}
-            />
-          </div>
-          {isMobile ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={`${BUTTON} self-end`}
-              data-testid="backlog-issues-filters-toggle"
-              aria-expanded={showFilters}
-              aria-controls="backlog-issues-filters"
-              onClick={() => setShowFilters((s) => !s)}
-            >
-              {format(messages.filtersButton, { count: filterCount })}
-            </Button>
-          ) : null}
-          {!isMobile || showFilters ? <div id="backlog-issues-filters">{filterFields}</div> : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`${BUTTON} self-end`}
-            data-testid="backlog-issues-save-query"
-            disabled={!filters}
-            onClick={() => setSaving(true)}
-          >
-            {messages.saveQuery}
-          </Button>
-        </ListToolbar>
-        <div className={RESULTS} data-testid="backlog-issues-results">
+          queryPlaceholder={messages.searchIssues}
+          titleTestId="backlog-issues-list"
+          queryTestId="backlog-issues-search"
+          refreshTestId="backlog-issues-refresh"
+          filter={filterFields}
+        />
+        <div className={RESULTS} data-testid="backlog-issues-results" ref={results} tabIndex={-1}>
           {body}
           {notice ? (
             <p role="alert" data-testid="backlog-issues-notice">
@@ -606,7 +595,7 @@ export function createIssuesPage(
                 projectKey: current.projectKey,
                 statusIds: current.statusIds,
                 assignee: current.assignee,
-                keyword,
+                keyword: committedQuery, // BR4.7: never an uncommitted draft
               };
               return (
                 <SaveQueryDialog

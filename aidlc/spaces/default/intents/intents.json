@@ -33,5 +33,12 @@
     "dirName": "261007-source-control-agnostic",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a1161a-a0fb-7757-abf6-b285c836d1e1",
+    "slug": "backlog-panel-retouch",
+    "dirName": "261007-backlog-panel-retouch",
+    "scope": "refactor",
+    "status": "in-flight"
   }
 ]

@@ -7,7 +7,6 @@ import {
   actionError,
   axeViolations,
   byTestId,
-  choose,
   connected,
   expectTestIds,
   fakeHost,
@@ -169,7 +168,13 @@ describe("Pull requests list (FR2.5, FR2.6, FR4, BR2.4, BR4.1)", () => {
     expect(row.textContent).toContain("Test User");
     expect(row.textContent).toContain("rel:2026-10-02T09:00:00Z");
     expect(byTestId(c, "backlog-pr-row-45-link")!.getAttribute("href")).toBe(pr(45).url);
-    expect(byTestId(c, "backlog-pr-task-45-task-9")!.getAttribute("href")).toBe("/t/task-9");
+    // FR5.1, BR1.1-BR1.4: the host task indicator, with the task id as fallback title.
+    const task = byTestId(c, "backlog-pr-task-45-single")!;
+    expect(task.getAttribute("data-host")).toBe("TaskRowIndicator");
+    expect(task.textContent).toBe("task-9");
+    await act(async () => task.click());
+    expect(window.location.pathname).toBe("/t/task-9");
+    expect(byTestId(c, "backlog-pr-row-44")!.querySelector('[data-host="TaskRowIndicator"]')).toBeNull();
     expect(byTestId(c, "backlog-prs-showing")!.textContent).toBe("Showing 1-20 of 45");
     expect(byTestId(c, "backlog-prs-count")!.textContent).toContain("45");
     expect((byTestId(c, "backlog-prs-prev") as HTMLButtonElement).disabled).toBe(true);
@@ -180,18 +185,60 @@ describe("Pull requests list (FR2.5, FR2.6, FR4, BR2.4, BR4.1)", () => {
     expect((byTestId(c, "backlog-prs-next") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("filters by status, assignee and creator and resets the page", async () => {
+  it("filters with label-less dropdowns and a Status (n) multi-select, resetting the page (FR5.2, BR5.1-BR5.3, R-05, R-06)", async () => {
     const host = setup();
     const c = await render(host);
     await openPRs(c);
     await pickRepo(c);
+    const toolbar = byTestId(c, "backlog-prs-toolbar")!;
+    expect(toolbar.querySelector("input")).toBeNull(); // no query box: Backlog's PR API has no search
+    expect(toolbar.querySelector("label")).toBeNull();
+    expect(toolbar.textContent).not.toContain(en.colRepository);
+    for (const [id, label] of [
+      ["repo", en.colRepository],
+      ["assignee", en.assigneeLabel],
+      ["creator", en.creatorLabel],
+    ] as const) {
+      const filter = byTestId(c, `backlog-prs-${id}`)!;
+      expect(filter.getAttribute("data-host")).toBe("IntegrationRepositoryFilter");
+      expect(filter.getAttribute("aria-label")).toBe(label);
+      expect(filter.getAttribute("data-trigger-class")).toContain("md:w-[220px]");
+    }
+    expect(byTestId(c, "backlog-prs-assignee-option-all")!.textContent).toBe(en.whoAnyone);
+    expect(byTestId(c, "backlog-prs-creator")!.getAttribute("data-value")).toBe(""); // anyone
     await act(async () => byTestId(c, "backlog-prs-next")!.click());
+    const status = byTestId(c, "backlog-prs-status")!;
+    expect(status.textContent).toBe("Status (1)");
+    expect(status.getAttribute("data-variant")).toBe("outline");
+    expect(status.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(byTestId(c, "backlog-prs-status-open")).toBeNull();
+    await act(async () => status.click());
+    expect(status.getAttribute("aria-expanded")).toBe("true");
+    const open = byTestId(c, "backlog-prs-status-open") as HTMLButtonElement;
+    expect(open.getAttribute("aria-checked")).toBe("true");
+    // R-05 (code review): the last picked status stays focusable but cannot be cleared.
+    expect(open.disabled).toBe(false);
+    expect(open.getAttribute("aria-disabled")).toBe("true");
+    open.focus();
+    expect(document.activeElement).toBe(open);
+    const listed = calls(host, "git.prs.list").length;
+    await act(async () => open.click());
+    expect(open.getAttribute("aria-checked")).toBe("true");
+    expect(status.textContent).toBe("Status (1)");
+    expect(calls(host, "git.prs.list")).toHaveLength(listed);
     await act(async () => byTestId(c, "backlog-prs-status-merged")!.click());
-    await act(async () => choose(c, "backlog-prs-assignee", "me"));
-    await act(async () => choose(c, "backlog-prs-creator", "me"));
+    expect(status.textContent).toBe("Status (2)");
+    expect(open.getAttribute("aria-disabled")).toBeNull();
+    await act(async () => byTestId(c, "backlog-prs-assignee-option-me")!.click());
+    await act(async () => byTestId(c, "backlog-prs-creator-option-me")!.click());
     expect(calls(host, "git.prs.list").at(-1)![1]).toMatchObject({
       body: { statuses: ["open", "merged"], assignee: "me", creator: "me", page: 1 },
     });
+    await act(async () => byTestId(c, "backlog-prs-creator-option-all")!.click()); // "" is Anyone (R-06)
+    expect(calls(host, "git.prs.list").at(-1)![1]).toMatchObject({ body: { creator: "anyone" } });
+    expect(await axeViolations(c)).toEqual([]);
+    expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+    expect(rawControls(c)).toEqual([]);
   });
 
   it("saves the current filters as a query from the list (BR2.5)", async () => {
@@ -327,6 +374,11 @@ describe("Default queries and scope bar (FR3, FR4, FR5.1, NFR4)", () => {
       },
     });
     expect(byTestId(c, "backlog-saved-menu-item-iq1")!.getAttribute("aria-pressed")).toBe("true");
+    // BR4.6: the dropdowns, the draft and the committed query all come from the saved query.
+    expect((byTestId(c, "backlog-issues-search") as HTMLInputElement).value).toBe("login");
+    expect(byTestId(c, "backlog-issues-project")!.getAttribute("data-value")).toBe("PROJ");
+    expect(byTestId(c, "backlog-issues-status")!.getAttribute("data-value")).toBe("2");
+    expect(byTestId(c, "backlog-issues-assignee")!.getAttribute("data-value")).toBe("7");
   });
 
   it("opens Pull requests on 'Open, assigned to me' in the first repository without a starred PR query", async () => {
@@ -416,6 +468,8 @@ describe("Default queries and scope bar (FR3, FR4, FR5.1, NFR4)", () => {
     const save = vi.fn(async (b: Record<string, unknown>) => ({ id: "iq9", ...b }));
     const host = defaults({}, { "issues.queries.save": save });
     const c = await render(host);
+    // BR4.7: an uncommitted draft is not saved.
+    await act(async () => setValue(byTestId(c, "backlog-issues-search") as HTMLInputElement, "unsent"));
     await act(async () => byTestId(c, "backlog-issues-save-query")!.click());
     await act(async () => setValue(byTestId(c, "backlog-save-query-name") as HTMLInputElement, "Mine open"));
     await act(async () => byTestId(c, "backlog-save-query-save")!.click());
@@ -453,9 +507,20 @@ describe("GitHub-aligned layout (FR5.1-FR5.3)", () => {
     expect(root.className).not.toMatch(/\bp[xy]?-\d/);
     for (const kind of ["issues", "prs"]) {
       if (kind === "prs") await act(async () => byTestId(c, "backlog-scope-bar-kind-prs")!.click());
-      const toolbar = byTestId(c, `backlog-${kind}-toolbar`)!;
+      // Issues use the host IntegrationListToolbar (BR4.1); PRs a lookalike with the same classes (BR5.1).
+      const toolbar =
+        kind === "issues"
+          ? byTestId(c, "backlog-issues")!.querySelector<HTMLElement>('[data-host="IntegrationListToolbar"]')!
+          : byTestId(c, "backlog-prs-toolbar")!;
       for (const cls of ["border-b", "px-4", "py-2.5", "sm:px-6"]) expect(toolbar.classList).toContain(cls);
       expect(toolbar.lastElementChild!.lastElementChild).toBe(byTestId(c, `backlog-${kind}-refresh`));
+      if (kind === "prs") {
+        // BR4.8: phones show the count in the bottom row; desktop next to the title.
+        for (const cls of ["hidden", "md:inline"])
+          expect(byTestId(c, "backlog-prs-count")!.classList).toContain(cls);
+        expect(byTestId(c, "backlog-prs-count-mobile")!.classList).toContain("md:hidden");
+        expect(byTestId(c, "backlog-prs-filters")!.classList).toContain("flex-col");
+      }
       const results = byTestId(c, `backlog-${kind}-results`)!;
       for (const cls of ["px-3", "py-4", "md:px-6"]) expect(results.classList).toContain(cls);
     }

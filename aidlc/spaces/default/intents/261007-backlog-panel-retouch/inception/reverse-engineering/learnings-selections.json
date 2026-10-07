@@ -1,0 +1,4 @@
+{"stage_slug":"reverse-engineering","space":"default","intent":"261007-backlog-panel-retouch","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Used the local Kandev checkout at ~/repo/kandev (pinned v0.96.0) as the reference for the GitHub integration UI, since ../kandev is not present in this worktree."},
+{"candidate_id":"c2","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Take the CodeKB snapshot with directory paths ending in '/' (ui/src/, internal/plugin/, internal/issues/) because codekb-publish treats a path as a directory only with a trailing slash"}
+]}

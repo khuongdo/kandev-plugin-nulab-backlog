@@ -4,12 +4,15 @@ import { en } from "../messages/en";
 import { actionError, fakeHost } from "../testing/harness";
 import {
   badgeDetail,
+  badgeHref,
   badgeText,
   issueQueryFilters,
   issuesFailure,
   loadImpactText,
   openStatusIds,
+  prTaskRowLinks,
   showingText,
+  taskRowLinks,
   type LinkView,
 } from "./issues-state";
 
@@ -118,5 +121,27 @@ describe("issues state helpers (M2, M6)", () => {
     });
     expect(await loadImpactText(none, "ws-1")).toBe("");
     expect(en.impactAll).toContain("{issues}");
+  });
+
+  it("maps linked tasks to host task rows with the key, else the id, as fallback (BR1.2)", () => {
+    expect(taskRowLinks([{ taskId: "t-1", taskKey: "T-1" }, { taskId: "t-2" }])).toEqual([
+      { id: "t-1", taskId: "t-1", fallbackTitle: "T-1" },
+      { id: "t-2", taskId: "t-2", fallbackTitle: "t-2" },
+    ]);
+    expect(taskRowLinks([])).toEqual([]);
+    expect(prTaskRowLinks(["task-9"])).toEqual([{ id: "task-9", taskId: "task-9", fallbackTitle: "task-9" }]);
+  });
+
+  it("opens a badge only when available, connected and on an https Backlog address (BR2.2, BR2.3, R-07)", () => {
+    expect(badgeHref(LINK)).toBe(LINK.url);
+    expect(badgeHref({ ...LINK, unavailable: true })).toBeUndefined();
+    expect(badgeHref({ ...LINK, state: "not_connected" })).toBeUndefined();
+    expect(badgeHref({ ...LINK, url: undefined })).toBeUndefined();
+    expect(badgeHref({ ...LINK, url: "http://example-space.backlog.com/view/PROJ-120" })).toBeUndefined();
+    expect(badgeHref({ ...LINK, url: "javascript:alert(1)" })).toBeUndefined();
+    expect(badgeHref({ ...LINK, url: "https://evil.example.com/view/PROJ-120" })).toBeUndefined();
+    expect(badgeHref({ ...LINK, url: "https://team.backlog.jp/view/A-1" })).toBe(
+      "https://team.backlog.jp/view/A-1",
+    );
   });
 });
