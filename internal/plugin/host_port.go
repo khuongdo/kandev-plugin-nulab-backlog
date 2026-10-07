@@ -93,6 +93,20 @@ func (p hostPort) eachTask(ctx context.Context, filter pluginsdk.TaskFilter, fn 
 	}
 }
 
+// taskPullRequests reads the pull requests Kandev attached to a task
+// (api_read: [tasks]; FR5.4).
+func (p hostPort) taskPullRequests(ctx context.Context, id string) ([]pluginsdk.TaskPullRequest, error) {
+	h, err := p.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	t, err := h.Tasks().Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get task: %w", err)
+	}
+	return t.PullRequests, nil
+}
+
 // optional is nil for an empty string: Kandev then uses the default.
 func optional(s string) *string {
 	if s == "" {

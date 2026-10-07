@@ -4,7 +4,18 @@ import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, ROW, STACK } from "../layout";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
 import { readFailure, type Notice } from "../settings/state";
-import { gitNotice, loadRepoOptions, noticeText, splitRepo, type RepoOption } from "./git-state";
+import {
+  gitNotice,
+  loadProviders,
+  loadRepoOptions,
+  noticeText,
+  providerName,
+  splitRepo,
+  usableProviders,
+  type ProviderView,
+  type RepoOption,
+} from "./git-state";
+import { createScmWatchForm, type ScmWatch } from "./scm-watch-form";
 
 /** A saved watch as git.watches.* returns it. */
 export interface Watch {
@@ -24,8 +35,12 @@ export interface Watch {
 
 export interface WatchFormProps {
   workspaceId: string;
-  watch?: Partial<Watch>;
-  onSaved: (watch: Watch) => void;
+  /** A watch of another provider carries its provider (FR4.3). */
+  watch?: Partial<Watch> | Partial<ScmWatch>;
+  /** The selected Backlog projects, whose mapped repositories other providers watch. */
+  selectedProjects?: string[];
+  // Method syntax: the section handles both watch types.
+  onSaved(watch: Watch | ScmWatch): void;
   onCancel: () => void;
 }
 
@@ -62,8 +77,19 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
   const { useEffect, useState } = host.React;
   const { Button, Input, Label, Checkbox, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } =
     hostUi(host);
+  const ScmWatchForm = createScmWatchForm(host, messages);
 
-  return function WatchForm({ workspaceId, watch, onSaved, onCancel }: WatchFormProps) {
+  return function WatchForm({
+    workspaceId,
+    watch: anyWatch,
+    selectedProjects = [],
+    onSaved,
+    onCancel,
+  }: WatchFormProps) {
+    const scmWatch = anyWatch && "provider" in anyWatch ? (anyWatch as Partial<ScmWatch>) : undefined;
+    const watch = scmWatch ? undefined : (anyWatch as Partial<Watch> | undefined);
+    const [provider, setProvider] = useState<string>(scmWatch?.provider ?? "backlog");
+    const [providers, setProviders] = useState<ProviderView[]>([]);
     const [repos, setRepos] = useState<RepoOption[]>([]);
     const [name, setName] = useState(watch?.name ?? "");
     const [repo, setRepo] = useState(watch?.projectKey ? `${watch.projectKey}/${watch.repoName}` : "");
@@ -77,10 +103,53 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
 
     useEffect(() => {
       loadRepoOptions(host, workspaceId, messages).then(setRepos, (e: unknown) => setNotice(gitNotice(e)));
+      void loadProviders(host, workspaceId).then((v) => setProviders(usableProviders(v)));
     }, [workspaceId]);
     useEffect(() => {
       if (error) document.getElementById(error === "statuses" ? `${IDS.statuses}-open` : IDS[error])?.focus();
     }, [error]);
+
+    // Intent 261007-source-control-agnostic (FR4.3): the provider, fixed once saved.
+    const choices = [
+      ...new Set([
+        "backlog",
+        ...providers.map((v) => v.provider),
+        ...(scmWatch?.provider ? [scmWatch.provider] : []),
+      ]),
+    ];
+    const providerControl =
+      choices.length > 1 ? (
+        <div className={FIELD}>
+          <Label htmlFor="backlog-watch-provider">{messages.scmProviderLabel}</Label>
+          <Select value={provider} onValueChange={setProvider} disabled={Boolean(anyWatch?.id)}>
+            <SelectTrigger id="backlog-watch-provider" data-testid="backlog-watch-provider">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((p) => (
+                <SelectItem key={p} value={p} data-testid={`backlog-watch-provider-${p}`}>
+                  {providerName(p, messages)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null;
+    if (provider !== "backlog") {
+      return (
+        <ScmWatchForm
+          key={provider}
+          workspaceId={workspaceId}
+          provider={provider as ScmWatch["provider"]}
+          view={providers.find((v) => v.provider === provider)}
+          selectedProjects={selectedProjects}
+          watch={scmWatch}
+          providerControl={providerControl}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />
+      );
+    }
 
     const save = async (e?: { preventDefault(): void }) => {
       e?.preventDefault();
@@ -158,6 +227,7 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
 
     return (
       <form data-testid="backlog-watch-form" className={STACK} onSubmit={save} noValidate>
+        {providerControl}
         <div className={FIELD}>
           <Label htmlFor={IDS.name}>{format(messages.required, { label: messages.watchNameLabel })}</Label>
           <Input

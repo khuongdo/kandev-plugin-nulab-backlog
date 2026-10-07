@@ -7,8 +7,20 @@ import { en, format, type MessageKey, type Messages } from "../messages/en";
 import type { QuickAction } from "../page/quick-actions";
 import { createStartTask } from "../page/start-task";
 import type { Notice } from "../settings/state";
-import { gitNotice, loadRepoOptions, noticeText, splitRepo, stateText, type RepoOption } from "./git-state";
+import {
+  gitNotice,
+  loadProviders,
+  loadRepoOptions,
+  noticeText,
+  providerName,
+  splitRepo,
+  stateText,
+  usableProviders,
+  type ProviderView,
+  type RepoOption,
+} from "./git-state";
 import { createPrToolbar } from "./pr-toolbar";
+import { createScmPrList } from "./scm-pr-list";
 import { createSaveQueryDialog, type Query } from "./save-query-dialog";
 
 /** One row of git.prs.list (FR4.2). */
@@ -74,6 +86,8 @@ export interface PrListProps {
   onSavedQuery?: (query: Query) => void;
   /** Opens the save dialog each time it changes (the scope bar's Save current). */
   saveRequest?: number;
+  /** The selected Backlog projects: other providers list their mapped repositories (FR3.3). */
+  selectedProjects?: string[];
 }
 
 /**
@@ -102,6 +116,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
   const PrToolbar = createPrToolbar(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
   const StartTask = createStartTask(host, messages);
+  const ScmPrList = createScmPrList(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
 
   return function PrList({
@@ -110,6 +125,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     selection,
     onSavedQuery,
     saveRequest = 0,
+    selectedProjects = [],
   }: PrListProps) {
     const [filters, setFilters] = useState<Filters>(START);
     const [page, setPage] = useState(1);
@@ -119,9 +135,13 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     const [saving, setSaving] = useState(false);
     const latest = useRef(0);
     const applied = useRef("");
+    // Intent 261007-source-control-agnostic (FR4.1): Backlog Git or a connected provider.
+    const [provider, setProvider] = useState("backlog");
+    const [providers, setProviders] = useState<ProviderView[]>([]);
 
     useEffect(() => {
       loadRepoOptions(host, workspaceId, messages).then(setRepos, () => setRepos([]));
+      void loadProviders(host, workspaceId).then((v) => setProviders(usableProviders(v)));
     }, [workspaceId]);
 
     // FR3.1, FR3.2: apply the selected saved query, or the preset once the repositories are known.
@@ -194,6 +214,40 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
           : [...filters.statuses, s],
       });
 
+    const providerControl = (
+      <div className={FIELD}>
+        <Label htmlFor="backlog-prs-provider">{messages.scmProviderLabel}</Label>
+        <Select value={provider} onValueChange={setProvider}>
+          <SelectTrigger id="backlog-prs-provider" data-testid="backlog-prs-provider" className="min-w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {["backlog", ...providers.map((v) => v.provider)].map((p) => (
+              <SelectItem key={p} value={p} data-testid={`backlog-prs-provider-${p}`}>
+                {providerName(p, messages)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+
+    if (provider !== "backlog") {
+      return (
+        <div data-testid="backlog-prs" className="flex min-w-0 flex-col">
+          <ScmPrList
+            key={provider}
+            workspaceId={workspaceId}
+            provider={provider as ProviderView["provider"]}
+            view={providers.find((v) => v.provider === provider)}
+            selectedProjects={selectedProjects}
+            quickActions={quickActions}
+            providerControl={providerControl}
+          />
+        </div>
+      );
+    }
+
     const who = (field: "assignee" | "creator", label: string) => (
       <div className={FIELD}>
         <Label htmlFor={`backlog-prs-${field}`}>{label}</Label>
@@ -218,6 +272,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     );
 
     const filterControls = [
+      <div key="provider">{providerControl}</div>,
       <div key="repo" className={FIELD}>
         <span className="text-sm font-medium">{messages.colRepository}</span>
         <IntegrationRepositoryFilter

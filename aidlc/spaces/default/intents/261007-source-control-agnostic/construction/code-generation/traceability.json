@@ -1,0 +1,259 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR2.5",
+    "FR2.6",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR4",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR7",
+    "FR7.1",
+    "FR7.2",
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "NFR7",
+    "NFR8"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "OK",
+      "target": "internal/scm/types.go"
+    },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "internal/scm/types_test.go"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "internal/scm/types.go"
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "internal/plugin/v030_test.go"
+    },
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "ui/src/settings/source-control-section.tsx"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "ui/src/settings/source-control-section.test.tsx"
+    },
+    {
+      "id": "FR2.2",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "FR2.3",
+      "status": "OK",
+      "target": "ui/src/settings/source-control-section.tsx"
+    },
+    {
+      "id": "FR2.4",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "FR2.5",
+      "status": "OK",
+      "target": "ui/src/settings/SettingsScreen.tsx"
+    },
+    {
+      "id": "FR2.6",
+      "status": "OK",
+      "target": "internal/plugin/actions_scm_test.go"
+    },
+    {
+      "id": "FR3",
+      "status": "OK",
+      "target": "internal/scm/service.go"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "FR3.2",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "internal/scm/prs.go"
+    },
+    {
+      "id": "FR3.4",
+      "status": "OK",
+      "target": "internal/scm/queries_test.go"
+    },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "internal/scm/prs.go"
+    },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "ui/src/git/pr-list.test.tsx"
+    },
+    {
+      "id": "FR4.2",
+      "status": "OK",
+      "target": "internal/scm/queries_test.go"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "internal/scm/watcher_test.go"
+    },
+    {
+      "id": "FR4.4",
+      "status": "OK",
+      "target": "internal/scm/watcher_test.go"
+    },
+    {
+      "id": "FR4.5",
+      "status": "OK",
+      "target": "internal/scm/client.go"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "internal/scm/links.go"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "internal/scm/links_test.go"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "internal/scm/links_test.go"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "internal/scm/links_test.go"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "internal/plugin/actions_scm_test.go"
+    },
+    {
+      "id": "FR6",
+      "status": "OK",
+      "target": "internal/plugin/runtime.go"
+    },
+    {
+      "id": "FR6.1",
+      "status": "OK",
+      "target": "internal/plugin/actions_scm_test.go"
+    },
+    {
+      "id": "FR6.2",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "FR6.3",
+      "status": "OK",
+      "target": "internal/git/events_test.go"
+    },
+    {
+      "id": "FR7",
+      "status": "OK",
+      "target": "internal/plugin/v030_test.go"
+    },
+    {
+      "id": "FR7.1",
+      "status": "OK",
+      "target": "internal/plugin/v030_test.go"
+    },
+    {
+      "id": "FR7.2",
+      "status": "OK",
+      "target": "internal/plugin/v030_test.go"
+    },
+    {
+      "id": "NFR1",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "internal/scm/httpx_test.go"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "internal/scm/httpx_test.go"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "internal/scm/httpx.go"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "internal/plugin/scm_actions.go"
+    },
+    {
+      "id": "NFR6",
+      "status": "OK",
+      "target": "internal/scm/httpx.go"
+    },
+    {
+      "id": "NFR7",
+      "status": "OK",
+      "target": "internal/plugin/v030_test.go"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "internal/scm/service_test.go"
+    }
+  ]
+}

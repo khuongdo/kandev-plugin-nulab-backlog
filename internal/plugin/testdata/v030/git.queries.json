@@ -1,0 +1,4 @@
+{"schemaVersion": 1, "items": [
+  {"id": "q1", "name": "Merged by me", "projectKey": "PROJ", "repoName": "web-app", "statuses": ["merged"],
+   "assignee": "me", "creator": "anyone", "isDefault": true}
+]}

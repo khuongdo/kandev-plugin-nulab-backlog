@@ -1,0 +1,14 @@
+[
+  {"number": 42, "title": "PROJ-12 Add login page", "state": "open", "draft": false, "merged_at": null,
+   "user": {"login": "lan-dev"}, "head": {"ref": "feature/PROJ-12-login"}, "base": {"ref": "main"},
+   "updated_at": "2026-10-06T09:00:00Z", "html_url": "https://github.com/acme/web-app/pull/42"},
+  {"number": 41, "title": "WIP search", "state": "open", "draft": true, "merged_at": null,
+   "user": {"login": "minh"}, "head": {"ref": "search"}, "base": {"ref": "main"},
+   "updated_at": "2026-10-05T09:00:00Z", "html_url": "https://github.com/acme/web-app/pull/41"},
+  {"number": 40, "title": "Fix typo", "state": "closed", "draft": false, "merged_at": "2026-10-04T09:00:00Z",
+   "user": {"login": "lan-dev"}, "head": {"ref": "typo"}, "base": {"ref": "main"},
+   "updated_at": "2026-10-04T09:00:00Z", "html_url": "https://github.com/acme/web-app/pull/40"},
+  {"number": 39, "title": "Old idea", "state": "closed", "draft": false, "merged_at": null,
+   "user": {"login": "minh"}, "head": {"ref": "idea"}, "base": {"ref": "main"},
+   "updated_at": "2026-10-03T09:00:00Z", "html_url": "https://github.com/acme/web-app/pull/39"}
+]

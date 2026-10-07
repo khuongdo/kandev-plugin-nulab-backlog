@@ -15,6 +15,7 @@ import { createPrWatchesSection, PR_WATCHES_ANCHOR } from "./pr-watches-section"
 import { createProjectPicker } from "./project-picker";
 import { createQuickActionsSection } from "./quick-actions-section";
 import { createSavedQueriesSection } from "./saved-queries-section";
+import { createSourceControlSection } from "./source-control-section";
 import {
   connectedNotice,
   initialState,
@@ -43,7 +44,8 @@ const SECTIONS = "flex flex-col gap-8";
 /**
  * Builds the settings screen of Settings > Integrations > Backlog (M1, FR1)
  * on the host's React and UI kit: Connection, PR watches, Issue watches,
- * Saved PR queries, Issue sync, Git access and Projects as framed sections.
+ * Saved PR queries, Issue sync, Source control (with Git access) and
+ * Projects as framed sections.
  * The plugin bundles no React; `h` is the host's element factory.
  */
 export function createSettingsScreen(host: PluginHostApi, messages: Messages = en): Component<Props> {
@@ -71,6 +73,7 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
   const QuickActions = createQuickActionsSection(host, messages);
   const PollInterval = createPollInterval(host, messages);
   const GitAccess = createGitAccess(host, messages);
+  const SourceControl = createSourceControlSection(host, messages);
   const section = (id: string, title: string, children: unknown) => (
     <div data-testid={`backlog-section-${id}`}>
       <SettingsSection title={title}>{children}</SettingsSection>
@@ -380,11 +383,14 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
     );
 
     // BR1.1, BR1.2: eight sections while connected; members keep the watch,
-    // query, quick action and sync sections, admins also Git access and Projects.
+    // query, quick action, sync and (read-only) source control sections, admins
+    // also Projects.
     return (
       <div data-testid="backlog-settings" className={SECTIONS}>
         {section("connection", messages.sectionConnection, connection)}
-        {connectedOn ? <PrWatches workspaceId={workspaceId!} /> : null}
+        {connectedOn ? (
+          <PrWatches workspaceId={workspaceId!} selectedProjects={state.view?.selectedProjects ?? []} />
+        ) : null}
         {connectedOn ? <IssueWatches workspaceId={workspaceId!} /> : null}
         {connectedOn ? <SavedQueries workspaceId={workspaceId!} /> : null}
         {connectedOn ? <QuickActions workspaceId={workspaceId!} /> : null}
@@ -395,18 +401,26 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
               <PollInterval workspaceId={workspaceId!} readOnly={state.isMember} />,
             )
           : null}
-        {connectedOn && !state.isMember
-          ? section(
-              "git-access",
-              messages.gitAccessHeading,
-              <GitAccess
-                workspaceId={workspaceId!}
-                hasGitCredential={Boolean(state.view?.hasGitCredential)}
-                gitCheck={gitCheck}
-                announce={announce}
-              />,
-            )
-          : null}
+        {connectedOn ? (
+          // Intent 261007-source-control-agnostic (FR2.1, FR2.5, FR2.6): Backlog Git's
+          // Git access and the other providers in one section; members read only.
+          <SourceControl
+            workspaceId={workspaceId!}
+            selectedProjects={state.view?.selectedProjects ?? []}
+            readOnly={state.isMember}
+            backlogGit={
+              <div className={STACK}>
+                <h5 className="text-sm font-medium">{messages.gitAccessHeading}</h5>
+                <GitAccess
+                  workspaceId={workspaceId!}
+                  hasGitCredential={Boolean(state.view?.hasGitCredential)}
+                  gitCheck={gitCheck}
+                  announce={announce}
+                />
+              </div>
+            }
+          />
+        ) : null}
         {connectedOn && !state.isMember
           ? section(
               "projects",

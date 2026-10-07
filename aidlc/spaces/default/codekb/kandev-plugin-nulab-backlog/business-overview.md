@@ -2,29 +2,31 @@
 
 ## Business Context
 
-A Kandev plugin (`id: nulab-backlog`, `version: 0.1.1`, `min_kandev_version: 0.96.0`, MIT) that connects a Kandev workspace to a Nulab Backlog space. Users are teams that hand work to AI agents in Kandev but keep issues, Git repositories and pull requests in Backlog. Released through GitHub Releases and the Kandev marketplace (public repo `khuongdo/kandev-plugin-nulab-backlog`); installation on the self-hosted Kandev server is manual.
+A Kandev plugin (`id: nulab-backlog`, `version: 0.3.0`, `min_kandev_version: 0.96.0`, MIT) that connects a Kandev workspace to a Nulab Backlog space. Users are teams that hand work to AI agents in Kandev but keep issues, Git repositories and pull requests in Backlog. Released through GitHub Releases and the Kandev marketplace (public repo `khuongdo/kandev-plugin-nulab-backlog`); installation on the self-hosted Kandev server is manual.
 
 ## Key Functionality
 
 | Area | What it does | Who uses it |
 |---|---|---|
-| Connection | Connect a space with an API key or OAuth (Sign in with Nulab), test, disconnect, change space, pick projects, enable/disable per workspace, store a Git credential | Workspace admin |
-| Issues | Issue list on `/backlog` (Issues tab: search, Project/Status/Assignee filters, 20 rows per page, "..." row menu with Create task / Link to task), link/unlink task and issue, issue panel in a task, card badge, `#` reference source, status sync loop on a per-workspace poll interval (1–1440 min); issue watches that create at most one task per watch per run on a per-watch interval (default 5 min), managed in Settings | Members; poll interval set by an admin |
-| Git / PR | Backlog Git as a Kandev repository provider; link a PR to a task, PR status, create PR, review provider; PR list on `/backlog` (Pull requests tab, `git.prs.list`); saved PR queries used as a "Query" preset in the PR list and listed in Settings (rename/delete); PR watches that create review tasks, managed in Settings | Signed-in members |
+| Connection | Connect a space with an API key or OAuth (Sign in with Nulab), test, disconnect, change space, pick projects, turn Backlog on/off per workspace (opt-in since v0.3.0), store one Backlog Git credential | Workspace admin |
+| Issues | Issue list on `/backlog` (Issues tab: search, filters, row menu), link/unlink task and issue, issue panel, card badge, `#` reference source, status sync loop, issue watches, quick actions (`issues.quick_actions.*`) and saved issue queries with a default (`issues.queries.*`) | Members; poll interval set by an admin |
+| Git / PR | **Backlog Git only**: Backlog Git as the single Kandev repository provider (`nulab-backlog`), Git credential lease for clone/push, link a PR to a task, PR status, create PR, review provider, PR list on `/backlog`, saved PR queries with a default (`git.queries.set_default`), PR watches | Signed-in members; Git credential set by an admin |
 
-Tasks from issues are created by the plugin itself (`issues.create_task`: title = issue summary, description = issue description + Backlog link). There are no prompt templates / quick actions, no start-task action on PR rows, no saved issue queries and no default query: the PR list opens empty until a repository or saved query is chosen. Details: [code-quality-assessment.md](code-quality-assessment.md#intent-261007-github-parity-actions-risks).
+"Source control" is not a separate concept today: Git means the Backlog Git of the connected Backlog space, reached with the Backlog connection's credentials and scoped to its selected projects ([architecture.md](architecture.md#source-control-coupling-intent-261007-source-control-agnostic)).
 
 ## Business Rules Locked by Code and Tests
 
-- Only `https` space addresses under `backlog.com`, `backlog.jp`, `backlogtool.com` are accepted.
+- Only `https` space addresses under `backlog.com`, `backlog.jp`, `backlogtool.com` are accepted (project Mandated rule; `backlog.Client` pins every request to the space host).
 - API keys, tokens and Git passwords live only in the Kandev secret store; never returned to the browser or logged (`internal/redact`).
-- The integration is enabled by default; when disabled the plugin refuses Backlog calls but keeps the connection. The settings card, switch and nav entry never depend on the enabled state (BR5.4/BR7.6/BR7.8).
-- Connection-changing actions and `issues.set_poll_interval` are `admin`; other issue and Git actions (including `git.queries.*`, `git.prs.list`, `issues.watches.*`) are `authenticated` ([api-documentation.md](api-documentation.md)).
-- A saved PR query needs a non-empty name (at most 100 runes), a repository in a selected project, at least one status, and assignee/creator `anyone|me`; at most 50 per workspace (`internal/git/types.go:179-215`, `internal/git/store.go`).
+- Backlog is **off after installation** until an admin turns it on (`connection.set_enabled`; no switch record = off, `internal/connection/store.go:212-229`). While off, every action except `connection.get` and `connection.set_enabled` is refused, and both Git credential RPCs fail closed (`internal/plugin/runtime.go` `guarded`). The settings card, switch and nav entry never depend on the enabled state.
+- Connection-changing actions and `issues.set_poll_interval` are `admin` ([api-documentation.md](api-documentation.md)).
+- Git items (repositories, PR links, watches, queries, credential leases) are allowed only for the connected Backlog space and its selected projects; a project deselect, space change or disconnect disables them (`internal/git/events.go`).
+- The Git credential is valid only for the connected Backlog host and is deleted on disconnect and on a space change (`internal/connection/store.go:273,383,683-685`).
+- A saved PR query needs a non-empty name (at most 100 runes), a repository in a selected project, at least one status, and assignee/creator `anyone|me`; at most 50 per workspace.
 - The Backlog logo is used under Nulab brand terms that forbid modified or recoloured versions (`docs/brand/backlog-logo.md`).
 
-## Current Intent (261007-github-parity-actions, express, Minimal)
+## Current Intent (261007-source-control-agnostic, express, Minimal)
 
-Match Kandev's first-party GitHub integration: (1) customizable quick actions (default Implement / Investigate prompts plus user-added ones) to start a task from an issue or PR; (2) a preinstalled default saved query for Issues and for PRs; (3) GitHub-aligned page margins and button positions on `/backlog`. External reference: [architecture.md](architecture.md#external-reference-kandev-github-integration-v0960). Risks: [code-quality-assessment.md](code-quality-assessment.md#intent-261007-github-parity-actions-risks).
+Verbatim: "Backlog integration có thể link với nhiều source control khác nhau, ví dụ: github, backlog, bitbucket.... Trong settings có thể setup được những điều kiện để liên kết với source control service tương ứng (auth, repo, space...)". In short: link Backlog work to several source-control services (GitHub, Backlog Git, Bitbucket, ...) and configure each service's linking conditions (auth, repository, space/owner) in Settings. What must change and the open decisions: [architecture.md](architecture.md#source-control-coupling-intent-261007-source-control-agnostic), risks in [code-quality-assessment.md](code-quality-assessment.md#intent-261007-source-control-agnostic-risks).
 
-Previous intent `261007-uiux-github-style` (refactor, released as v0.1.1) delivered the single `/backlog` entry with Issues/PRs tabs, watches and saved queries in Settings, issue watches and host-styled controls.
+Earlier intents: `261007-opt-in-default` (v0.3.0, Backlog opt-in), `261007-github-parity-actions` (v0.2.0, quick actions, default queries, GitHub-style layout), `261007-uiux-github-style` (v0.1.1, single `/backlog` entry, watches and saved queries in Settings).

@@ -1,0 +1,4 @@
+[
+  {"id": 11, "path_with_namespace": "grp/sub/web-app", "web_url": "https://gitlab.com/grp/sub/web-app"},
+  {"id": 12, "path_with_namespace": "grp/api", "web_url": "https://gitlab.com/grp/api"}
+]

@@ -1,0 +1,17 @@
+[
+  {"iid": 7, "title": "PROJ-12 Add login page", "state": "opened", "draft": false,
+   "author": {"username": "lan.dev", "name": "Lan Nguyen"}, "source_branch": "feature/PROJ-12", "target_branch": "main",
+   "updated_at": "2026-10-06T09:00:00.000Z", "web_url": "https://gitlab.com/grp/sub/web-app/-/merge_requests/7"},
+  {"iid": 6, "title": "Draft: search", "state": "opened", "draft": true,
+   "author": {"username": "minh", "name": "Minh"}, "source_branch": "search", "target_branch": "main",
+   "updated_at": "2026-10-05T09:00:00.000Z", "web_url": "https://gitlab.com/grp/sub/web-app/-/merge_requests/6"},
+  {"iid": 5, "title": "Fix typo", "state": "merged", "draft": false,
+   "author": {"username": "lan.dev", "name": "Lan Nguyen"}, "source_branch": "typo", "target_branch": "main",
+   "updated_at": "2026-10-04T09:00:00.000Z", "web_url": "https://gitlab.com/grp/sub/web-app/-/merge_requests/5"},
+  {"iid": 4, "title": "Old idea", "state": "closed", "draft": false,
+   "author": {"username": "minh", "name": "Minh"}, "source_branch": "idea", "target_branch": "main",
+   "updated_at": "2026-10-03T09:00:00.000Z", "web_url": "https://gitlab.com/grp/sub/web-app/-/merge_requests/4"},
+  {"iid": 3, "title": "Locked", "state": "locked", "draft": false,
+   "author": {"username": "minh", "name": "Minh"}, "source_branch": "lock", "target_branch": "main",
+   "updated_at": "2026-10-02T09:00:00.000Z", "web_url": "https://gitlab.com/grp/sub/web-app/-/merge_requests/3"}
+]

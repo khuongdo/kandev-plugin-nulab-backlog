@@ -11,6 +11,7 @@ import {
   fakeHost,
   mount,
   pseudoCatalogue,
+  setValue,
   text,
   unmount,
 } from "../testing/harness";
@@ -217,5 +218,144 @@ describe("Backlog issue panel in the task (M8, US3.2, US3.5)", () => {
     });
     const c = await render(host, pseudoCatalogue(en));
     expectOnlyCatalogueText(c, (ok, msg) => expect(ok, msg).toBe(true));
+  });
+});
+
+describe("Pull requests on the issue panel (FR5)", () => {
+  const LINKS = {
+    links: [
+      {
+        provider: "github",
+        repo: "acme/web",
+        number: 42,
+        taskId: "task-17",
+        title: "Add login",
+        state: "merged",
+        url: "https://github.com/acme/web/pull/42",
+      },
+      {
+        provider: "gitlab",
+        repo: "g/p",
+        number: 7,
+        issueKey: "PROJ-118",
+        auto: true,
+        title: "PROJ-118 timeout",
+        state: "draft",
+        url: "https://gitlab.com/g/p/-/merge_requests/7",
+      },
+    ],
+  };
+  const KANDEV = {
+    pullRequests: [
+      {
+        taskId: "task-2",
+        number: 5,
+        url: "https://github.com/acme/web/pull/5",
+        title: "Fix",
+        state: "open",
+        provider: "github",
+        headBranch: "fix",
+        baseBranch: "main",
+      },
+    ],
+  };
+  const prHost = (handlers: Handlers = {}) =>
+    setup({
+      "scm.links.list": async () => LINKS,
+      "scm.task_prs.list": async () => KANDEV,
+      ...handlers,
+    });
+  const prCalls = (host: ReturnType<typeof setup>, key: string) =>
+    vi.mocked(host.api.invokeAction).mock.calls.filter(([k]) => k === key);
+
+  it("shows linked and auto-linked pull requests and Kandev's own (FR5.1-FR5.4)", async () => {
+    const host = prHost();
+    const c = await render(host);
+    expect(prCalls(host, "scm.links.list")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { taskId: "task-17", issueKey: "PROJ-118" },
+    });
+    expect(prCalls(host, "scm.task_prs.list")[0]![1]).toEqual({ workspaceId: "ws-1", taskId: "task-17" });
+    const manual = byTestId(c, "backlog-issue-pr-github|acme/web|42")!;
+    expect(byTestId(manual, "backlog-issue-pr-link-github|acme/web|42")!.getAttribute("href")).toBe(
+      "https://github.com/acme/web/pull/42",
+    );
+    expect(text(manual)).toContain("GitHub");
+    expect(text(manual)).toContain(en.stateMerged);
+    expect(byTestId(manual, "backlog-issue-pr-auto-github|acme/web|42")).toBeNull();
+    const auto = byTestId(c, "backlog-issue-pr-gitlab|g/p|7")!;
+    expect(byTestId(auto, "backlog-issue-pr-auto-gitlab|g/p|7")!.textContent).toBe(en.autoLinked);
+    expect(text(auto)).toContain(en.stateDraft);
+    const kandev = byTestId(c, "backlog-issue-kandev-pr-task-2-5")!;
+    expect(kandev.querySelector("a")!.getAttribute("href")).toBe("https://github.com/acme/web/pull/5");
+    expect(text(kandev)).toContain(en.fromKandev);
+  });
+
+  it("removes an auto-link with its issue and a manual link without (FR5.3)", async () => {
+    const host = prHost({ "scm.prs.unlink": async () => ({ ok: true }) });
+    const c = await render(host);
+    await act(async () => byTestId(c, "backlog-issue-pr-remove-gitlab|g/p|7")!.click());
+    expect(prCalls(host, "scm.prs.unlink")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      taskId: "task-17",
+      body: { key: "gitlab|g/p|7", issueKey: "PROJ-118" },
+    });
+    expect(byTestId(c, "backlog-issue-pr-gitlab|g/p|7")).toBeNull();
+    await act(async () => byTestId(c, "backlog-issue-pr-remove-github|acme/web|42")!.click());
+    expect(prCalls(host, "scm.prs.unlink")[1]![1]).toMatchObject({ body: { key: "github|acme/web|42" } });
+  });
+
+  it("links a pasted pull request URL to the task (FR5.1)", async () => {
+    const linked = {
+      provider: "bitbucket",
+      repo: "ws/r",
+      number: 3,
+      taskId: "task-17",
+      title: "New",
+      state: "open",
+      url: "https://bitbucket.org/ws/r/pull-requests/3",
+    };
+    let fail = true;
+    const host = prHost({
+      "scm.prs.link": async () => {
+        if (fail) throw actionError(400, { code: "validation", field: "url" });
+        return linked;
+      },
+    });
+    const c = await render(host);
+    expect(byTestId(c, "backlog-issue-pr-url"), "the panel opens read-only").toBeNull();
+    await act(async () => byTestId(c, "backlog-issue-pr-add")!.click());
+    await act(async () => setValue(byTestId(c, "backlog-issue-pr-url") as HTMLInputElement, "https://x"));
+    await act(async () => byTestId(c, "backlog-issue-pr-link")!.click());
+    expect(byTestId(c, "backlog-issue-pr-notice")!.textContent).toBe(en.errorPrUrl);
+    fail = false;
+    await act(async () => byTestId(c, "backlog-issue-pr-link")!.click());
+    expect(prCalls(host, "scm.prs.link").at(-1)![1]).toEqual({
+      workspaceId: "ws-1",
+      taskId: "task-17",
+      body: { url: "https://x" },
+    });
+    expect(byTestId(c, "backlog-issue-pr-bitbucket|ws/r|3")).not.toBeNull();
+    expect((byTestId(c, "backlog-issue-pr-url") as HTMLInputElement).value).toBe("");
+  });
+
+  it("says when there is none, and a failed read never hides the issue", async () => {
+    const host = prHost({
+      "scm.links.list": async () => ({ links: [] }),
+      "scm.task_prs.list": async () => {
+        throw actionError(409, { code: "integration_disabled" });
+      },
+    });
+    const c = await render(host);
+    expect(byTestId(c, "backlog-issue-prs-empty")!.textContent).toBe(en.noPullRequests);
+    expect(byTestId(c, "backlog-issue-prs-error")).not.toBeNull();
+    expect(byTestId(c, "backlog-issue-open")).not.toBeNull();
+  });
+
+  it("keeps catalogue text, test ids and axe", async () => {
+    const c = await render(prHost(), pseudoCatalogue(en));
+    await act(async () => byTestId(c, "backlog-issue-pr-add")!.click());
+    expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+    expect(await axeViolations(c)).toEqual([]);
   });
 });

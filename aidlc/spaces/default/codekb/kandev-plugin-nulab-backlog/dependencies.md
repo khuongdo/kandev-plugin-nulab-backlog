@@ -14,13 +14,13 @@
 
 ### UI (`ui/package.json`, devDependencies only)
 
-`@kandev/plugin-sdk` (path map to `../../kandev/apps/packages/plugin-sdk/src/index.ts`), typescript ~6.0.3, esbuild ^0.28.2, vitest ^5.0.3, jsdom ^30.1.2, axe-core ^4.14.0, eslint ^10.12.0, typescript-eslint ^8.71.1, @eslint/js ^10.0.1, prettier ^3.9.9, react / react-dom ^19.3.0 + `@types/*` (tests only).
+`@kandev/plugin-sdk` (path map to `../../kandev/apps/packages/plugin-sdk/src/index.ts`), typescript ~6.0.3, esbuild ^0.28.2, vitest ^5.0.3, jsdom, axe-core, eslint ^10.12.0, typescript-eslint, prettier ^3.9.9, react / react-dom ^19 + types (tests only).
 
 ### External Systems
 
-- **Kandev host**: state and secret store, task API, events, `host.ui`. Coupled to SDK v0.96.0 (`PluginHostApi`, `PluginUIShape`); the GitHub-parity host components are listed in [api-documentation.md](api-documentation.md#kandev-ui-extension-points).
-- **Backlog API v2** at `https://<space>.backlog.com|backlog.jp|backlogtool.com/api/v2`; Nulab OAuth2. PR listing is per repository.
-- **Sibling checkout `../kandev`** at `.kandev-sdk-ref`: needed by `go build`, `tsc` and every `make` target (`make check-sdk`). CI checks it out; locally it must be provided (a symlink to `/home/k_do_webfrontier/repo/kandev` at `v0.96.0`; absent by default in a fresh worktree).
+- **Kandev host** (SDK v0.96.0): state and secret store, tasks, repositories, events, `host.ui`, Git credential RPCs. Provider-ownership rules that constrain this intent (external, `/home/k_do_webfrontier/repo/kandev`): reserved ids `github`, `gitlab`, `azure_devops` (`apps/web/lib/plugins/registry-provider-ownership.ts:6`); activation refused when another active plugin declares the same provider id (`internal/plugins/service_lifecycle.go:117-121`); native GitHub credential resolver runs before plugin resolvers (`internal/backendapp/git_credentials.go:42-48`); several `repository_providers` per plugin allowed (`internal/plugins/manifest/validate.go:664`).
+- **Backlog API v2 and Backlog Git** at `https://<space>.backlog.com|backlog.jp|backlogtool.com`; Nulab OAuth2. The only source-control service reachable today.
+- **Sibling checkout `../kandev`** at `.kandev-sdk-ref`: needed by `go build`, `tsc` and every `make` target. Absent in this worktree; a v0.96.0 checkout exists at `/home/k_do_webfrontier/repo/kandev`.
 
 ## Internal Dependencies
 
@@ -43,6 +43,6 @@ flowchart TD
   backlog --> redact
 ```
 
-Text fallback: server → plugin; plugin → backlog, connection, git, issues, redact; git → backlog, connection, redact; issues → backlog, connection, redact; connection → backlog, redact; backlog → redact. Acyclic; only `plugin` and `server` import `pluginsdk`. `issues` and `git` do not import each other.
+Text fallback: server → plugin; plugin → backlog, connection, git, issues, redact; git → backlog, connection, redact; issues → backlog, connection, redact; connection → backlog, redact; backlog → redact. Acyclic; only `plugin` and `server` import `pluginsdk`. `issues` and `git` do not import each other. The `git → connection` and `git → backlog` edges are the source-control coupling to the Backlog issue tracker ([architecture.md](architecture.md#source-control-coupling-intent-261007-source-control-agnostic)).
 
-UI: `index.ts` → `brand`, `page`, `settings`, `issues`, `git`, `switch`, `messages`; `page/BacklogPage.tsx` → `issues/issues-page.tsx`, `git/pr-list.tsx`; `git/pr-list.tsx` → `git/pr-toolbar.tsx`, `git/save-query-dialog.tsx`; `settings/SettingsScreen.tsx` → `settings/saved-queries-section.tsx` → `git/save-query-dialog.tsx`; `settings` → `issues` (`PollInterval`) and `git` (`GitAccess`); UI modules → `layout.ts`, `host-ui.ts`, `icons.tsx`; every module → `@kandev/plugin-sdk` (types) and the host object.
+UI: `index.ts` → `brand`, `page`, `settings`, `issues`, `git`, `switch`, `messages`; `page` → `issues`, `git`; `settings` → `git` (`GitAccess`, save-query dialog) and `issues`; `git` and `switch` share `PLUGIN_ID`; every module → `@kandev/plugin-sdk` (types) and the host object.
