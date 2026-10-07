@@ -3,7 +3,7 @@ import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 import { hostUi } from "../host-ui";
 import { BUTTON } from "../layout";
 import { en, format, type Messages } from "../messages/en";
-import { badgeDetail, badgeText } from "./issues-state";
+import { badgeDetail, badgeHref, badgeText } from "./issues-state";
 import type { LinksStore } from "./links-store";
 
 /** The task-card-tags slot props: { taskId, workspaceId, workflowStepId }. */
@@ -13,9 +13,10 @@ interface CardProps {
 
 /**
  * The Backlog issue badge on a Kanban card (M6, task-card-tags slot). Its
- * text says the key and status, so it never relies on colour; focus or a tap
- * shows when the status was last checked. Every card shares one
- * issues.links.list call per workspace.
+ * text says the key and status, so it never relies on colour. When the issue
+ * can be opened the badge is a link to it in a new tab (FR2); otherwise focus
+ * or a tap shows the detail. Every card shares one issues.links.list call per
+ * workspace.
  */
 export function createIssueBadge(
   host: PluginHostApi,
@@ -45,6 +46,37 @@ export function createIssueBadge(
     if (!link) return null;
     const label = badgeText(link, messages);
     const detail = badgeDetail(link, relative, messages);
+    const href = badgeHref(link);
+    const stop = (e: { stopPropagation(): void }) => e.stopPropagation(); // not the card, not a card drag
+    const detailId = `backlog-issue-badge-detail-${taskId}`;
+    if (href) {
+      // BR2.2: a link to the issue in a new tab; the detail is its tooltip and description (R-01).
+      return (
+        <span className="inline-flex">
+          <Button asChild variant="outline" size="xs" className={`${BUTTON} h-auto px-2 text-xs`}>
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={detail || undefined}
+              aria-label={format(messages.issueBadgeSr, { label })}
+              aria-describedby={detail ? detailId : undefined}
+              data-testid={`backlog-issue-badge-${taskId}`}
+              onClick={stop}
+              onPointerDown={stop}
+            >
+              {label}
+            </a>
+          </Button>
+          {detail ? (
+            <span id={detailId} className="sr-only">
+              {detail}
+            </span>
+          ) : null}
+        </span>
+      );
+    }
+    // BR2.3: not openable; focus or a tap shows the detail, such as the reconnect hint.
     return (
       <span className="inline-flex flex-col gap-1">
         <Button
@@ -57,15 +89,16 @@ export function createIssueBadge(
           aria-expanded={open}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
+          onPointerDown={stop}
           onClick={(e: { stopPropagation(): void }) => {
-            e.stopPropagation(); // do not open the card
+            stop(e);
             setOpen((o) => !o);
           }}
         >
           {label}
         </Button>
         {open && detail ? (
-          <span role="status" data-testid={`backlog-issue-badge-detail-${taskId}`} className="text-xs">
+          <span role="status" data-testid={detailId} className="text-xs">
             {detail}
           </span>
         ) : null}

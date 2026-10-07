@@ -1,9 +1,9 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { hostUi } from "../host-ui";
-import { taskHref } from "../issues/issues-state";
-import { BUTTON, FIELD, RESULTS, ROW, STACK } from "../layout";
-import { en, format, type MessageKey, type Messages } from "../messages/en";
+import { prTaskRowLinks } from "../issues/issues-state";
+import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
+import { en, format, type Messages } from "../messages/en";
 import type { QuickAction } from "../page/quick-actions";
 import { createStartTask } from "../page/start-task";
 import type { Notice } from "../settings/state";
@@ -18,6 +18,7 @@ import {
 } from "./git-state";
 import { createPrToolbar } from "./pr-toolbar";
 import { createSaveQueryDialog, scmQueryFilters, type ScmQuery } from "./save-query-dialog";
+import { createStatusMultiFilter } from "./status-multi-filter";
 
 /** One row of scm.prs.list (FR4.1). */
 interface Row {
@@ -48,12 +49,6 @@ type Load =
   | { kind: "failed"; notice: Notice }
   | { kind: "ready"; page: Page; at: string };
 
-const STATUSES = ["open", "closed", "merged"] as const;
-const STATUS_KEYS: Record<string, MessageKey> = {
-  open: "stateOpen",
-  closed: "stateClosed",
-  merged: "stateMerged",
-};
 const ICONS: Record<string, string> = {
   merged: "merged",
   closed: "pull-request-closed",
@@ -82,12 +77,13 @@ export function createScmPrList(host: PluginHostApi, messages: Messages = en): C
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
-  const { Alert, AlertDescription, Button, Checkbox, ChangeRequestList, ChangeRequestRow } = ui;
-  const { Empty, EmptyHeader, EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, Label } = ui;
-  const { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
+  const { Alert, AlertDescription, Button, ChangeRequestList, ChangeRequestRow } = ui;
+  const { Empty, EmptyHeader, EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, TaskRowIndicator } =
+    ui;
   const PrToolbar = createPrToolbar(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
   const StartTask = createStartTask(host, messages);
+  const StatusMultiFilter = createStatusMultiFilter(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const ID = "backlog-scm-prs";
 
@@ -176,101 +172,80 @@ export function createScmPrList(host: PluginHostApi, messages: Messages = en): C
       return { name: "", provider, projectKey, repo, statuses: filters.statuses, author: filters.author };
     };
 
-    const select = (
+    // BR5.2: GitHub's searchable dropdowns without field labels; "" is the All choice.
+    const dropdown = (
       id: string,
-      label: string,
-      value: string,
-      set: (v: string) => void,
-      items: [string, string][],
+      text: { label: string; all: string },
+      props: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] },
     ) => (
-      <div className={FIELD}>
-        <Label htmlFor={id}>{label}</Label>
-        <Select value={value} onValueChange={set}>
-          <SelectTrigger id={id} data-testid={id} className="min-w-28">
-            <SelectValue placeholder={messages.scmSavedNone} />
-          </SelectTrigger>
-          <SelectContent>
-            {items.map(([v, l]) => (
-              <SelectItem key={v} value={v} data-testid={`${id}-${v}`}>
-                {l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <IntegrationRepositoryFilter
+        value={props.value}
+        onValueChange={props.onChange}
+        options={props.options}
+        ariaLabel={text.label}
+        allLabel={text.all}
+        testId={`${ID}-${id}`}
+        triggerClassName={FILTER_TRIGGER}
+        className={FILTER_POPOVER}
+      />
+    );
+    // BR5.3: at least one status stays picked.
+    const toggleStatus = (st: string) =>
+      filters &&
+      change({
+        statuses: filters.statuses.includes(st)
+          ? filters.statuses.filter((x) => x !== st)
+          : [...filters.statuses, st],
+      });
+
+    const controls = !filters ? (
+      <div data-testid={`${ID}-filters`} className={FILTERS}>
+        {providerControl}
+      </div>
+    ) : (
+      <div data-testid={`${ID}-filters`} className={FILTERS}>
+        {providerControl}
+        {dropdown(
+          "repo",
+          { label: messages.colRepository, all: messages.allRepositories },
+          { value: filters.repo, onChange: (v) => change({ repo: v }), options: repos },
+        )}
+        {dropdown(
+          "saved",
+          { label: messages.scmSavedLabel, all: messages.scmSavedNone },
+          {
+            value: savedId,
+            onChange: (id) => {
+              const q = saved?.find((x) => x.id === id);
+              if (q) apply(q);
+              else setSavedId("");
+            },
+            options: (saved ?? []).map((q) => ({ value: q.id ?? "", label: q.name })),
+          },
+        )}
+        <StatusMultiFilter value={filters.statuses} onToggle={toggleStatus} idPrefix={ID} />
+        {dropdown(
+          "author",
+          { label: messages.scmAuthorLabel, all: messages.whoAnyone },
+          {
+            value: filters.author === "anyone" ? "" : filters.author,
+            onChange: (v) => change({ author: v || "anyone" }),
+            options: [{ value: "me", label: messages.whoMe }],
+          },
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={BUTTON}
+          data-testid={`${ID}-save-query`}
+          disabled={!filters.repo}
+          onClick={() => setSaving(true)}
+        >
+          {messages.saveQuery}
+        </Button>
       </div>
     );
-
-    const controls = filters
-      ? [
-          <div key="provider">{providerControl}</div>,
-          <div key="repo" className={FIELD}>
-            <span className="text-sm font-medium">{messages.colRepository}</span>
-            <IntegrationRepositoryFilter
-              value={filters.repo}
-              onValueChange={(v: string) => change({ repo: v })}
-              options={repos}
-              ariaLabel={messages.colRepository}
-              allLabel={messages.allRepositories}
-              testId={`${ID}-repo`}
-            />
-          </div>,
-          <div key="saved">
-            {select(
-              `${ID}-saved`,
-              messages.scmSavedLabel,
-              savedId,
-              (id) => {
-                const q = saved?.find((x) => x.id === id);
-                if (q) apply(q);
-              },
-              (saved ?? []).map((q) => [q.id ?? "", q.name]),
-            )}
-          </div>,
-          <div key="status" role="group" aria-labelledby={`${ID}-status-label`} className={FIELD}>
-            <span id={`${ID}-status-label`} className="text-sm font-medium">
-              {messages.watchStatusLegend}
-            </span>
-            <div className={ROW}>
-              {STATUSES.map((s) => (
-                <div key={s} className="flex items-center gap-1">
-                  <Checkbox
-                    id={`${ID}-status-${s}`}
-                    data-testid={`${ID}-status-${s}`}
-                    checked={filters.statuses.includes(s)}
-                    onCheckedChange={() =>
-                      change({
-                        statuses: filters.statuses.includes(s)
-                          ? filters.statuses.filter((x) => x !== s)
-                          : [...filters.statuses, s],
-                      })
-                    }
-                  />
-                  <Label htmlFor={`${ID}-status-${s}`}>{messages[STATUS_KEYS[s]!]}</Label>
-                </div>
-              ))}
-            </div>
-          </div>,
-          <div key="author">
-            {select(`${ID}-author`, messages.scmAuthorLabel, filters.author, (v) => change({ author: v }), [
-              ["anyone", messages.whoAnyone],
-              ["me", messages.whoMe],
-            ])}
-          </div>,
-          <div key="save" className="self-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={BUTTON}
-              data-testid={`${ID}-save-query`}
-              disabled={!filters.repo}
-              onClick={() => setSaving(true)}
-            >
-              {messages.saveQuery}
-            </Button>
-          </div>,
-        ]
-      : [<div key="provider">{providerControl}</div>];
 
     const empty = (title: string) => (
       <Empty data-testid={`${ID}-empty`}>
@@ -298,19 +273,12 @@ export function createScmPrList(host: PluginHostApi, messages: Messages = en): C
             <span key="u">{format(messages.updatedRelative, { time: relative(r.updatedAt) })}</span>
           ) : null,
         ]}
-        taskIndicator={r.linkedTaskIds.map((id) => (
-          <a
-            key={id}
-            href={taskHref(id)}
-            data-testid={`backlog-scm-pr-task-${r.number}-${id}`}
-            onClick={(e: { preventDefault(): void }) => {
-              e.preventDefault();
-              host.navigate(taskHref(id));
-            }}
-          >
-            {format(messages.taskLink, { id })}
-          </a>
-        ))}
+        taskIndicator={
+          <TaskRowIndicator
+            tasks={prTaskRowLinks(r.linkedTaskIds)}
+            testIdPrefix={`backlog-scm-pr-task-${r.number}`}
+          />
+        }
         action={
           <StartTask
             workspaceId={workspaceId}

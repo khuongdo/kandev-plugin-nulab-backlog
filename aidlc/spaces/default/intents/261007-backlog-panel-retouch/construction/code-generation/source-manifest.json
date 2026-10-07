@@ -1,0 +1,23 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "manifest.yaml" },
+    { "path": "ui/src/git/pr-list.test.tsx" },
+    { "path": "ui/src/git/pr-list.tsx" },
+    { "path": "ui/src/git/pr-toolbar.tsx" },
+    { "path": "ui/src/git/scm-pr-list.tsx" },
+    { "path": "ui/src/git/status-multi-filter.tsx" },
+    { "path": "ui/src/issues/issue-badge.test.tsx" },
+    { "path": "ui/src/issues/issue-badge.tsx" },
+    { "path": "ui/src/issues/issues-page.test.tsx" },
+    { "path": "ui/src/issues/issues-page.tsx" },
+    { "path": "ui/src/issues/issues-state.test.ts" },
+    { "path": "ui/src/issues/issues-state.ts" },
+    { "path": "ui/src/layout.ts" },
+    { "path": "ui/src/messages/en.ts" },
+    { "path": "ui/src/page/backlog-lists.test.tsx" },
+    { "path": "ui/src/testing/harness.ts" }
+  ]
+}

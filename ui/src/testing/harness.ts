@@ -113,8 +113,15 @@ function tag(name: string, element: string) {
   return Stub;
 }
 
-function Button({ variant, size, children, ...props }: Props) {
-  delete props.asChild;
+function Button({ variant, size, asChild, children, ...props }: Props) {
+  const host = {
+    "data-host": "Button",
+    "data-variant": variant ?? "default",
+    "data-size": size ?? "default",
+  };
+  // asChild: the child element (e.g. an anchor) gets the button props, like Radix Slot.
+  if (asChild && React.isValidElement(children))
+    return React.cloneElement(children as React.ReactElement<Props>, { ...host, ...props });
   return React.createElement(
     "button",
     { "data-host": "Button", "data-variant": variant ?? "default", "data-size": size ?? "default", ...props },
@@ -299,8 +306,28 @@ function SettingsSection({ title, description, action, icon, children }: Props) 
   );
 }
 
-function IntegrationRepositoryFilter({ value, onValueChange, options, ariaLabel, testId }: Props) {
-  const list = (options as { value: string; label: string }[]) ?? [];
+/**
+ * The host's searchable filter, always open: a focusable trigger (fake-only
+ * test id <testId>-trigger; the host puts testId on its trigger Button), then
+ * an "All" option (value "", test id <testId>-option-all) and one button per
+ * option. The trigger and popover classes are passed through as data
+ * attributes for layout checks. Use openFilter() before picking an option to
+ * get the host's event order (R-01).
+ */
+function IntegrationRepositoryFilter({
+  value,
+  onValueChange,
+  options,
+  ariaLabel,
+  allLabel,
+  testId,
+  triggerClassName,
+  className,
+}: Props) {
+  const list = [
+    { value: "", label: (allLabel as string) ?? "All repositories", id: "all" },
+    ...((options as { value: string; label: string }[]) ?? []).map((o) => ({ ...o, id: o.value })),
+  ];
   return React.createElement(
     "div",
     {
@@ -309,21 +336,160 @@ function IntegrationRepositoryFilter({ value, onValueChange, options, ariaLabel,
       "data-host": "IntegrationRepositoryFilter",
       "data-testid": testId,
       "data-value": value,
+      "data-trigger-class": triggerClassName,
+      "data-popover-class": className,
     },
-    list.map((o) =>
+    React.createElement("button", {
+      key: "trigger",
+      type: "button",
+      "data-host": "IntegrationRepositoryFilterTrigger",
+      "data-testid": `${testId}-trigger`,
+      "aria-label": ariaLabel,
+    }),
+    ...list.map((o) =>
       React.createElement(
         "button",
         {
-          key: o.value,
+          key: o.id,
           type: "button",
           "data-host": "IntegrationRepositoryFilterOption",
-          "data-testid": `${testId}-option-${o.value}`,
-          "aria-pressed": o.value === value,
+          "data-testid": `${testId}-option-${o.id}`,
+          "aria-pressed": o.value === (value || ""),
           onClick: () => (onValueChange as (v: string) => void)(o.value),
         },
         o.label,
       ),
     ),
+  );
+}
+
+/**
+ * The host's linked-task indicator (Kandev v0.96.0): nothing (or emptyLabel)
+ * for no task, <prefix>-single for one, <prefix>-multi with the count and an
+ * always-open menu for two or more. Choosing a task routes to /t/<id> like
+ * the host's router.push(linkToTask(id)).
+ */
+function TaskRowIndicator({ tasks, testIdPrefix, emptyLabel }: Props) {
+  const list = (tasks as { id: string; taskId: string; fallbackTitle: string }[] | undefined) ?? [];
+  const open = (taskId: string) => window.history.pushState(null, "", `/t/${encodeURIComponent(taskId)}`);
+  const button = (testId: string, onClick: (() => void) | undefined, ...children: React.ReactNode[]) =>
+    React.createElement(
+      "button",
+      { key: testId, type: "button", "data-host": "TaskRowIndicator", "data-testid": testId, onClick },
+      ...children,
+    );
+  if (list.length === 0)
+    return emptyLabel
+      ? React.createElement("span", { "data-testid": `${testIdPrefix}-empty` }, emptyLabel as string)
+      : null;
+  if (list.length === 1)
+    return button(`${testIdPrefix}-single`, () => open(list[0]!.taskId), list[0]!.fallbackTitle);
+  return React.createElement(
+    "span",
+    { "data-host": "TaskRowIndicatorMenu" },
+    button(
+      `${testIdPrefix}-multi`,
+      undefined,
+      "Tasks ",
+      React.createElement("span", null, String(list.length)),
+    ),
+    list.map((t) => button(`${testIdPrefix}-item-${t.id}`, () => open(t.taskId), t.fallbackTitle)),
+  );
+}
+
+/**
+ * The host's IntegrationListToolbar (Kandev v0.96.0): title, filter slot,
+ * query input (Enter, or blur while the draft differs from the committed
+ * query, calls onCommitCustomQuery) and a ghost refresh. Count, loading and
+ * last fetched are data attributes: the host renders them with its own text.
+ */
+function IntegrationListToolbar(props: Props) {
+  const dirty = props.customQuery !== props.committedQuery;
+  const commit = props.onCommitCustomQuery as () => void;
+  const lastFetchedAt = props.lastFetchedAt as Date | null;
+  return React.createElement(
+    "div",
+    {
+      "data-host": "IntegrationListToolbar",
+      "data-count": props.count,
+      "data-loading": String(props.loading),
+      "data-last-fetched": lastFetchedAt ? lastFetchedAt.toISOString() : "",
+      className:
+        "flex shrink-0 flex-col gap-2 border-b px-4 py-2.5 sm:px-6 md:flex-row md:flex-wrap md:items-center md:gap-3",
+    },
+    React.createElement("h2", { "data-testid": props.titleTestId }, props.title as string),
+    props.filter as React.ReactNode,
+    React.createElement("input", {
+      "data-host": "Input",
+      "data-testid": props.queryTestId,
+      value: props.customQuery as string,
+      placeholder: props.queryPlaceholder as string,
+      onChange: (e: { target: { value: string } }) =>
+        (props.onCustomQueryChange as (v: string) => void)(e.target.value),
+      onKeyDown: (e: KeyboardEvent) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        }
+      },
+      onBlur: () => {
+        if (dirty) commit();
+      },
+    }),
+    React.createElement(
+      "div",
+      null,
+      React.createElement("button", {
+        type: "button",
+        "data-host": "Button",
+        "data-variant": "ghost",
+        "data-size": "icon",
+        "data-testid": props.refreshTestId,
+        title: "Refresh",
+        disabled: props.loading as boolean,
+        onClick: props.onRefresh as () => void,
+      }),
+    ),
+  );
+}
+
+const PopoverCtx = React.createContext<{ open: boolean; setOpen: (o: boolean) => void }>({
+  open: false,
+  setOpen: () => undefined,
+});
+
+/** The host Popover: closed until its trigger is clicked; open/onOpenChange may control it. */
+function Popover({ open, onOpenChange, children }: Props) {
+  const [own, setOwn] = React.useState(false);
+  const controlled = open !== undefined;
+  const value = {
+    open: controlled ? (open as boolean) : own,
+    setOpen: (o: boolean) => {
+      if (!controlled) setOwn(o);
+      (onOpenChange as ((o: boolean) => void) | undefined)?.(o);
+    },
+  };
+  return React.createElement(PopoverCtx.Provider, { value }, children as React.ReactNode);
+}
+
+/** asChild: the plugin's Button, which toggles the popover and reports aria-expanded. */
+function PopoverTrigger({ children }: Props) {
+  const ctx = React.useContext(PopoverCtx);
+  const child = children as React.ReactElement<Props>;
+  return React.cloneElement(child, {
+    "aria-expanded": ctx.open,
+    onClick: () => ctx.setOpen(!ctx.open),
+  });
+}
+
+function PopoverContent({ children, align, ...props }: Props) {
+  void align;
+  const ctx = React.useContext(PopoverCtx);
+  if (!ctx.open) return null;
+  return React.createElement(
+    "div",
+    { role: "dialog", "data-host": "PopoverContent", ...props },
+    children as React.ReactNode,
   );
 }
 
@@ -588,6 +754,11 @@ export const fakeUi = {
   DropdownMenuItem,
   SettingsSection,
   IntegrationRepositoryFilter,
+  IntegrationListToolbar,
+  TaskRowIndicator,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
   ChangeRequestList,
   ChangeRequestRow,
   IntegrationIcon,
@@ -749,6 +920,17 @@ export function setValue(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
   setter.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/**
+ * Opens the host filter dropdown whose testId is given, in the host's order:
+ * pointer down on the trigger, then focus moves to it, so a focused query box
+ * blurs (and commits when dirty) before any option is picked (R-01).
+ */
+export function openFilter(c: HTMLElement, testId: string) {
+  const trigger = byTestId(c, `${testId}-trigger`)!;
+  trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+  trigger.focus();
 }
 
 /** Dispatches a keydown on el. */

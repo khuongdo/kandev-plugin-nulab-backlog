@@ -106,8 +106,11 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     const c = await render(host);
     await pickGitHub(c);
     const repo = byTestId(c, "backlog-scm-prs-repo")!;
-    const options = [...repo.querySelectorAll("button")].map((b) => b.getAttribute("data-testid"));
+    const options = [...repo.querySelectorAll('[data-host="IntegrationRepositoryFilterOption"]')].map((b) =>
+      b.getAttribute("data-testid"),
+    );
     expect(options).toEqual([
+      "backlog-scm-prs-repo-option-all",
       "backlog-scm-prs-repo-option-PROJ:acme/web",
       "backlog-scm-prs-repo-option-PROJ:acme/api",
     ]); // FR3.3, FR6.2: DEMO is not selected, so its repository is hidden
@@ -130,7 +133,12 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     expect(text(row)).toContain("by lan-dev");
     expect(text(row)).toContain("feature/PROJ-1 → main");
     expect(text(row)).toContain("updated rel:2026-10-06T09:00:00Z");
-    expect(byTestId(row, "backlog-scm-pr-task-42-task-9")).not.toBeNull();
+    // FR5.1, BR1.1-BR1.4: the host task indicator, with the task id as fallback title.
+    const task = byTestId(row, "backlog-scm-pr-task-42-single")!;
+    expect(task.getAttribute("data-host")).toBe("TaskRowIndicator");
+    expect(task.textContent).toBe("task-9");
+    await act(async () => task.click());
+    expect(window.location.pathname).toBe("/t/task-9");
   });
 
   it("filters by status and author and pages", async () => {
@@ -139,8 +147,9 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     });
     const c = await render(host);
     await pickGitHub(c);
+    await act(async () => byTestId(c, "backlog-scm-prs-status")!.click());
     await act(async () => byTestId(c, "backlog-scm-prs-status-merged")!.click());
-    await act(async () => choose(c, "backlog-scm-prs-author", "me"));
+    await act(async () => byTestId(c, "backlog-scm-prs-author-option-me")!.click());
     await act(async () => byTestId(c, "backlog-scm-prs-next")!.click());
     expect(calls(host, "scm.prs.list").at(-1)![1]).toMatchObject({
       body: { statuses: ["open", "merged"], author: "me", page: 2 },
@@ -182,7 +191,10 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     expect(calls(host, "scm.prs.list")[0]![1]).toMatchObject({
       body: { repo: "acme/api", statuses: ["merged"], author: "me" },
     });
-    expect(optionValues(c, "backlog-scm-prs-saved")).toEqual(["q1"]);
+    const saved = byTestId(c, "backlog-scm-prs-saved")!;
+    expect(saved.getAttribute("data-value")).toBe("q1");
+    expect(byTestId(saved, "backlog-scm-prs-saved-option-q1")!.textContent).toBe("Mine");
+    expect(byTestId(saved, "backlog-scm-prs-saved-option-q2")).toBeNull(); // another provider's query
     await act(async () => byTestId(c, "backlog-scm-prs-save-query")!.click());
     await act(async () => {
       const input = byTestId(c, "backlog-save-query-name") as HTMLInputElement;
@@ -212,7 +224,8 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
       taskId: "t-1",
       body: { url: ROW.url },
     });
-    expect(byTestId(c, "backlog-scm-pr-task-42-t-1")).not.toBeNull();
+    expect(byTestId(c, "backlog-scm-pr-task-42-multi")!.textContent).toBe("Tasks 2");
+    expect(byTestId(c, "backlog-scm-pr-task-42-item-t-1")).not.toBeNull();
   });
 
   it("shows a provider failure with Retry, in provider words", async () => {
@@ -241,6 +254,59 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     });
     const c = await render(host);
     expect(optionValues(c, "backlog-prs-provider")).toEqual(["backlog"]);
+  });
+
+  it("lays the provider list out like GitHub: label-less dropdowns, Status (n), provider first (FR5.2, BR5.1-BR5.4, NFR3)", async () => {
+    const host = setup();
+    const c = await render(host);
+    // The provider selector: label-less, named, first in the Backlog list's filter slot.
+    const backlogSlot = byTestId(c, "backlog-prs-filters")!;
+    expect(
+      backlogSlot.firstElementChild!.querySelector('[data-testid="backlog-prs-provider"]'),
+    ).not.toBeNull();
+    expect(byTestId(c, "backlog-prs-toolbar")!.querySelector("label")).toBeNull();
+    const provider = byTestId(c, "backlog-prs-provider")!;
+    expect(provider.getAttribute("aria-label")).toBe(en.scmProviderLabel);
+    expect(provider.className).toContain("md:w-[220px]");
+    await pickGitHub(c);
+    const toolbar = byTestId(c, "backlog-scm-prs-toolbar")!;
+    expect(toolbar.querySelector("input")).toBeNull(); // no query box
+    expect(toolbar.querySelector("label")).toBeNull();
+    expect(toolbar.textContent).not.toContain(en.colRepository);
+    const slot = byTestId(c, "backlog-scm-prs-filters")!;
+    expect(slot.parentElement).toBe(toolbar);
+    expect(slot.firstElementChild!.querySelector('[data-testid="backlog-prs-provider"]')).not.toBeNull();
+    for (const [id, label] of [
+      ["repo", en.colRepository],
+      ["saved", en.scmSavedLabel],
+      ["author", en.scmAuthorLabel],
+    ] as const) {
+      const filter = byTestId(c, `backlog-scm-prs-${id}`)!;
+      expect(filter.getAttribute("data-host")).toBe("IntegrationRepositoryFilter");
+      expect(filter.getAttribute("aria-label")).toBe(label);
+      expect(filter.getAttribute("data-trigger-class")).toContain("md:w-[220px]");
+      expect(filter.getAttribute("data-popover-class")).toContain("md:min-w-[360px]");
+    }
+    expect(byTestId(c, "backlog-scm-prs-saved-option-all")!.textContent).toBe(en.scmSavedNone);
+    expect(byTestId(c, "backlog-scm-prs-author-option-all")!.textContent).toBe(en.whoAnyone);
+    expect(byTestId(c, "backlog-scm-prs-author")!.getAttribute("data-value")).toBe(""); // anyone
+    // Status: the same "Status (n)" popover; the last picked status cannot be cleared.
+    const status = byTestId(c, "backlog-scm-prs-status")!;
+    expect(status.textContent).toBe("Status (1)");
+    expect(status.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(byTestId(c, "backlog-scm-prs-status-open")).toBeNull();
+    await act(async () => status.click());
+    const open = byTestId(c, "backlog-scm-prs-status-open") as HTMLButtonElement;
+    expect(open.getAttribute("aria-disabled")).toBe("true");
+    expect(open.disabled).toBe(false);
+    const listed = calls(host, "scm.prs.list").length;
+    await act(async () => open.click());
+    expect(open.getAttribute("aria-checked")).toBe("true");
+    expect(calls(host, "scm.prs.list")).toHaveLength(listed);
+    await act(async () => byTestId(c, "backlog-scm-prs-author-option-me")!.click());
+    await act(async () => byTestId(c, "backlog-scm-prs-author-option-all")!.click()); // "" is Anyone
+    expect(calls(host, "scm.prs.list").at(-1)![1]).toMatchObject({ body: { author: "anyone", page: 1 } });
+    expect(await axeViolations(c)).toEqual([]);
   });
 
   it("uses host controls, has test ids and passes axe", async () => {

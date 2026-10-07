@@ -32,6 +32,18 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.4.1: GitHub-style lists
+
+- Issue search runs when you press **Enter** (or leave the search box after editing), not while
+  you type.
+- The issue list and every pull request list (Backlog Git, GitHub, GitLab and Bitbucket) use a
+  GitHub-style toolbar: title and count, searchable dropdown filters without field labels, a
+  **Status (n)** menu for pull request statuses, then last updated and refresh. On phones the
+  filters stack at full width.
+- Linked tasks show the task title; a row with several tasks shows a **Tasks (n)** menu.
+- The Backlog badge on a Kanban card opens the Backlog issue in a new tab.
+- Nothing to do after upgrading: no data, setting or permission changes.
+
 ### 0.4.0: GitHub, GitLab and Bitbucket pull requests
 
 - New: pull requests from GitHub, GitLab and Bitbucket (cloud only) next to Backlog Git: PR

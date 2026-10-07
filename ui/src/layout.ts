@@ -13,3 +13,10 @@ export const TOOLBAR =
   "flex shrink-0 flex-col gap-2 border-b px-4 py-2.5 sm:px-6 md:flex-row md:flex-wrap md:items-center md:gap-3";
 /** The results area under the toolbar, like the GitHub page (FR5.3). */
 export const RESULTS = "flex flex-col gap-4 px-3 py-4 md:px-6";
+/** A toolbar's filter slot: stacked at full width on phones, one row from md (BR4.8, R-02). */
+export const FILTERS = "flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center";
+/** IntegrationRepositoryFilter's trigger, as on the GitHub list: full width on phones, 220 px from md. */
+export const FILTER_TRIGGER =
+  "w-full border border-input bg-background px-2 text-xs/relaxed hover:bg-secondary/50 md:w-[220px]";
+/** IntegrationRepositoryFilter's list, as on the GitHub list. */
+export const FILTER_POPOVER = "md:min-w-[360px]";
