@@ -2,6 +2,7 @@
 > This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
 
 ## Interpretations
+- 2026-10-07T22:31:40Z — Put the README 0.4.1 upgrade text plus the R-07 line (at least one status stays selected) at the top of the auto-generated GitHub Release notes, keeping the generated PR list below it.
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations
