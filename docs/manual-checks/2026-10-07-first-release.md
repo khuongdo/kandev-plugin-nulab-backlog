@@ -9,7 +9,7 @@
 | Check name | first-release |
 | Kandev version | v0.97 |
 | Plugin commit | 0545212 (package `nulab-backlog-0.1.0.tar.gz` built from an identical tree, `verifypkg` OK) |
-| Space domain | not recorded |
+| Space domain | khuongdo.backlog.com |
 | Result | pass |
 | Connect duration (seconds) | not measured |
 | Logs checked for the key | yes |
