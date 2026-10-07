@@ -123,26 +123,6 @@ export function badgeDetail(l: LinkView, relative: (v: string) => string, messag
   return parts.join(" · ");
 }
 
-/** Joins words with ", " and a final " and ". */
-function joinList(words: string[], messages: Messages): string {
-  if (words.length < 2) return words.join("");
-  return words.slice(0, -1).join(messages.listComma) + messages.listAnd + words[words.length - 1];
-}
-
-/** The screen-reader text of a row. */
-export function rowLabel(item: IssueItem, messages: Messages = en): string {
-  const parts = [format(messages.rowSr, { key: item.issueKey, title: item.summary, status: item.status })];
-  if (item.assignee) parts.push(format(messages.rowSrAssignee, { name: item.assignee }));
-  if (item.linkedTasks.length > 0) {
-    const tasks = joinList(
-      item.linkedTasks.map((t) => t.taskKey ?? t.taskId),
-      messages,
-    );
-    parts.push(format(messages.rowSrLinked, { tasks }));
-  }
-  return parts.join(messages.listComma);
-}
-
 /**
  * "N issue links, M PR links and K PR watches will be turned off." for the
  * U2 confirm dialogs (AC1.8.1, AC1.9.1), of projectKeys only when given. A
@@ -167,3 +147,40 @@ export async function loadImpactText(
 
 /** Kandev's page of a task. */
 export const taskHref = (taskId: string) => `/t/${encodeURIComponent(taskId)}`;
+
+/** A saved issue query (issues.queries.*, FR4.3); assignee is "", "me" or a user id. */
+export interface IssueQuery {
+  id?: string;
+  name: string;
+  projectKey?: string;
+  statusIds: number[];
+  assignee: string;
+  keyword: string;
+  isDefault?: boolean;
+}
+
+/** Backlog's built-in "Closed" status: "open" means every other status (FR4.1). */
+export const CLOSED_STATUS_ID = 4;
+
+/** The ids of every status but Closed, in the order given. */
+export function openStatusIds(statuses: { id?: number }[] | undefined): number[] {
+  return (statuses ?? []).flatMap((s) => (s.id !== undefined && s.id !== CLOSED_STATUS_ID ? [s.id] : []));
+}
+
+/** "PROJ · 2 statuses · assignee Me · “login”" for a saved issue query. */
+export function issueQueryFilters(q: IssueQuery, messages: Messages = en): string {
+  const assignee =
+    q.assignee === "me"
+      ? messages.whoMe
+      : q.assignee
+        ? format(messages.userId, { id: q.assignee })
+        : messages.whoAnyone;
+  return format(messages.issueQueryFilters, {
+    project: q.projectKey || messages.allProjects,
+    statuses: q.statusIds.length
+      ? format(messages.statusCount, { count: q.statusIds.length })
+      : messages.statusesAll,
+    assignee,
+    keyword: q.keyword ? format(messages.keywordFilter, { keyword: q.keyword }) : messages.noKeyword,
+  });
+}

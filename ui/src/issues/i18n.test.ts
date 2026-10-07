@@ -43,12 +43,12 @@ describe("Text follows the Kandev language (US8.5)", () => {
     const pseudo = Object.fromEntries(Object.entries(en).map(([k, v]) => [k, `[ps] ${v}`]));
     const m = messagesFor(hostWith("x-pseudo", pseudo));
     expect(m.issuesEmpty).toBe(`[ps] ${en.issuesEmpty}`);
-    expect(m.createTask).toBe(`[ps] ${en.createTask}`);
+    expect(m.linkToTask).toBe(`[ps] ${en.linkToTask}`);
   });
 
   it("falls back to English, never a raw key (AC8.5.2)", () => {
-    const m = messagesFor(hostWith("fr", { createTask: "Créer une tâche" }));
-    expect(m.createTask).toBe("Créer une tâche");
+    const m = messagesFor(hostWith("fr", { linkToTask: "Lier à une tâche" }));
+    expect(m.linkToTask).toBe("Lier à une tâche");
     expect(m.issuesEmpty).toBe(en.issuesEmpty);
     for (const [k, v] of Object.entries(m)) expect(v, k).not.toBe(k);
   });

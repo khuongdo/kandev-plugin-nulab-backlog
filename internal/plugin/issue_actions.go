@@ -30,6 +30,15 @@ const (
 	actionIssueWatchesRun    = "issues.watches.run"
 	actionIssueWatchesPause  = "issues.watches.pause"
 	actionIssueWatchesResume = "issues.watches.resume"
+
+	// Intent 261007-github-parity-actions: quick actions (FR2) and saved
+	// issue queries (FR4), workspace-wide for any signed-in member (NFR1).
+	actionQuickActionsGet     = "issues.quick_actions.get"
+	actionQuickActionsSave    = "issues.quick_actions.save"
+	actionIssueQueriesList    = "issues.queries.list"
+	actionIssueQueriesSave    = "issues.queries.save"
+	actionIssueQueriesDelete  = "issues.queries.delete"
+	actionIssueQueriesDefault = "issues.queries.set_default"
 )
 
 func init() { maps.Copy(handlers, issueHandlers) }
@@ -138,5 +147,33 @@ var issueHandlers = map[string]handler{
 	}),
 	actionIssueWatchesResume: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
 		return r.issues.ResumeWatch(ctx, ws, id)
+	}),
+	actionQuickActionsGet: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		return r.issues.QuickActions(ctx, ws)
+	},
+	actionQuickActionsSave: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in issues.QuickActionsInput
+		if err := decode(body, &in); err != nil {
+			return nil, err
+		}
+		return r.issues.SaveQuickActions(ctx, ws, in)
+	},
+	actionIssueQueriesList: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
+		q, err := r.issues.ListQueries(ctx, ws)
+		return map[string]any{"queries": q}, err
+	},
+	actionIssueQueriesSave: func(r *Runtime, ctx context.Context, ws string, body []byte) (any, error) {
+		var in issues.IssueQuery
+		if err := decode(body, &in); err != nil {
+			return nil, err
+		}
+		return r.issues.SaveQuery(ctx, ws, in)
+	},
+	actionIssueQueriesDelete: withID(func(r *Runtime, ctx context.Context, ws, id string) (any, error) {
+		return ok, r.issues.DeleteQuery(ctx, ws, id)
+	}),
+	actionIssueQueriesDefault: withDefault(func(r *Runtime, ctx context.Context, ws string, in defaultBody) (any, error) {
+		q, err := r.issues.SetQueryDefault(ctx, ws, in.ID, in.IsDefault)
+		return map[string]any{"queries": q}, err
 	}),
 }

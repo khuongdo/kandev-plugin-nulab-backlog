@@ -160,3 +160,23 @@ func TestU3_List_RejectsBadQueries(t *testing.T) {
 	require.Equal(t, connection.Outcome{Code: "validation", Field: FieldProjectKeys}, connection.Classify(err))
 	require.Zero(t, r.gw.total())
 }
+
+func TestList_AssigneeMeIsResolvedOnTheServer(t *testing.T) {
+	r := newRig(t)
+	r.gw.set(func(g *fakeGateway) { g.myself = backlog.User{ID: 77, Name: "Me"} })
+	_, err := r.svc.List(r.ctx, "ws-1", Query{Assignee: WhoMe, AssigneeIDs: []int64{5}})
+	require.NoError(t, err)
+	require.Equal(t, 1, r.gw.count("myself"), "one Myself call")
+	require.Equal(t, []int64{77}, r.gw.queries[0].AssigneeIDs, "me replaces any numeric assignee")
+
+	_, err = r.svc.List(r.ctx, "ws-1", Query{})
+	require.NoError(t, err)
+	require.Equal(t, 1, r.gw.count("myself"), "no Myself call without me")
+
+	_, err = r.svc.List(r.ctx, "ws-1", Query{Assignee: "someone"})
+	require.Equal(t, connection.Outcome{Code: "validation", Field: FieldAssignee}, connection.Classify(err))
+
+	r.gw.errs["myself"] = forbidden()
+	_, err = r.svc.List(r.ctx, "ws-1", Query{Assignee: WhoMe})
+	require.Error(t, err, "a failed Myself call is not ignored")
+}

@@ -186,6 +186,9 @@ type QueryInput struct {
 	Assignee   string   `json:"assignee"`
 	// Creator is the PR list's creator filter (FR2.6); empty means anyone.
 	Creator string `json:"creator,omitempty"`
+	// IsDefault marks the workspace's default PR query (FR3.3); a missing
+	// field reads false. Only SetQueryDefault changes it.
+	IsDefault bool `json:"isDefault,omitempty"`
 }
 
 // Validate trims the name and checks the fields; no creator means anyone.

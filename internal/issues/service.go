@@ -251,6 +251,13 @@ func (s *Service) List(ctx context.Context, ws string, q Query) (IssuePage, erro
 		// Never send a query without a project: Backlog would search every project.
 		return IssuePage{}, &connection.FieldError{Field: FieldProjectKeys, Err: ErrNoProject}
 	}
+	if q.Assignee == WhoMe {
+		me, err := s.gateway.Myself(ctx, creds)
+		if err != nil {
+			return IssuePage{}, err
+		}
+		bq.AssigneeIDs = []int64{me.ID}
+	}
 	found, err := s.gateway.Issues(ctx, creds, backlog.Interactive, bq)
 	if err != nil {
 		return IssuePage{}, err

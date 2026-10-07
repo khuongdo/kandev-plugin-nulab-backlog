@@ -6,6 +6,8 @@ const PATHS = {
   refresh: ["M20 11a8 8 0 0 0-14.9-4M4 5v4h4", "M4 13a8 8 0 0 0 14.9 4M20 19v-4h-4"],
   more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
   plus: ["M12 5v14", "M5 12h14"],
+  // An open issue: a ring with a dot, like Kandev's issue state icon.
+  issue: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18", "M12 12h.01"],
 } as const;
 
 export type IconName = keyof typeof PATHS;

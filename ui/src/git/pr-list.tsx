@@ -2,8 +2,10 @@ import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { hostUi } from "../host-ui";
 import { showingText, taskHref } from "../issues/issues-state";
-import { BUTTON, FIELD, ROW, STACK } from "../layout";
+import { BUTTON, FIELD, RESULTS, ROW, STACK } from "../layout";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
+import type { QuickAction } from "../page/quick-actions";
+import { createStartTask } from "../page/start-task";
 import type { Notice } from "../settings/state";
 import { gitNotice, loadRepoOptions, noticeText, splitRepo, stateText, type RepoOption } from "./git-state";
 import { createPrToolbar } from "./pr-toolbar";
@@ -55,16 +57,30 @@ const ICONS: Record<string, string> = {
 };
 const START: Filters = { repo: "", statuses: ["open"], assignee: "anyone", creator: "anyone" };
 
+/** The query the list opens on: a saved one, or the "Open, assigned to me" preset. */
+export interface PrSelection {
+  /** Changes whenever the user picks again, so a pick re-applies. */
+  key: string;
+  query?: Query;
+}
+
 export interface PrListProps {
   workspaceId: string;
-  /** The workspace's selected projects: a saved query of another project is disabled (BR2.4). */
-  selectedProjects: string[];
+  /** The workspace's PR quick actions for the "+ Task" menu (FR1.1). */
+  quickActions?: QuickAction[];
+  /** Without one the list waits for a repository to be chosen. */
+  selection?: PrSelection;
+  /** A query saved from the toolbar (BR2.5). */
+  onSavedQuery?: (query: Query) => void;
+  /** Opens the save dialog each time it changes (the scope bar's Save current). */
+  saveRequest?: number;
 }
 
 /**
- * The Pull requests scope of /backlog (WF4, FR2.5, FR2.6): the PRs of one
- * repository, 20 per page with filters, saved queries as presets, and Save
- * query from the current filters. Rows use the host's change request list.
+ * The Pull requests scope of /backlog (WF4, FR2.5, FR2.6, FR3): the PRs of
+ * one repository, 20 per page with filters, opened on the selected saved
+ * query or the "Open, assigned to me" preset over the first repository, and
+ * Save query from the current filters. Rows use the host's change request list.
  */
 export function createPrList(host: PluginHostApi, messages: Messages = en): Component<PrListProps> {
   const h = host.jsx;
@@ -85,26 +101,51 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
   const { PaginationItem, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
   const PrToolbar = createPrToolbar(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
+  const StartTask = createStartTask(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
 
-  return function PrList({ workspaceId, selectedProjects }: PrListProps) {
+  return function PrList({
+    workspaceId,
+    quickActions = [],
+    selection,
+    onSavedQuery,
+    saveRequest = 0,
+  }: PrListProps) {
     const [filters, setFilters] = useState<Filters>(START);
     const [page, setPage] = useState(1);
-    const [preset, setPreset] = useState("");
     const [nonce, setNonce] = useState(0);
     const [load, setLoad] = useState<Load>({ kind: "idle" });
-    const [repos, setRepos] = useState<RepoOption[]>([]);
-    const [queries, setQueries] = useState<Query[]>([]);
+    const [repos, setRepos] = useState<RepoOption[] | undefined>(undefined);
     const [saving, setSaving] = useState(false);
     const latest = useRef(0);
+    const applied = useRef("");
 
     useEffect(() => {
       loadRepoOptions(host, workspaceId, messages).then(setRepos, () => setRepos([]));
-      host.api.invokeAction<{ queries?: Query[] }>("git.queries.list", { workspaceId }).then(
-        (r) => setQueries(r?.queries ?? []),
-        () => setQueries([]),
-      );
     }, [workspaceId]);
+
+    // FR3.1, FR3.2: apply the selected saved query, or the preset once the repositories are known.
+    useEffect(() => {
+      if (!selection || applied.current === selection.key) return;
+      const q = selection.query;
+      if (!q && !repos) return;
+      applied.current = selection.key;
+      setFilters(
+        q
+          ? {
+              repo: `${q.projectKey}/${q.repoName}`,
+              statuses: q.statuses,
+              assignee: q.assignee,
+              creator: q.creator ?? "anyone",
+            }
+          : { repo: repos?.[0]?.value ?? "", statuses: ["open"], assignee: "me", creator: "anyone" },
+      );
+      setPage(1); // BR2.4
+    }, [selection?.key, repos]);
+
+    useEffect(() => {
+      if (saveRequest > 0 && filters.repo) setSaving(true);
+    }, [saveRequest]);
 
     useEffect(() => {
       if (!filters.repo) return;
@@ -128,22 +169,23 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     }, [workspaceId, filters, page, nonce]);
 
     const reload = useCallback(() => setNonce((n) => n + 1), []);
+    const addTask = (number: number, taskId: string) =>
+      setLoad((l) =>
+        l.kind !== "ready"
+          ? l
+          : {
+              ...l,
+              page: {
+                ...l.page,
+                items: l.page.items?.map((pr) =>
+                  pr.number === number ? { ...pr, linkedTaskIds: [...pr.linkedTaskIds, taskId] } : pr,
+                ),
+              },
+            },
+      );
     const change = (next: Partial<Filters>) => {
       setFilters((f) => ({ ...f, ...next }));
-      setPreset("");
       setPage(1);
-    };
-    const applyPreset = (id: string) => {
-      const q = queries.find((x) => x.id === id);
-      if (!q) return;
-      setPreset(id);
-      setFilters({
-        repo: `${q.projectKey}/${q.repoName}`,
-        statuses: q.statuses,
-        assignee: q.assignee,
-        creator: q.creator ?? "anyone",
-      });
-      setPage(1); // BR2.4
     };
     const toggleStatus = (s: string) =>
       change({
@@ -181,29 +223,11 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
         <IntegrationRepositoryFilter
           value={filters.repo}
           onValueChange={(v: string) => change({ repo: v })}
-          options={repos}
+          options={repos ?? []}
           ariaLabel={messages.colRepository}
           allLabel={messages.allRepositories}
           testId="backlog-prs-repo"
         />
-      </div>,
-      <div key="preset" className={FIELD}>
-        <Label htmlFor="backlog-prs-preset">{messages.queryLabel}</Label>
-        <Select value={preset} onValueChange={applyPreset}>
-          <SelectTrigger id="backlog-prs-preset" data-testid="backlog-prs-preset" className="min-w-40">
-            <SelectValue placeholder={messages.chooseQuery} />
-          </SelectTrigger>
-          <SelectContent>
-            {queries.map((q) => {
-              const off = !selectedProjects.includes(q.projectKey);
-              return (
-                <SelectItem key={q.id} value={q.id} disabled={off} data-testid={`backlog-prs-preset-${q.id}`}>
-                  {off ? `${q.name} (${messages.projectNotSelected})` : q.name}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
       </div>,
       <div key="status" role="group" aria-labelledby="backlog-prs-status-label" className={FIELD}>
         <span id="backlog-prs-status-label" className="text-sm font-medium">
@@ -277,6 +301,17 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
             {format(messages.taskLink, { id })}
           </a>
         ))}
+        action={
+          <StartTask
+            workspaceId={workspaceId}
+            kind="pr"
+            title={pr.title}
+            url={pr.url}
+            actions={quickActions}
+            testId={`backlog-pr-${pr.number}`}
+            onLinked={(taskId: string) => addTask(pr.number, taskId)}
+          />
+        }
       />
     );
 
@@ -351,7 +386,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     })();
 
     return (
-      <div data-testid="backlog-prs" className={STACK}>
+      <div data-testid="backlog-prs" className="flex min-w-0 flex-col">
         <PrToolbar
           title={messages.prsTitle}
           count={load.kind === "ready" && filters.repo ? load.page.total : undefined}
@@ -362,7 +397,9 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
         >
           {filterControls}
         </PrToolbar>
-        {body}
+        <div className={RESULTS} data-testid="backlog-prs-results">
+          {body}
+        </div>
         {saving ? (
           <SaveQueryDialog
             workspaceId={workspaceId}
@@ -374,7 +411,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
               creator: filters.creator,
             }}
             onSaved={(q: Query) => {
-              setQueries((list) => [...list, q]);
+              onSavedQuery?.(q);
               setSaving(false);
             }}
             onClose={() => setSaving(false)}

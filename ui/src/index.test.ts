@@ -133,7 +133,7 @@ describe("plugin entry", () => {
     const s = setup({});
     await s.init();
     expect(s.registry.registerTranslations).toHaveBeenCalledWith({
-      en: expect.objectContaining({ createTask: "Create task" }),
+      en: expect.objectContaining({ linkToTask: "Link to task" }),
     });
     expect(s.registry.registerTranslations.mock.invocationCallOrder[0]).toBeLessThan(
       s.registry.registerIntegrationSettings.mock.invocationCallOrder[0]!,

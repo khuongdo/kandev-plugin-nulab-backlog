@@ -12,5 +12,12 @@
     "dirName": "261007-uiux-github-style",
     "scope": "refactor",
     "status": "complete"
+  },
+  {
+    "uuid": "01a114d1-ae55-7844-b9fe-e8869ebcf15d",
+    "slug": "github-parity-actions",
+    "dirName": "261007-github-parity-actions",
+    "scope": "express",
+    "status": "in-flight"
   }
 ]

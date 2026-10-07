@@ -5,11 +5,11 @@ import { actionError, fakeHost } from "../testing/harness";
 import {
   badgeDetail,
   badgeText,
+  issueQueryFilters,
   issuesFailure,
   loadImpactText,
-  rowLabel,
+  openStatusIds,
   showingText,
-  type IssueItem,
   type LinkView,
 } from "./issues-state";
 
@@ -80,25 +80,23 @@ describe("issues state helpers (M2, M6)", () => {
     );
   });
 
-  it("reads a whole row to a screen reader (AC8.2.x)", () => {
-    const item: IssueItem = {
-      issueKey: "PROJ-123",
-      summary: "Fix login timeout",
-      status: "In Progress",
-      statusId: 2,
-      assignee: "A",
-      updatedAt: "",
-      url: "",
-      linkedTasks: [
-        { taskId: "t12", taskKey: "T-12" },
-        { taskId: "t15", taskKey: "T-15" },
-      ],
-    };
-    expect(rowLabel(item)).toBe(
-      "PROJ-123, Fix login timeout, In Progress, assignee A, linked to T-12 and T-15",
+  it("treats every status but Closed as open and describes a saved issue query (FR4.1, FR4.3)", () => {
+    expect(openStatusIds([{ id: 1 }, { id: 4 }, { id: 2 }, {}])).toEqual([1, 2]);
+    expect(openStatusIds(undefined)).toEqual([]);
+    expect(
+      issueQueryFilters({
+        name: "Q",
+        projectKey: "PROJ",
+        statusIds: [1, 2],
+        assignee: "me",
+        keyword: "login",
+      }),
+    ).toBe("PROJ · 2 statuses · assignee Me · keyword “login”");
+    expect(issueQueryFilters({ name: "Q", statusIds: [], assignee: "7", keyword: "" })).toBe(
+      "all projects · all statuses · assignee user 7 · no keyword",
     );
-    expect(rowLabel({ ...item, assignee: undefined, linkedTasks: [] })).toBe(
-      "PROJ-123, Fix login timeout, In Progress",
+    expect(issueQueryFilters({ name: "Q", statusIds: [], assignee: "", keyword: "" })).toContain(
+      "assignee Anyone",
     );
   });
 

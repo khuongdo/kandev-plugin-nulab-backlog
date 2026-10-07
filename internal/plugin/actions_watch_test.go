@@ -137,7 +137,8 @@ func TestIssueHost_MapsAMissingWorkflow(t *testing.T) {
 	}
 }
 
-// NFR2: no API key in the new actions' replies and logs, nor in the watcher's lines.
+// NFR2, NFR1 (github-parity-actions): no API key in the new actions' replies
+// and logs, nor in the watcher's lines.
 func TestIssueWatchActions_NoSecretLeaks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := newU3Rig(t)
@@ -162,6 +163,17 @@ func TestIssueWatchActions_NoSecretLeaks(t *testing.T) {
 		}
 		resp, _ = r.call(t, actionPRList, map[string]any{"projectKey": "PROJ", "repoName": "web-app", "page": 1})
 		bodies += string(resp.Body)
+		for k, b := range map[string]any{
+			actionQuickActionsGet:     nil,
+			actionQuickActionsSave:    map[string]any{"kind": "pr", "actions": []map[string]any{{"label": "", "icon": "eye"}}},
+			actionIssueQueriesSave:    map[string]any{"name": "Mine", "assignee": "me"},
+			actionIssueQueriesList:    nil,
+			actionIssueQueriesDefault: map[string]any{"id": "missing", "isDefault": true},
+			actionIssuesList:          map[string]any{"assignee": "me"},
+		} {
+			resp, _ = r.call(t, k, b)
+			bodies += string(resp.Body)
+		}
 		require.Contains(t, r.logs.String(), `"event":"issue_watch_failed"`)
 		require.Contains(t, bodies, `"lastError":"unauthorized"`)
 		testutil.AssertNoLeak(t, bodies+r.logs.String(), key)

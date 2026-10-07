@@ -424,5 +424,33 @@ var u4Actions = []string{
 	actionPRLink, actionPRUnlink, actionPRCreate, actionPRStatus, actionLinksList, actionImpact,
 	actionWatchesList, actionWatchesSave, actionWatchesDelete, actionWatchesRun, actionWatchesPause, actionWatchesResume,
 	actionQueriesList, actionQueriesSave, actionQueriesDelete, actionQueriesRun,
-	actionPRList, // intent 261007 (FR4)
+	actionPRList,         // intent 261007 (FR4)
+	actionQueriesDefault, // intent 261007-github-parity-actions (FR3.3)
+}
+
+// FR3.3: one starred PR query; an unknown id is not_found.
+func TestQueryDefaultAction_MovesTheStar(t *testing.T) {
+	r := newU4Rig(t)
+	body := map[string]any{"projectKey": "PROJ", "repoName": "web-app", "statuses": []string{"open"}, "assignee": "me"}
+	ids := []string{}
+	for _, name := range []string{"A", "B"} {
+		body["name"] = name
+		resp, out := r.call(t, actionQueriesSave, body)
+		require.Equal(t, 200, resp.Status)
+		ids = append(ids, out["id"].(string))
+	}
+	for _, id := range ids {
+		resp, out := r.call(t, actionQueriesDefault, map[string]any{"id": id, "isDefault": true})
+		require.Equal(t, 200, resp.Status)
+		for _, q := range out["queries"].([]any) {
+			m := q.(map[string]any)
+			require.Equal(t, m["id"] == id, m["isDefault"] == true, "only %s is starred", id)
+		}
+	}
+	resp, out := r.call(t, actionQueriesDefault, map[string]any{"id": "missing", "isDefault": true})
+	require.Equal(t, 404, resp.Status)
+	require.Equal(t, "not_found", errorOf(t, out)["code"])
+	resp, out = r.call(t, actionQueriesDefault, []byte(`{"id":5}`))
+	require.Equal(t, 400, resp.Status)
+	require.Equal(t, "validation", errorOf(t, out)["code"])
 }

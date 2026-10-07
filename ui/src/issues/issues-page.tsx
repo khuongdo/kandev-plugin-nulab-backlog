@@ -1,21 +1,26 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
+import { createPrToolbar } from "../git/pr-toolbar";
+import { createSaveQueryDialog } from "../git/save-query-dialog";
 import { hostUi } from "../host-ui";
 import { icon } from "../icons";
-import { BUTTON, FIELD, ROW, STACK } from "../layout";
+import { BUTTON, FIELD, RESULTS, ROW, STACK } from "../layout";
 import { en, format, type Messages } from "../messages/en";
 import { settingsHref } from "../page/BacklogPage";
-import { createConfirmDialog } from "../settings/confirm-dialog";
+import type { QuickAction } from "../page/quick-actions";
+import { createStartTask } from "../page/start-task";
 import { createSectionParts } from "../settings/section-parts";
 import type { Notice } from "../settings/state";
 import {
   issueNotice,
+  issueQueryFilters,
   issuesFailure,
-  rowLabel,
+  openStatusIds,
   showingText,
   taskHref,
   type IssueItem,
+  type IssueQuery,
   type IssuePage,
   type IssuesFailure,
   type TaskLink,
@@ -26,6 +31,9 @@ import type { LinksStore } from "./links-store";
 const PAGE_SIZE = 20;
 /** The "All" choice of a filter: Radix Select items cannot have an empty value. */
 const ALL = "all";
+/** The "Not closed" status choice and the "Me" assignee choice (FR4.1, FR4.2). */
+const OPEN = "open";
+const ME = "me";
 const SEARCH_WAIT = 400;
 
 type Load =
@@ -45,68 +53,96 @@ interface FilterOptions {
   assignees?: Option[];
 }
 
+/** The filters, shaped like a saved issue query: assignee "", "me" or a user id. */
 interface Filters {
   projectKey: string;
-  statusId: string;
-  assigneeId: string;
+  statusIds: number[];
+  assignee: string;
 }
 
-const NO_FILTERS: Filters = { projectKey: "", statusId: "", assigneeId: "" };
+const NO_FILTERS: Filters = { projectKey: "", statusIds: [], assignee: "" };
 
-/** The issues.list body: only the filters in use. */
+/** The issues.list body: only the filters in use; "me" is resolved by the server. */
 function listBody(page: number, keyword: string, f: Filters): Record<string, unknown> {
   const body: Record<string, unknown> = { page, pageSize: PAGE_SIZE, keyword };
   if (f.projectKey) body.projectKeys = [f.projectKey];
-  if (f.statusId) body.statusIds = [Number(f.statusId)];
-  if (f.assigneeId) body.assigneeIds = [Number(f.assigneeId)];
+  if (f.statusIds.length) body.statusIds = f.statusIds;
+  if (f.assignee === ME) body.assignee = ME;
+  else if (f.assignee) body.assigneeIds = [Number(f.assignee)];
   return body;
+}
+
+/** The query the page opens on: a saved one, or the "Assigned to me, open" preset. */
+export interface IssueSelection {
+  /** Changes whenever the user picks again, so a pick re-applies. */
+  key: string;
+  query?: IssueQuery;
+}
+
+export interface IssuesPageProps {
+  workspaceId: string;
+  /** The workspace's issue quick actions for the "+ Task" menu (FR1.1). */
+  quickActions?: QuickAction[];
+  /** Without one the page opens with no filters. */
+  selection?: IssueSelection;
+  /** A query saved from the toolbar (FR4.3). */
+  onSavedQuery?: (query: IssueQuery) => void;
+  /** Opens the save dialog each time it changes (the scope bar's Save current). */
+  saveRequest?: number;
 }
 
 /**
  * The issue list at /backlog once connected (M2, M2m; US2.1, US2.2, US2.3,
- * US3.1, US4.2): filters, a search that waits 400 ms, 20 rows per page,
- * linked tasks, Create task and Link to task per row, and Refresh. Phones
- * get cards and a Filters (n) drawer.
+ * US4.2; FR1, FR5.3): filters, a search that waits 400 ms, 20 rows per page
+ * in the host's change request rows, linked tasks, the "+ Task" quick action
+ * menu and Link to task per row, and Refresh. Phones get a Filters (n) drawer.
  */
 export function createIssuesPage(
   host: PluginHostApi,
   messages: Messages = en,
   store?: LinksStore,
-): Component<{ workspaceId: string }> {
+): Component<IssuesPageProps> {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
   const { Button, Input, Label, Skeleton, Pagination, PaginationContent, PaginationItem } = ui;
   const { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
-  const { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } = ui;
+  const { ChangeRequestList, ChangeRequestRow } = ui;
   const { RowMenu } = createSectionParts(host, messages);
-  const ConfirmDialog = createConfirmDialog(host, messages);
   const LinkTaskDialog = createLinkTaskDialog(host, messages);
+  const StartTask = createStartTask(host, messages);
+  const SaveQueryDialog = createSaveQueryDialog(host, messages);
+  const ListToolbar = createPrToolbar(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
 
-  return function IssuesPage({ workspaceId }: { workspaceId: string }) {
+  return function IssuesPage({
+    workspaceId,
+    quickActions = [],
+    selection,
+    onSavedQuery,
+    saveRequest = 0,
+  }: IssuesPageProps) {
     const { isMobile } = host.useResponsiveBreakpoint?.() ?? { isMobile: false };
-    const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+    // Undefined until the selection is applied: the preset needs the statuses first.
+    const [filters, setFilters] = useState<Filters | undefined>(selection ? undefined : NO_FILTERS);
     const [search, setSearch] = useState("");
     const [keyword, setKeyword] = useState("");
     const [page, setPage] = useState(1);
     const [nonce, setNonce] = useState(0);
     const [load, setLoad] = useState<Load>({ kind: "loading" });
-    const [options, setOptions] = useState<FilterOptions>({});
+    const [options, setOptions] = useState<FilterOptions | undefined>(undefined);
+    const [saving, setSaving] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const [countdown, setCountdown] = useState<number | undefined>(undefined);
-    const [creating, setCreating] = useState<string[]>([]);
-    const [created, setCreated] = useState<Record<string, string>>({});
-    const [linkedDialog, setLinkedDialog] = useState<IssueItem | undefined>(undefined);
     const [linkDialog, setLinkDialog] = useState<IssueItem | undefined>(undefined);
     const [refreshing, setRefreshing] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [notice, setNotice] = useState<Notice | undefined>(undefined);
     const latest = useRef(0);
     const focusList = useRef(false);
-    const busy = useRef(new Set<string>());
     const list = useRef<HTMLHeadingElement | null>(null);
+    const applied = useRef("");
 
     useEffect(() => {
       host.api
@@ -114,6 +150,26 @@ export function createIssuesPage(
         .then((o) => setOptions(o ?? {}))
         .catch(() => setOptions({})); // the list still works without filter choices
     }, [workspaceId]);
+
+    // FR4.1, FR4.5: apply the selected saved query, or the preset once the statuses are known.
+    useEffect(() => {
+      if (!selection || applied.current === selection.key) return;
+      const q = selection.query;
+      if (!q && !options) return;
+      applied.current = selection.key;
+      setFilters(
+        q
+          ? { projectKey: q.projectKey ?? "", statusIds: q.statusIds ?? [], assignee: q.assignee ?? "" }
+          : { projectKey: "", statusIds: openStatusIds(options?.statuses), assignee: ME },
+      );
+      setSearch(q?.keyword ?? "");
+      setKeyword(q?.keyword ?? "");
+      setPage(1);
+    }, [selection?.key, options]);
+
+    useEffect(() => {
+      if (saveRequest > 0) setSaving(true);
+    }, [saveRequest]);
 
     useEffect(() => {
       const id = setTimeout(() => {
@@ -126,6 +182,7 @@ export function createIssuesPage(
     }, [search]);
 
     useEffect(() => {
+      if (!filters) return;
       const seq = ++latest.current;
       setLoad({ kind: "loading" });
       setAnnouncement(messages.issuesLoading);
@@ -172,10 +229,19 @@ export function createIssuesPage(
     }, [countdown]);
 
     const reload = useCallback(() => setNonce((n) => n + 1), []);
-    const setFilter = (name: keyof Filters, value: string) => {
-      setFilters((f) => ({ ...f, [name]: value }));
+    const current = filters ?? NO_FILTERS;
+    const openIds = openStatusIds(options?.statuses);
+    const setFilter = (next: Partial<Filters>) => {
+      setFilters((f) => ({ ...(f ?? NO_FILTERS), ...next }));
       setPage(1);
     };
+    // The status choice: All, Not closed (every status but Closed), or one status.
+    const statusValue = (() => {
+      const ids = current.statusIds;
+      if (ids.length === 0) return ALL;
+      if (ids.length === openIds.length && ids.every((id) => openIds.includes(id))) return OPEN;
+      return ids.length === 1 ? String(ids[0]) : "";
+    })();
     const reset = () => {
       setFilters(NO_FILTERS);
       setSearch("");
@@ -205,45 +271,6 @@ export function createIssuesPage(
       if (store) void store.refresh(workspaceId);
     };
 
-    /** Creates a task from the issue; rejects so the dialog can show the error. */
-    const createTask = async (item: IssueItem, force: boolean) => {
-      const key = item.issueKey;
-      if (busy.current.has(key)) return;
-      const ctx = host.context.getTaskCreationContext?.(workspaceId);
-      if (!ctx?.workflowId) {
-        setNotice({ key: "errorWorkflow" });
-        return;
-      }
-      busy.current.add(key);
-      setCreating((c) => [...c, key]);
-      setNotice(undefined);
-      try {
-        const body: Record<string, unknown> = {
-          issueKey: key,
-          workflowId: ctx.workflowId,
-          workflowStepId: ctx.defaultStepId,
-        };
-        if (force) body.force = true;
-        const r = await host.api.invokeAction<{ taskId: string; taskKey: string }>("issues.create_task", {
-          workspaceId,
-          body,
-        });
-        addTask(key, { taskId: r.taskId, taskKey: r.taskKey });
-        setCreated((c) => ({ ...c, [key]: r.taskKey }));
-      } finally {
-        busy.current.delete(key);
-        setCreating((c) => c.filter((k) => k !== key));
-      }
-    };
-
-    const onCreate = (item: IssueItem) => {
-      if (item.linkedTasks.length > 0) {
-        setLinkedDialog(item);
-        return;
-      }
-      createTask(item, false).catch((e) => setNotice(issueNotice(e)));
-    };
-
     const refresh = async () => {
       setRefreshing(true);
       setNotice(undefined);
@@ -256,14 +283,20 @@ export function createIssuesPage(
       reload();
     };
 
-    const filterCount = [filters.projectKey, filters.statusId, filters.assigneeId].filter(Boolean).length;
-    const select = (name: keyof Filters, label: string, choices: Option[] | undefined, testId: string) => (
+    const filterCount = [current.projectKey, current.statusIds.length > 0, current.assignee].filter(
+      Boolean,
+    ).length;
+    const select = (
+      label: string,
+      value: string,
+      onChange: (v: string) => void,
+      choices: Option[] | undefined,
+      testId: string,
+      extra?: { value: string; label: string },
+    ) => (
       <div className={FIELD}>
         <Label htmlFor={testId}>{label}</Label>
-        <Select
-          value={filters[name] || ALL}
-          onValueChange={(v: string) => setFilter(name, v === ALL ? "" : v)}
-        >
+        <Select value={value} onValueChange={onChange}>
           <SelectTrigger id={testId} data-testid={testId} className="min-w-40">
             <SelectValue />
           </SelectTrigger>
@@ -271,6 +304,11 @@ export function createIssuesPage(
             <SelectItem value={ALL} data-testid={`${testId}-${ALL}`}>
               {messages.filterAll}
             </SelectItem>
+            {extra ? (
+              <SelectItem value={extra.value} data-testid={`${testId}-${extra.value}`}>
+                {extra.label}
+              </SelectItem>
+            ) : null}
             {(choices ?? []).map((o) => (
               <SelectItem
                 key={o.key ?? o.id}
@@ -286,9 +324,29 @@ export function createIssuesPage(
     );
     const filterFields = (
       <div className={ROW}>
-        {select("projectKey", messages.filterProject, options.projects, "backlog-issues-project")}
-        {select("statusId", messages.filterStatus, options.statuses, "backlog-issues-status")}
-        {select("assigneeId", messages.filterAssignee, options.assignees, "backlog-issues-assignee")}
+        {select(
+          messages.filterProject,
+          current.projectKey || ALL,
+          (v) => setFilter({ projectKey: v === ALL ? "" : v }),
+          options?.projects,
+          "backlog-issues-project",
+        )}
+        {select(
+          messages.filterStatus,
+          statusValue,
+          (v) => setFilter({ statusIds: v === ALL ? [] : v === OPEN ? openIds : [Number(v)] }),
+          options?.statuses,
+          "backlog-issues-status",
+          { value: OPEN, label: messages.statusNotClosed },
+        )}
+        {select(
+          messages.filterAssignee,
+          current.assignee || ALL,
+          (v) => setFilter({ assignee: v === ALL ? "" : v }),
+          options?.assignees,
+          "backlog-issues-assignee",
+          { value: ME, label: messages.whoMe },
+        )}
       </div>
     );
 
@@ -307,53 +365,54 @@ export function createIssuesPage(
             {task.taskKey ?? task.taskId}
           </a>
         ))}
-        {created[item.issueKey] ? (
-          <span role="status" data-testid={`backlog-issue-created-${item.issueKey}`}>
-            {format(messages.createdTask, { key: created[item.issueKey]! })}
-          </span>
-        ) : null}
       </span>
     );
 
     const actionsOf = (item: IssueItem) => {
       const key = item.issueKey;
-      const isCreating = creating.includes(key);
       return (
-        <RowMenu
-          testId={`backlog-issue-menu-${key}`}
-          label={format(messages.moreActions, { key })}
-          items={[
-            {
-              testId: `backlog-issue-create-${key}`,
-              label: isCreating ? messages.creatingTask : messages.createTask,
-              disabled: isCreating,
-              onSelect: () => onCreate(item),
-            },
-            {
-              testId: `backlog-issue-link-${key}`,
-              label: messages.linkToTask,
-              onSelect: () => setLinkDialog(item),
-            },
-          ]}
-        />
+        <span className={ROW}>
+          <StartTask
+            workspaceId={workspaceId}
+            kind="issue"
+            title={item.summary}
+            url={item.url}
+            issueKey={key}
+            actions={quickActions}
+            testId={`backlog-issue-${key}`}
+            onLinked={(taskId: string, taskKey?: string) => addTask(key, { taskId, taskKey })}
+          />
+          <RowMenu
+            testId={`backlog-issue-menu-${key}`}
+            label={format(messages.moreActions, { key })}
+            items={[
+              {
+                testId: `backlog-issue-link-${key}`,
+                label: messages.linkToTask,
+                onSelect: () => setLinkDialog(item),
+              },
+            ]}
+          />
+        </span>
       );
     };
 
-    const title = (item: IssueItem) => (
-      <span
-        data-testid={`backlog-issue-title-${item.issueKey}`}
-        className="line-clamp-2"
+    const row = (item: IssueItem) => (
+      <ChangeRequestRow
+        key={item.issueKey}
+        testId={`backlog-issue-row-${item.issueKey}`}
+        stateIcon={icon(host, "issue", "h-4 w-4 text-muted-foreground")}
         title={item.summary}
-        tabIndex={0}
-      >
-        {item.summary}
-      </span>
-    );
-
-    const keyLink = (item: IssueItem) => (
-      <a href={item.url} target="_blank" rel="noreferrer" data-testid={`backlog-issue-key-${item.issueKey}`}>
-        {item.issueKey}
-      </a>
+        href={item.url}
+        metadata={[
+          <span key="k">{item.issueKey}</span>,
+          <span key="s">{item.status}</span>,
+          item.assignee ? <span key="a">{item.assignee}</span> : null,
+          item.updatedAt ? <span key="u">{relative(item.updatedAt)}</span> : null,
+        ]}
+        taskIndicator={tasksOf(item)}
+        action={actionsOf(item)}
+      />
     );
 
     const body = (() => {
@@ -439,58 +498,9 @@ export function createIssuesPage(
       const showing = showingText({ page, pageSize: PAGE_SIZE, total }, messages);
       return (
         <div className={STACK}>
-          {isMobile ? (
-            <ul data-testid="backlog-issues-cards" className={STACK}>
-              {items.map((item) => (
-                <li
-                  key={item.issueKey}
-                  data-testid={`backlog-issue-row-${item.issueKey}`}
-                  aria-label={rowLabel(item, messages)}
-                  className={STACK}
-                >
-                  <span className={ROW}>
-                    {keyLink(item)}
-                    <span>{item.status}</span>
-                  </span>
-                  {title(item)}
-                  {item.assignee ? <span>{item.assignee}</span> : null}
-                  {tasksOf(item)}
-                  {actionsOf(item)}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Table data-testid="backlog-issues-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">{messages.colKey}</TableHead>
-                  <TableHead scope="col">{messages.colTitle}</TableHead>
-                  <TableHead scope="col">{messages.filterStatus}</TableHead>
-                  <TableHead scope="col">{messages.filterAssignee}</TableHead>
-                  <TableHead scope="col">{messages.colUpdated}</TableHead>
-                  <TableHead scope="col">{messages.colTasks}</TableHead>
-                  <TableHead scope="col">{messages.colActions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow
-                    key={item.issueKey}
-                    data-testid={`backlog-issue-row-${item.issueKey}`}
-                    aria-label={rowLabel(item, messages)}
-                  >
-                    <TableCell>{keyLink(item)}</TableCell>
-                    <TableCell>{title(item)}</TableCell>
-                    <TableCell>{item.status}</TableCell>
-                    <TableCell>{item.assignee ?? ""}</TableCell>
-                    <TableCell>{item.updatedAt ? relative(item.updatedAt) : ""}</TableCell>
-                    <TableCell>{tasksOf(item)}</TableCell>
-                    <TableCell>{actionsOf(item)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ChangeRequestList loading={false} error={null} emptyMessage={messages.issuesEmpty} isEmpty={false}>
+            {items.map(row)}
+          </ChangeRequestList>
           <div className={ROW}>
             <p data-testid="backlog-issues-showing">{showing}</p>
             <Pagination className="mx-0 w-auto">
@@ -530,8 +540,17 @@ export function createIssuesPage(
 
     const refreshedAt = load.kind === "ready" ? load.page.refreshedAt : undefined;
     return (
-      <div data-testid="backlog-issues" className={STACK}>
-        <div className={ROW}>
+      <div data-testid="backlog-issues" className="flex min-w-0 flex-col">
+        <ListToolbar
+          idPrefix="backlog-issues"
+          title={messages.issuesListLabel}
+          headingRef={list}
+          count={load.kind === "ready" ? load.page.total : undefined}
+          loading={refreshing}
+          lastFetchedAt={refreshedAt}
+          refreshLabel={refreshing ? messages.refreshing : messages.refresh}
+          onRefresh={() => void refresh()}
+        >
           <div className={FIELD}>
             <Label htmlFor="backlog-issues-search">{messages.searchIssues}</Label>
             <Input
@@ -547,7 +566,7 @@ export function createIssuesPage(
               type="button"
               variant="outline"
               size="sm"
-              className={BUTTON}
+              className={`${BUTTON} self-end`}
               data-testid="backlog-issues-filters-toggle"
               aria-expanded={showFilters}
               aria-controls="backlog-issues-filters"
@@ -556,61 +575,54 @@ export function createIssuesPage(
               {format(messages.filtersButton, { count: filterCount })}
             </Button>
           ) : null}
+          {!isMobile || showFilters ? <div id="backlog-issues-filters">{filterFields}</div> : null}
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className={BUTTON}
-            data-testid="backlog-issues-refresh"
-            aria-label={refreshing ? messages.refreshing : messages.refresh}
-            disabled={refreshing}
-            onClick={() => void refresh()}
+            variant="outline"
+            size="sm"
+            className={`${BUTTON} self-end`}
+            data-testid="backlog-issues-save-query"
+            disabled={!filters}
+            onClick={() => setSaving(true)}
           >
-            {icon(host, "refresh", refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4")}
+            {messages.saveQuery}
           </Button>
+        </ListToolbar>
+        <div className={RESULTS} data-testid="backlog-issues-results">
+          {body}
+          {notice ? (
+            <p role="alert" data-testid="backlog-issues-notice">
+              {t(notice)}
+            </p>
+          ) : null}
         </div>
-        {!isMobile || showFilters ? <div id="backlog-issues-filters">{filterFields}</div> : null}
-        {refreshedAt ? (
-          <p data-testid="backlog-issues-updated">
-            {format(messages.updatedAt, { time: relative(refreshedAt) })}
-          </p>
-        ) : null}
-        <h2 ref={list} tabIndex={-1} data-testid="backlog-issues-list">
-          {messages.issuesListLabel}
-        </h2>
-        {body}
-        {notice ? (
-          <p role="alert" data-testid="backlog-issues-notice">
-            {t(notice)}
-          </p>
-        ) : null}
         <div role="status" aria-live="polite" className="sr-only" data-testid="backlog-issues-announcer">
           {announcement}
         </div>
-        {linkedDialog ? (
-          <ConfirmDialog
-            testId="backlog-issue-linked-dialog"
-            title={messages.alreadyLinkedTitle}
-            body={format(messages.alreadyLinkedBody, { key: linkedDialog.issueKey })}
-            confirmLabel={messages.createAnother}
-            onConfirm={() => createTask(linkedDialog, true)}
-            onClose={() => setLinkedDialog(undefined)}
-          >
-            {linkedDialog.linkedTasks.slice(0, 1).map((task) => (
-              <a
-                key={task.taskId}
-                href={taskHref(task.taskId)}
-                data-testid="backlog-issue-linked-dialog-open"
-                onClick={(e: { preventDefault(): void }) => {
-                  e.preventDefault();
-                  host.navigate(taskHref(task.taskId));
-                }}
-              >
-                {format(messages.openTask, { key: task.taskKey ?? task.taskId })}
-              </a>
-            ))}
-          </ConfirmDialog>
-        ) : null}
+        {saving
+          ? (() => {
+              const draft: IssueQuery = {
+                name: "",
+                projectKey: current.projectKey,
+                statusIds: current.statusIds,
+                assignee: current.assignee,
+                keyword,
+              };
+              return (
+                <SaveQueryDialog
+                  workspaceId={workspaceId}
+                  query={draft}
+                  action="issues.queries.save"
+                  description={issueQueryFilters(draft, messages)}
+                  onSaved={(q: IssueQuery) => {
+                    onSavedQuery?.(q);
+                    setSaving(false);
+                  }}
+                  onClose={() => setSaving(false)}
+                />
+              );
+            })()
+          : null}
         {linkDialog ? (
           <LinkTaskDialog
             workspaceId={workspaceId}

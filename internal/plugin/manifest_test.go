@@ -169,7 +169,11 @@ func TestU3_Manifest_Actions(t *testing.T) {
 	got := map[string]string{}
 	for _, a := range m.Actions {
 		if slices.Contains(u3Actions, a.Key) {
-			require.Equal(t, 16384, a.MaxBodyBytes, a.Key)
+			wantBytes := 16384
+			if a.Key == actionQuickActionsSave {
+				wantBytes = 262144 // 20 actions with 4,000-character prompts (FR2.4)
+			}
+			require.Equal(t, wantBytes, a.MaxBodyBytes, a.Key)
 			got[a.Key] = a.Scope + "/" + a.Access
 		}
 	}
@@ -182,7 +186,7 @@ func TestU3_Manifest_Actions(t *testing.T) {
 	}
 	want[actionSetPollInterval] = "workspace/admin"
 	require.Equal(t, want, got)
-	require.Len(t, u3Actions, 19)
+	require.Len(t, u3Actions, 25)
 }
 
 func TestU3_Manifest_EventsAndReferences(t *testing.T) {

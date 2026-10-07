@@ -1,0 +1,1 @@
+"Thêm chức năng tương tự như Github integration trong kandev: (1) Quick actions (default Implement, Investigate, ...) cho phép người dùng tùy biến prompt, thêm quick actions tương tự github; (2) Thêm default queries cho Issue và PR -> cài sẵn 1 query mặc định; (3) Sửa UI, margin, vị trí buttons tương tự như giao diện github integration"

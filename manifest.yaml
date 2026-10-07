@@ -1,6 +1,6 @@
 id: "nulab-backlog"
 api_version: 2
-version: "0.1.1"
+version: "0.2.0"
 display_name: "Nulab Backlog"
 description: "Connect a Kandev workspace to a Nulab Backlog space."
 author: "khuongdo"
@@ -158,6 +158,11 @@ actions:
     scope: "workspace"
     access: authenticated
     max_body_bytes: 16384
+  # Intent 261007-github-parity-actions (FR3.3): star the default saved PR query.
+  - key: "git.queries.set_default"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
   # U3 (C5, R-04): the issue list, tasks from issues, links, the task panel and the sync.
   - key: "issues.list"
     scope: "workspace"
@@ -233,6 +238,33 @@ actions:
     access: authenticated
     max_body_bytes: 16384
   - key: "issues.watches.resume"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # Intent 261007-github-parity-actions (FR2, FR4): quick actions and saved
+  # issue queries, workspace-wide for any signed-in member like git.queries.*.
+  - key: "issues.quick_actions.get"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # 20 actions with 4,000-character prompts need more than 16 KiB.
+  - key: "issues.quick_actions.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 262144
+  - key: "issues.queries.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.set_default"
     scope: "workspace"
     access: authenticated
     max_body_bytes: 16384

@@ -18,9 +18,9 @@
 
 ### External Systems
 
-- **Kandev host**: state and secret store, task API, events, `host.ui`. Coupled to SDK v0.96.0.
-- **Backlog API v2** at `https://<space>.backlog.com|backlog.jp|backlogtool.com/api/v2`; Nulab OAuth2.
-- **Sibling checkout `../kandev`** at `.kandev-sdk-ref`: needed by `go build`, `tsc` and every `make` target (`make check-sdk`). CI checks it out; locally it must be provided (in this worktree a symlink to `/home/k_do_webfrontier/repo/kandev` at `v0.96.0`).
+- **Kandev host**: state and secret store, task API, events, `host.ui`. Coupled to SDK v0.96.0 (`PluginHostApi`, `PluginUIShape`); the GitHub-parity host components are listed in [api-documentation.md](api-documentation.md#kandev-ui-extension-points).
+- **Backlog API v2** at `https://<space>.backlog.com|backlog.jp|backlogtool.com/api/v2`; Nulab OAuth2. PR listing is per repository.
+- **Sibling checkout `../kandev`** at `.kandev-sdk-ref`: needed by `go build`, `tsc` and every `make` target (`make check-sdk`). CI checks it out; locally it must be provided (a symlink to `/home/k_do_webfrontier/repo/kandev` at `v0.96.0`; absent by default in a fresh worktree).
 
 ## Internal Dependencies
 
@@ -43,6 +43,6 @@ flowchart TD
   backlog --> redact
 ```
 
-Text fallback: server → plugin; plugin → backlog, connection, git, issues, redact; git → backlog, connection, redact; issues → backlog, connection, redact; connection → backlog, redact; backlog → redact. Acyclic; only `plugin` and `server` import `pluginsdk`.
+Text fallback: server → plugin; plugin → backlog, connection, git, issues, redact; git → backlog, connection, redact; issues → backlog, connection, redact; connection → backlog, redact; backlog → redact. Acyclic; only `plugin` and `server` import `pluginsdk`. `issues` and `git` do not import each other.
 
-UI: `index.ts` → `brand`, `page`, `settings`, `issues`, `git`, `switch`, `messages`; `page` → `issues` (`IssuesPage`); `settings` → `issues` (`PollInterval`) and `git` (`GitAccess`); every module → `@kandev/plugin-sdk` (types) and the host object.
+UI: `index.ts` → `brand`, `page`, `settings`, `issues`, `git`, `switch`, `messages`; `page/BacklogPage.tsx` → `issues/issues-page.tsx`, `git/pr-list.tsx`; `git/pr-list.tsx` → `git/pr-toolbar.tsx`, `git/save-query-dialog.tsx`; `settings/SettingsScreen.tsx` → `settings/saved-queries-section.tsx` → `git/save-query-dialog.tsx`; `settings` → `issues` (`PollInterval`) and `git` (`GitAccess`); UI modules → `layout.ts`, `host-ui.ts`, `icons.tsx`; every module → `@kandev/plugin-sdk` (types) and the host object.
