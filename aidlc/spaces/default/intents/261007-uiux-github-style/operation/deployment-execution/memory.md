@@ -4,11 +4,17 @@
 ## Interpretations
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
+- 2026-10-07T04:54:40Z — Opened the first marketplace registry PR (kdlbs/kandev#4284) as part of this release, because the v0.1.0 registry PR had been postponed and never sent.
+
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
+
+- 2026-10-07T04:54:40Z — Left the tool attribution footer out of the Kandev registry PR because the upstream PR template forbids it; the plugin repository's own PR #4 kept the footer.
 
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
+
+- 2026-10-07T04:54:40Z — Smoke check on the self-hosted Kandev is pending until the maintainer installs v0.1.1.
