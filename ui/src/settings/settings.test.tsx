@@ -25,17 +25,31 @@ interface ConnectionView {
   spaceHost?: string;
   connectedUserName?: string;
   hasApiKey: boolean;
+  enabled?: boolean;
 }
 
-const notConnected: ConnectionView = { connected: false, state: "not_connected", hasApiKey: false };
+// Backlog is opt-in, so the fixtures for on-behaviour say `enabled: true` explicitly.
+const notConnected: ConnectionView = {
+  connected: false,
+  state: "not_connected",
+  hasApiKey: false,
+  enabled: true,
+};
 const connected: ConnectionView = {
   connected: true,
   state: "connected",
   spaceHost: HOST,
   connectedUserName: "Test User",
   hasApiKey: true,
+  enabled: true,
 };
-const incomplete: ConnectionView = { connected: false, state: "error", spaceHost: HOST, hasApiKey: false };
+const incomplete: ConnectionView = {
+  connected: false,
+  state: "error",
+  spaceHost: HOST,
+  hasApiKey: false,
+  enabled: true,
+};
 
 /** An error shaped like the host's ApiError for a non-2xx action response. */
 function actionError(status: number, error: Record<string, unknown>): Error {
@@ -369,13 +383,21 @@ describe("M1 settings screen", () => {
 });
 
 describe("M1 settings screen: switch and layout", () => {
-  const off: ConnectionView & { enabled: boolean } = { ...connected, enabled: false };
+  const off: ConnectionView = { ...connected, enabled: false };
 
   it("shows the Off message and no Connect form while Backlog is off, keeping the connection", async () => {
     const c = await render(scripted(off).host);
     expect(byTestId(c, "backlog-off")!.textContent).toBe(en.integrationOff);
     expect(byTestId(c, "backlog-connect-form")).toBeNull();
     expect(byTestId(c, "backlog-status")!.textContent).toBe(`Connected as Test User @ ${HOST}`);
+  });
+
+  it("shows the Off message when the view has no enabled field (opt-in)", async () => {
+    const noField: ConnectionView = { ...connected };
+    delete noField.enabled;
+    const c = await render(scripted(noField).host);
+    expect(byTestId(c, "backlog-off")!.textContent).toBe(en.integrationOff);
+    expect(byTestId(c, "backlog-connect-form")).toBeNull();
   });
 
   it("shows the same Off message when Connect replies integration_disabled", async () => {

@@ -3,6 +3,7 @@ package ci
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -30,9 +31,14 @@ type fakeKandev struct {
 	statuses      []string // GET /api/plugins/{id} answers, the last one repeats
 	workspaces    string
 	getStatus     int
-	getBody       string
+	getBody       string // "" answers the live switch value
 	connectStatus int
 	connectBody   string // "%KEY%" is replaced with the key the driver sent
+	setStatus     int
+	// The plugin's IntegrationSwitch: off after installation (opt-in). While
+	// off, connect_api_key answers 409 integration_disabled unless ignoreOff.
+	enabled   bool
+	ignoreOff bool
 
 	order       []string
 	readyCalls  int
@@ -51,8 +57,8 @@ func newFakeKandev() *fakeKandev {
 		statuses:      []string{"registered", "active"},
 		workspaces:    `{"workspaces":[{"id":"ws-1"}],"total":1}`,
 		getStatus:     http.StatusOK,
-		getBody:       `{"connected":false,"enabled":true,"state":"not_connected","hasApiKey":false}`,
 		connectStatus: http.StatusBadRequest,
+		setStatus:     http.StatusOK,
 		connectBody:   `{"error":{"code":"validation","field":"spaceUrl","requestId":"r-1"}}`,
 	}
 }
@@ -92,13 +98,27 @@ func (f *fakeKandev) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var env map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&env)
 		f.envelopes = append(f.envelopes, env)
-		if strings.HasSuffix(r.URL.Path, "/connection.get") {
-			reply(f.getStatus, f.getBody)
-			return
-		}
 		body, _ := env["body"].(map[string]any)
-		f.sentKey, _ = body["apiKey"].(string)
-		reply(f.connectStatus, strings.ReplaceAll(f.connectBody, "%KEY%", f.sentKey))
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/connection.get"):
+			if f.getBody != "" {
+				reply(f.getStatus, f.getBody)
+				return
+			}
+			reply(f.getStatus, fmt.Sprintf(`{"connected":false,"enabled":%t,"state":"not_connected","hasApiKey":false}`, f.enabled))
+		case strings.HasSuffix(r.URL.Path, "/connection.set_enabled"):
+			if f.setStatus == http.StatusOK {
+				f.enabled, _ = body["enabled"].(bool)
+			}
+			reply(f.setStatus, fmt.Sprintf(`{"enabled":%t}`, f.enabled))
+		default:
+			f.sentKey, _ = body["apiKey"].(string)
+			if !f.enabled && !f.ignoreOff {
+				reply(http.StatusConflict, `{"error":{"code":"integration_disabled","requestId":"r-0"}}`)
+				return
+			}
+			reply(f.connectStatus, strings.ReplaceAll(f.connectBody, "%KEY%", f.sentKey))
+		}
 	default:
 		reply(http.StatusNotFound, `{"error":"not found"}`)
 	}
@@ -130,13 +150,16 @@ func TestRunContractHappyPathInstallsAndRunsThePlugin(t *testing.T) {
 		"GET /api/plugins/nulab-backlog", "GET /api/plugins/nulab-backlog",
 		"GET /api/v1/workspaces",
 		"POST /api/plugins/nulab-backlog/actions/connection.get",
-		"POST /api/plugins/nulab-backlog/actions/connection.connect_api_key",
+		"POST /api/plugins/nulab-backlog/actions/connection.connect_api_key", // refused: off after install
+		"POST /api/plugins/nulab-backlog/actions/connection.set_enabled",
+		"POST /api/plugins/nulab-backlog/actions/connection.connect_api_key", // the real connect path
 	}, fake.order)
 	require.Equal(t, "package", fake.fieldName)
 	require.Equal(t, []byte("dummy package bytes"), fake.packageData)
 	require.True(t, strings.HasPrefix(fake.sentKey, "TESTSECRET-"), "the driver sends only a bait key")
 	require.Equal(t, "ws-1", fake.envelopes[0]["workspaceId"])
 	require.Equal(t, map[string]any{}, fake.envelopes[0]["body"])
+	require.Equal(t, map[string]any{"enabled": true}, fake.envelopes[2]["body"])
 }
 
 func TestRunContractFailsWhenInstallIsRefused(t *testing.T) {
@@ -203,9 +226,11 @@ func TestRunContractFailsOnWorkspaceOrConnectionGetProblems(t *testing.T) {
 		{"connection.get wrong state", func(f *fakeKandev) {
 			f.getBody = `{"connected":true,"enabled":true,"state":"connected"}`
 		}, "not_connected"},
-		{"connection.get disabled", func(f *fakeKandev) {
-			f.getBody = `{"connected":false,"enabled":false,"state":"not_connected"}`
+		{"connection.get enabled on a fresh install", func(f *fakeKandev) {
+			f.getBody = `{"connected":false,"enabled":true,"state":"not_connected"}`
 		}, "enabled"},
+		{"connect not refused while off", func(f *fakeKandev) { f.ignoreOff = true }, "integration_disabled"},
+		{"set_enabled refused", func(f *fakeKandev) { f.setStatus = http.StatusForbidden }, "connection.set_enabled"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -219,18 +244,20 @@ func TestRunContractFailsOnWorkspaceOrConnectionGetProblems(t *testing.T) {
 
 func TestRunContractFailsOnWrongValidationReplyWithoutLeakingTheKey(t *testing.T) {
 	cases := []struct {
-		name   string
-		status int
-		body   string
+		name      string
+		status    int
+		body      string
+		ignoreOff bool // the reply comes while Backlog is still off
 	}{
-		{"accepted", http.StatusOK, `{"connected":true,"echo":"%KEY%"}`},
-		{"wrong field", http.StatusBadRequest, `{"error":{"code":"validation","field":"apiKey"},"echo":"%KEY%"}`},
-		{"server error", http.StatusInternalServerError, `{"error":"%KEY%"}`},
+		{"accepted", http.StatusOK, `{"connected":true,"echo":"%KEY%"}`, false},
+		{"wrong field", http.StatusBadRequest, `{"error":{"code":"validation","field":"apiKey"},"echo":"%KEY%"}`, false},
+		{"server error", http.StatusInternalServerError, `{"error":"%KEY%"}`, false},
+		{"server error while off", http.StatusInternalServerError, `{"error":"%KEY%"}`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := newFakeKandev()
-			fake.connectStatus, fake.connectBody = tc.status, tc.body
+			fake.connectStatus, fake.connectBody, fake.ignoreOff = tc.status, tc.body, tc.ignoreOff
 			cfg, _ := startFake(t, fake)
 			err := RunContract(context.Background(), cfg)
 			require.ErrorContains(t, err, "connection.connect_api_key")

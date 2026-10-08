@@ -28,7 +28,7 @@ export type PageState =
 export function pageState({ workspaceId, load, view }: PageInput): PageState {
   if (!workspaceId) return { kind: "no_workspace" };
   if (load !== "ready" || !view) return { kind: load === "failed" ? "failed" : "loading" };
-  if (view.enabled === false) return { kind: "off", workspaceId };
+  if (view.enabled !== true) return { kind: "off", workspaceId }; // opt-in
   if (view.state === "connected")
     return { kind: "connected", workspaceId, name: view.connectedUserName ?? "", host: view.spaceHost ?? "" };
   if (view.state === "error") return { kind: "incomplete", workspaceId };
@@ -377,6 +377,7 @@ export function createBacklogPage(
               selection={selection("prs", saved.prs)}
               onSavedQuery={addSaved("prs")}
               saveRequest={saveRequest.prs}
+              selectedProjects={selectedProjects}
             />
           ) : null}
         </div>

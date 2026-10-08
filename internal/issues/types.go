@@ -181,6 +181,7 @@ type Link struct {
 	SpaceHost       string `json:"spaceHost"`
 	TaskID          string `json:"taskId"`
 	TaskKey         string `json:"taskKey,omitempty"`
+	Summary         string `json:"summary,omitempty"`
 	State           string `json:"state"`
 	Unavailable     bool   `json:"unavailable,omitempty"`
 	LastKnownStatus string `json:"lastKnownStatus,omitempty"`

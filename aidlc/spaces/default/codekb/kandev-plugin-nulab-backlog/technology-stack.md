@@ -1,23 +1,24 @@
 # Technology Stack — kandev-plugin-nulab-backlog
 
-## Languages and Runtimes
-
-| Item | Version | Source |
+| Layer | Technology | Version |
 |---|---|---|
-| Go | `go 1.26.0` (baseline toolchain go1.26.8) | `go.mod` |
-| Node.js | 22 | `.nvmrc`, CI |
-| TypeScript | ~6.0.3, `strict` | `ui/package.json`, `ui/tsconfig.json` |
-| Kandev host | min `0.96.0`; SDK pin `f099a46dc7aab16f6ff5806cd29b2b480296303f` (tag `v0.96.0`) | `manifest.yaml`, `.kandev-sdk-ref` |
+| Backend language | Go | `go 1.26` (go.mod); Go 1.26.8 used for this run's baseline |
+| Plugin SDK | `github.com/kandev/kandev/pkg/pluginsdk` (`replace` to `../kandev/apps/backend`) | Kandev `v0.96.0`, commit `f099a46dc` (`.kandev-sdk-ref`) |
+| RPC (indirect) | hashicorp go-plugin / gRPC | via SDK |
+| HTTP | Go stdlib `net/http` (no third-party HTTP client or provider SDK) | — |
+| Process execution | Go stdlib `os/exec` (`internal/scm/cli_token.go` for `gh` / `glab`; `internal/ci/changes.go` for CI) | — |
+| UI language | TypeScript strict, TSX with host-provided React and UI kit | — |
+| UI plugin SDK | `@kandev/plugin-sdk` (types; `host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`) | same Kandev pin |
+| UI build | esbuild; Node from `.nvmrc` | — |
+| Tests | Go `testing` + testify (`-race` in CI), `httptest`; Vitest | testify v1.12.1; vitest ^5.0.3 |
+| Lint / format | gofmt, go vet, golangci-lint + gosec, `tsc --noEmit`, ESLint, Prettier, actionlint | pinned in `Makefile` / `ui/package.json` |
+| Build | GNU Make | — |
+| CI/CD | GitHub Actions (`ci.yml`, `release.yml`, `secrets.yml`), ruleset on `main` | — |
 
-## Frameworks and Libraries
+## Runtime Environment
 
-- Backend: Kandev `pkg/pluginsdk` (go-plugin over gRPC); stdlib `net/http` for Backlog, no third-party HTTP client or Backlog SDK. Versions: [dependencies.md](dependencies.md).
-- UI runtime: React 19 and `host.ui` (shadcn-based `@kandev/ui`) supplied by the host via `host.React` / `host.jsx`; types from `@kandev/plugin-sdk` (path-mapped). No React and no CSS in the bundle; styling is Tailwind class strings resolved by the host.
-- UI build: esbuild ^0.28.2 (`src/index.ts --bundle --format=esm --jsx-factory=h`) to `build/ui/bundle.js`.
+- The plugin binary runs on the Kandev server as a child process and inherits its environment.
+- Optional host tools for the SCM CLI method: `gh` (GitHub) and `glab` (GitLab), installed and logged in for the OS account that runs Kandev. `gh` 2.97.0 on the scan host (supports `gh auth token --user` and `gh auth status --json hosts`). Token-only use needs neither.
+- Task worktrees and agent environments are prepared by Kandev's executor, not the plugin.
 
-## Build, Test and Quality Tooling
-
-- Build: `Makefile` is the entry point and CI calls its targets (`check-sdk`, `check-format`, `vet`, `lint`, `test`, `coverage`, `check-secrets`, `ui-build`, `build`, `package`, `verify-package`, `contract-test`, `release-preflight`, `marketplace-entry`, `clean`). `make package` = 5-platform `CGO_ENABLED=0` build + `ui-build` + Kandev `cmd/plugin-pack` → `dist/nulab-backlog-<ver>.tar.gz` + `checksums.txt`.
-- Test: Go `testing` + testify, always `-race`, `httptest`; Vitest ^5.0.3 + jsdom ^30.1.2 + axe-core ^4.14.0.
-- Lint and format: `gofmt`, `go vet`, golangci-lint v2.14.0 + `gosec`, actionlint v1.7.12 (both via `go run`); ESLint ^10.12.0 + typescript-eslint ^8.71.1, Prettier ^3.9.9 (`printWidth: 110`).
-- CI/CD: GitHub Actions (`ci.yml`, `release.yml`), SHA-pinned actions, build provenance attestation.
+Library inventory: [dependencies.md](dependencies.md).

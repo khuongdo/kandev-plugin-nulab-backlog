@@ -1,0 +1,298 @@
+id: "nulab-backlog"
+api_version: 2
+version: "0.3.0"
+display_name: "Nulab Backlog"
+description: "Connect a Kandev workspace to a Nulab Backlog space."
+author: "khuongdo"
+categories: ["connector"]
+repo_url: "https://github.com/khuongdo/kandev-plugin-nulab-backlog"
+
+runtime:
+  type: binary
+  executables:
+    linux-amd64: server/plugin-linux-amd64
+    linux-arm64: server/plugin-linux-arm64
+    darwin-amd64: server/plugin-darwin-amd64
+    darwin-arm64: server/plugin-darwin-arm64
+    windows-amd64: server/plugin-windows-amd64.exe
+
+min_kandev_version: "0.96.0"
+
+capabilities:
+  state: true
+  secrets: true
+  # U4: watch tasks, the task-metadata lookup and the task's repository.
+  api_read: ["tasks", "repositories"]
+  api_write: ["tasks"]
+  # U3: links of a deleted task are removed (R-05); every sync cycle also checks.
+  events: ["task.deleted"]
+
+# U4: Backlog Git repositories are a Kandev repository provider (C8).
+repository_providers: ["nulab-backlog"]
+
+# U3: the `#` Backlog issue source of the message composer (M10).
+reference_sources:
+  - source: "nulab-backlog-issues"
+    provider: "nulab-backlog"
+    kind: "issue"
+    display_name: "Backlog issues"
+    kind_label: "Issue"
+
+actions:
+  - key: "connection.get"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 8192
+  - key: "connection.connect_api_key"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  - key: "connection.set_enabled"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  # U2 (R-01): actions that change the connection shared by the workspace are admin.
+  - key: "connection.start_oauth"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  - key: "connection.test"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 8192
+  - key: "connection.disconnect"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  - key: "connection.list_projects"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 8192
+  - key: "connection.set_projects"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 8192
+  # U4 (C5): Git credentials, the repository provider, PR links, watches and queries.
+  - key: "connection.set_git_credential"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 16384
+  - key: "repositories.inspect"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "repositories.branches"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.repositories.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.link"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.unlink"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.create"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.prs.status"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.links.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.impact"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.run"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.pause"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.watches.resume"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "git.queries.run"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # Intent 261007 (FR4): one page of a repository's pull requests for the PR list.
+  - key: "git.prs.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # Intent 261007-github-parity-actions (FR3.3): star the default saved PR query.
+  - key: "git.queries.set_default"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # U3 (C5, R-04): the issue list, tasks from issues, links, the task panel and the sync.
+  - key: "issues.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.filters"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.create_task"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.tasks.search"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.links.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.refresh"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.impact"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.settings.get"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.link"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.unlink"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.get"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.comments"
+    scope: "task"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.set_poll_interval"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 16384
+  # Intent 261007 (FR3, FR1.4): issue watches, for any signed-in member like PR watches.
+  - key: "issues.watches.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.watches.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.watches.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.watches.run"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.watches.pause"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.watches.resume"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # Intent 261007-github-parity-actions (FR2, FR4): quick actions and saved
+  # issue queries, workspace-wide for any signed-in member like git.queries.*.
+  - key: "issues.quick_actions.get"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  # 20 actions with 4,000-character prompts need more than 16 KiB.
+  - key: "issues.quick_actions.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 262144
+  - key: "issues.queries.list"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.save"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.delete"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+  - key: "issues.queries.set_default"
+    scope: "workspace"
+    access: authenticated
+    max_body_bytes: 16384
+
+# The OAuth callback Backlog redirects the browser to. It must be public: the
+# browser arrives from Backlog. The plugin checks a single-use state.
+webhooks:
+  - key: "oauth-callback"
+    description: "Nulab Backlog OAuth callback"
+    method: GET
+    access: public
+    max_body_bytes: 1024
+
+# Optional: set these to offer "Sign in with Nulab". An API key works without them.
+config_schema:
+  type: object
+  properties:
+    oauth_client_id:
+      type: string
+      title: "Nulab OAuth client ID"
+    oauth_client_secret:
+      type: string
+      secret: true
+      title: "Nulab OAuth client secret"
+    public_base_url:
+      type: string
+      title: "Kandev public address"
+      description: "For example https://kandev.example.com. The OAuth redirect URI is <this>/api/plugins/nulab-backlog/webhooks/oauth-callback."
+
+ui:
+  bundle: "/ui/bundle.js"

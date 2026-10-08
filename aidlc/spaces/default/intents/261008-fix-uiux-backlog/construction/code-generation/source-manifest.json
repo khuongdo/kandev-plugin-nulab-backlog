@@ -1,0 +1,27 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "internal/issues/types.go" },
+    { "path": "internal/issues/service.go" },
+    { "path": "internal/issues/sync.go" },
+    { "path": "internal/issues/links_test.go" },
+    { "path": "internal/issues/sync_test.go" },
+    { "path": "internal/issues/leak_test.go" },
+    { "path": "internal/issues/create_test.go" },
+    { "path": "internal/git/status_test.go" },
+    { "path": "ui/src/index.ts" },
+    { "path": "ui/src/index.test.ts" },
+    { "path": "ui/src/issues/issue-badge.tsx" },
+    { "path": "ui/src/issues/issue-badge.test.tsx" },
+    { "path": "ui/src/issues/issues-state.ts" },
+    { "path": "ui/src/issues/issues-state.test.ts" },
+    { "path": "ui/src/settings/SettingsScreen.tsx" },
+    { "path": "ui/src/settings/issue-watches-section.tsx" },
+    { "path": "ui/src/settings/pr-watches-section.tsx" },
+    { "path": "ui/src/settings/sections.test.tsx" },
+    { "path": "ui/src/messages/en.ts" },
+    { "path": "ui/src/testing/harness.ts" },
+    { "path": "README.md" }
+  ]
+}

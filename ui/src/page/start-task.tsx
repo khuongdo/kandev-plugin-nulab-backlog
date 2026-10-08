@@ -18,6 +18,8 @@ export interface StartTaskProps {
   testId: string;
   /** The task is linked; taskKey comes from the link reply when Kandev gave one. */
   onLinked?: (taskId: string, taskKey?: string) => void;
+  /** A PR of another provider links with scm.prs.link and its URL (FR5.1). */
+  linkAction?: "scm.prs.link";
 }
 
 /**
@@ -39,6 +41,7 @@ export function createStartTask(host: PluginHostApi, messages: Messages = en): C
     actions,
     testId,
     onLinked,
+    linkAction,
   }: StartTaskProps) {
     const [open, setOpen] = useState<{ action: QuickAction; ctx: TaskCreationContext } | undefined>(
       undefined,
@@ -55,18 +58,17 @@ export function createStartTask(host: PluginHostApi, messages: Messages = en): C
 
     const link = async (taskId: string) => {
       try {
-        const reply =
+        const [action, body]: [string, unknown] =
           kind === "issue"
-            ? await host.api.invokeAction<{ taskKey?: string }>("issues.link", {
-                workspaceId,
-                taskId,
-                body: { issueKey },
-              })
-            : await host.api.invokeAction<{ taskKey?: string }>("git.prs.link", {
-                workspaceId,
-                taskId,
-                body: { reference: url },
-              });
+            ? ["issues.link", { issueKey }]
+            : linkAction
+              ? [linkAction, { url }]
+              : ["git.prs.link", { reference: url }];
+        const reply = await host.api.invokeAction<{ taskKey?: string }>(action, {
+          workspaceId,
+          taskId,
+          body,
+        });
         onLinked?.(taskId, reply?.taskKey);
       } catch {
         setNotice(messages.taskNotLinked);

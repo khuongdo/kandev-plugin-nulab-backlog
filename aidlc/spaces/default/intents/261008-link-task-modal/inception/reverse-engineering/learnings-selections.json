@@ -1,0 +1,3 @@
+{"stage_slug":"reverse-engineering","space":"default","intent":"261008-link-task-modal","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Included Kandev's GitHub link-dialog (~/repo/kandev v0.96.0) as a read-only reference in the focused scan, since the request was to mimic it"}
+]}

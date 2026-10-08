@@ -7,8 +7,10 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 - Adds a **Backlog** card under **Settings > Integrations**, with the plugin's outline icon and
   an on/off switch. The card holds every Backlog setting as framed sections: Connection,
-  PR watches, Issue watches, Saved queries, Quick actions, Issue sync, Git access and Projects.
-- Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
+  Projects, PR watches, Issue watches, Saved queries, Quick actions, Issue sync and Source
+  control (with Git access).
+- Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page when Backlog is
+  on in at least one workspace when Kandev loads (see [Turn Backlog on or off](#turn-backlog-on-or-off)). It opens the
   `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration:
   a scope bar with the two kinds, a built-in preset and a **Saved** menu, a toolbar with the
   filters and refresh, and the results below.
@@ -30,6 +32,111 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
   browser and never written to logs.
 
 ## Upgrade notes
+
+### 0.5.3: choose the gh account per workspace
+
+- Settings > Source control: "Use gh CLI login" on the GitHub card now lists the accounts logged
+  in to gh on the Kandev server and lets you pick one (the active one is preselected; with only one
+  account it connects at once). A connected card shows **Connected via gh CLI as @login** and has a
+  **Change account** button. Two workspaces can use two gh accounts at the same time.
+- The plugin reads the chosen account's token with `gh auth token --user <login>` and never runs
+  `gh auth switch`, so `gh auth switch` on the server no longer changes which account a workspace
+  uses.
+- Nothing to do after upgrading: a workspace already connected with gh keeps the GitHub account it
+  was connected with. If that account is later logged out of gh, the card says
+  "<login> is not logged in to gh on the Kandev server — log in again or pick another account".
+- Agents in task worktrees get their GitHub login from Kandev's own GitHub integration (or the
+  executor profile), not from this plugin; set it to the same account. The account list needs gh
+  2.81.0 or later; older gh shows only the active account (`--user` needs gh 2.40).
+
+### 0.5.2: link a Backlog issue from the task, GitHub-style
+
+- The task's Link menu (Kanban card menu, task switcher) has a new "Link Backlog issue" item, next
+  to "GitHub Issue" and "Link Backlog pull request". Type an issue key such as `PROJ-123` or paste
+  the issue link (`https://<space>.backlog.com/view/PROJ-123`, also `.backlog.jp` and
+  `.backlogtool.com`) and press Save or Enter. The item is hidden while the task already has a
+  Backlog issue; use "Unlink Backlog issue" first to change it.
+- The "Link to task" dialog on the Backlog issues page now looks like Kandev's GitHub link dialog:
+  a short description, a Save button, Enter saves the chosen task, errors show in red under the
+  list, and a "linked" message appears.
+- After linking from either place, the issue badge on the task updates at once instead of at the
+  next refresh.
+- Nothing to do after upgrading: no setting or permission changes.
+
+### 0.5.1: connect GitHub or GitLab with the gh / glab CLI login
+
+- Settings > Source control: the GitHub card has a "Use gh CLI login" button and the GitLab card
+  a "Use glab CLI login" button, next to the token field. The plugin then reads the token from
+  the CLI that is logged in on the Kandev server (`gh auth token`, `glab config get token`),
+  checks it, and never stores it. It follows `gh auth login` / `refresh` / `switch` within
+  5 minutes.
+- The CLI runs on the machine that runs Kandev, as the Kandev server user. It needs `gh` 2.17 or
+  later / `glab`, logged in for that user; it does not work when Kandev runs where the CLI is not
+  installed (for example a Docker image without it). If the CLI stops working, the card shows
+  "The gh CLI is not available or not logged in on the Kandev server."; there is no fallback to a
+  typed token.
+- Saving a typed token switches back to the token method; Remove clears either method.
+- GitLab requests now send the token as `Authorization: Bearer`. Existing GitLab personal access
+  tokens keep working; nothing to do.
+- Nothing to do after upgrading: existing connections stay on the token method.
+
+### 0.5.0: Backlog issue on task rows and the task top bar
+
+- The Backlog issue badge now shows on Home > Tasks rows, in the sidebar task list and in the
+  task top bar (right of the workflow steps), not only on Kanban cards. Hover or focus it to see
+  the issue key, summary and status; click it to open the issue.
+- The issue summary is filled in for existing links at the next issue sync; until then the badge
+  shows the key and status.
+- Home > Integrations shows Backlog only when Backlog is on in at least one workspace. After
+  turning Backlog on or off, reload the page. The Settings > Integrations card is always there.
+- Backlog settings: Projects now comes right after the connection; the empty issue watch list
+  says "No issue watches yet"; the extra "Add watch" button inside empty watch lists is gone.
+- Nothing to do after upgrading: no setting or permission changes.
+
+### 0.4.2: smaller package, install From URL
+
+- The package is smaller (about 23 MB instead of 29.5 MB): it now carries server
+  executables for Linux and macOS on amd64 and arm64 only.
+- **Windows servers are no longer supported.** Kandev running on Windows cannot install
+  or upgrade to 0.4.2; stay on 0.4.1 there.
+- Install **From URL** (Settings > Plugins > Install plugin) with the GitHub Release
+  package URL. Uploading the file still works, but Kandev stops reading an upload after
+  30 seconds, which shows as `Plugin install failed: 502` on slow connections (see
+  "Troubleshooting" below).
+- Nothing else changes: no data, setting or permission changes.
+
+### 0.4.1: GitHub-style lists
+
+- Issue search runs when you press **Enter** (or leave the search box after editing), not while
+  you type.
+- The issue list and every pull request list (Backlog Git, GitHub, GitLab and Bitbucket) use a
+  GitHub-style toolbar: title and count, searchable dropdown filters without field labels, a
+  **Status (n)** menu for pull request statuses, then last updated and refresh. On phones the
+  filters stack at full width.
+- Linked tasks show the task title; a row with several tasks shows a **Tasks (n)** menu.
+- The Backlog badge on a Kanban card opens the Backlog issue in a new tab.
+- Nothing to do after upgrading: no data, setting or permission changes.
+
+### 0.4.0: GitHub, GitLab and Bitbucket pull requests
+
+- New: pull requests from GitHub, GitLab and Bitbucket (cloud only) next to Backlog Git: PR
+  list, saved queries, PR watches, PR status, and links to tasks and Backlog issues,
+  including automatic links when a Backlog issue key is in the branch name or PR title.
+- Setup: an admin adds one read-only token per service and maps Backlog projects to
+  repositories in **Source control** on the Backlog settings card. The required token
+  scopes are shown there. See [GitHub, GitLab and Bitbucket](#github-gitlab-and-bitbucket).
+- Moved: the Backlog Git **Git access** form is now inside the **Source control** section.
+- Nothing to do after upgrading: existing Backlog Git links, watches, saved queries and
+  credentials keep working unchanged.
+
+### 0.3.0: Backlog is now off by default (upgrading from v0.2.0 or earlier)
+
+Backlog is now opt-in: after installation it is off in every workspace until an admin turns
+it on. A workspace that never touched the switch on v0.1.0 to v0.2.0 turns **off** after the
+upgrade. Its saved connection is kept, but issue sync, issue and PR watches and Git
+credentials pause. To resume, a Kandev admin turns on the switch on the Backlog card and
+clicks **Save**; there is no need to connect again. Workspaces where the switch was saved
+(on or off) keep their setting.
 
 ### 0.2.0
 
@@ -56,11 +163,18 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Turn Backlog on or off
 
-Backlog is on by default in every workspace. A Kandev admin can turn it off for one workspace
-with the switch on the Backlog card, then **Save**. While it is off, the plugin refuses to
-connect or call Backlog for that workspace, but it keeps the existing connection: turning it
-back on restores it without connecting again. The home entry and the `/backlog` page stay
-available, so Backlog can always be turned back on.
+Backlog is off by default after installation, in every workspace. A Kandev admin turns it on
+for one workspace with the switch on the Backlog card, then **Save**, and then connects. The
+same switch turns it off again. While it is off, the plugin refuses to connect or call Backlog
+for that workspace, but it keeps the existing connection: turning it back on restores it
+without connecting again. The **Backlog** card under **Settings > Integrations** always stays,
+so Backlog can always be turned back on.
+
+The **Backlog** entry in the home **Integrations** menu (and the `/backlog` page) is added only
+when Backlog is on in at least one workspace when Kandev loads. Kandev cannot hide a menu entry
+after it has loaded, so after turning Backlog on or off, reload the page to show or hide the
+entry. If the plugin cannot read the on/off state at load (an error, or no answer within
+3 seconds), it shows the entry.
 
 The plugin icon is an original outline drawing, not the Nulab logo; see
 [docs/brand/backlog-logo.md](docs/brand/backlog-logo.md).
@@ -84,9 +198,34 @@ and `make coverage` fails below 80% line coverage.
 
 ## Install on Kandev
 
+Supported Kandev server platforms: Linux and macOS, on amd64 and arm64. Windows servers
+are not supported: the package carries no Windows executable, so Kandev on Windows
+refuses to install it.
+
 1. Sign in to your Kandev server (0.96.0 or later) as an admin.
-2. Open **Settings > Plugins** and upload `dist/nulab-backlog-<version>.tar.gz`.
-3. Open **Settings > Integrations > Backlog**.
+2. Open **Settings > Plugins**, click **Install plugin** and install the package in one of
+   two ways:
+   - **From URL** (recommended): paste the package URL of the GitHub Release, for example
+     `https://github.com/khuongdo/kandev-plugin-nulab-backlog/releases/download/v<version>/nulab-backlog-<version>.tar.gz`.
+     The Kandev server downloads the package itself, so the speed of your own connection
+     does not matter.
+   - **Upload file**: upload `nulab-backlog-<version>.tar.gz` (from the GitHub Release or
+     your own `dist/`). The whole upload must finish within the server's read limit
+     (30 seconds by default).
+3. Open **Settings > Integrations > Backlog**, turn the switch on and click **Save**
+   (Backlog is off until an admin turns it on).
+
+### Troubleshooting: `Plugin install failed: 502`
+
+If an upload fails with `Plugin install failed: 502` after about 30 seconds, and the
+Kandev server log shows a 400 response with `missing multipart field "package"`, the
+upload was slower than the server's read limit: Kandev stopped reading the request after
+30 seconds, and a proxy in front of it (for example `tailscale serve`) reported 502.
+Either:
+
+- install **From URL** instead (see above), or
+- raise the limit on the Kandev server with `KANDEV_SERVER_READTIMEOUT` (in seconds, for
+  example `KANDEV_SERVER_READTIMEOUT=120`) and restart Kandev.
 
 ## Connect with an API key
 
@@ -98,7 +237,11 @@ Connecting again with another key replaces the connection only after Backlog acc
 
 ## CI checks
 
-Every pull request and every push to `main` runs two jobs in `.github/workflows/ci.yml`:
+Every pull request and every push to `main` runs `.github/workflows/ci.yml`. Its first job,
+`changes`, lists the changed files (`go run ./cmd/ci changes -base <sha> -head <sha>`). When every
+changed file is under `aidlc/`, `.claude/` or `docs/`, or is `README.md`, `LICENSE` or `.gitignore`,
+the two app jobs below are skipped, and GitHub reports a skipped job as passing. Any other file, or
+a change set that cannot be listed, runs them in full. The list lives only in `internal/ci/changes.go`.
 
 - `checks` runs `make check-format vet lint test coverage check-secrets build package verify-package`.
   `lint` also runs `actionlint` and the workflow policy (every action pinned to a full commit SHA,
@@ -110,8 +253,11 @@ Every pull request and every push to `main` runs two jobs in `.github/workflows/
   (`make contract-test`). Locally: `git -C ../kandev worktree add ../kandev-min v<min_kandev_version>`,
   then `make package contract-test` (needs gcc; uses ports 38529 and 39529).
 
+`.github/workflows/secrets.yml` runs the job `secret-scan` (`make check-secrets`) on every pull
+request and every push to `main`, with no path filter, so records and docs are scanned too.
+
 In the repository settings, protect `main`: require a pull request, block force-pushes and
-deletion, and require **both** `checks` and `packaged-host-contract` to pass before merging.
+deletion, and require `checks`, `packaged-host-contract` and `secret-scan` to pass before merging.
 Also add a tag rule so `v*` tags cannot be moved or deleted.
 
 ## Releasing
@@ -217,6 +363,100 @@ A1). They only use repositories of the projects selected in the Backlog settings
   filters; saved queries then appear as presets there. Rename or delete them in the **Saved PR
   queries** section of the settings.
 
+## GitHub, GitLab and Bitbucket
+
+Next to Backlog Git, the plugin reads pull requests from **GitHub**, **GitLab** and **Bitbucket
+Cloud** and links them to Kandev tasks and Backlog issues. Only the cloud services are supported:
+`github.com`, `gitlab.com` and `bitbucket.org` (GitHub Enterprise Server, GitLab self-managed and
+Bitbucket Data Center are not). The plugin calls only `https://api.github.com`,
+`https://gitlab.com/api/v4` and `https://api.bitbucket.org/2.0`, reads only, and never creates,
+merges or comments on pull requests or hands out clone or push credentials for these services.
+
+- **Tokens.** In **Settings > Integrations > Backlog > Source control**, a workspace admin enters
+  one access token per service for the workspace, then can **Test**, replace or **Remove** it. The
+  token is checked with the service's current-user call before it is saved, kept only in Kandev's
+  encrypted secret store, and never shown again or written to logs. Every member sees the same pull
+  requests. Members see the section read-only. Read scopes needed:
+  - GitHub: a fine-grained token with **Metadata: read** and **Pull requests: read**, or a classic
+    token with `repo` (`public_repo` for public repositories only).
+  - GitLab: a personal access token with `read_api`.
+  - Bitbucket: an API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket`, or an
+    app password with **Repositories: Read** and **Pull requests: Read**, together with your
+    Bitbucket user name or email.
+- **CLI login instead of a token (GitHub and GitLab).** See
+  [Connect GitHub or GitLab with the CLI login](#connect-github-or-gitlab-with-the-cli-login).
+- **Repositories per Backlog project.** For each selected Backlog project, an admin maps the
+  repositories of each service: search the repositories the token can read, or type
+  `owner/name` (GitHub), `group/project` (GitLab) or `workspace/repo` (Bitbucket). Each repository
+  is checked with the service before it is saved. Lists, saved queries, watches and automatic
+  linking only cover mapped repositories. Removing a mapping disables, but never deletes, the
+  saved queries and watches that use it; they show **Repository no longer mapped**.
+- **Pull requests list.** On `/backlog`, **Pull requests** has a **Provider** choice. For a service
+  it lists one mapped repository of a selected project, 20 per page, with status (open, closed,
+  merged; drafts and Bitbucket's declined are shown as such) and author filters, the branches,
+  the last update and a link to the pull request. **Save query** saves the filters with the
+  service; one saved query per service can be the default.
+- **Linking.** Create a task from a row with **+ Task**, or open a task's **Backlog issue** panel and
+  paste a pull request URL with **Link a pull request**; the URL must belong to a mapped
+  repository. When a list refresh or a watch first sees a pull request whose source branch or title
+  contains an issue key of a selected project mapped to that repository (for example
+  `PROJ-123`), the pull request is **auto-linked** to that issue. Removing an auto-link is final:
+  it is not created again. The panel also shows the GitHub and GitLab pull requests Kandev itself
+  attached to the tasks of that issue, without any plugin token.
+- **Watches.** PR watches work for every service: each run creates at most one new task, every
+  N minutes (5 by default) as set in the watch dialog, and never twice for one pull request.
+  Linked pull request states are refreshed every 5 minutes, like Backlog Git watches. A rate limit
+  from one service never holds up another; the plugin does not retry.
+- **Backlog switch and connection.** When Backlog is off for the workspace, every source control
+  action is refused except reading the settings, and watches do not run. Unlike Backlog Git, the
+  tokens, mappings, links, queries and watches of these services stay after a Backlog disconnect,
+  a space change or a project deselection; items of a project that is no longer selected are
+  only hidden from project-based views.
+
+### Connect GitHub or GitLab with the CLI login
+
+Instead of pasting a token, a workspace admin can press **Use gh CLI login** (GitHub) or **Use
+glab CLI login** (GitLab) on the service's card. Bitbucket has no CLI option.
+
+- The plugin runs the CLI **on the machine that runs the Kandev server, as the server's user and
+  with its environment** — not on the admin's own computer. Log in there first: `gh auth login`
+  (repeat it for each GitHub account you want to offer) or `glab auth login`. `GH_TOKEN`,
+  `GITHUB_TOKEN` and their enterprise variants are removed from gh's environment, so gh always
+  uses its stored logins.
+- **GitHub: one gh account per workspace.** Pressing **Use gh CLI login** lists the github.com
+  accounts gh has (`gh auth status --json hosts`, gh 2.81.0 or later) and lets you pick one; the
+  account active in gh is preselected, and with a single account it connects at once. **Change
+  account** on a connected card picks another one and keeps the mappings, queries and watches.
+  The plugin reads the chosen account's token with
+  `gh auth token --hostname github.com --user <login>` (gh 2.40 or later) and never runs
+  `gh auth switch`, so every GitHub call of the workspace — Test, repository search, pull request
+  lists and the "mine" filter, links, watches and tasks created from Backlog issues — runs as that
+  account whatever account is active in gh. With a gh older than 2.81.0 only the active account is
+  offered; with a gh older than 2.40 the workspace works only while its account is the active one.
+- GitLab: the plugin reads the token with `glab config get token --host gitlab.com`.
+- Each token is checked with the service's current-user call; only the method and the account
+  (for GitHub, its login) are stored. The token is never saved, logged or shown; any typed token
+  of that service is deleted. The card then shows **Connected via gh CLI as @login** (GitHub) or
+  **Connected via glab CLI as …** (GitLab).
+- The token is read again at most every **5 minutes** (per GitHub account), so `gh auth refresh`
+  or a new `glab auth login` on the server takes effect within 5 minutes without any action in
+  Kandev. **Test** always reads it again and never replaces the chosen GitHub account: if gh no
+  longer has it, the card says "<login> is not logged in to gh on the Kandev server — log in again
+  or pick another account" and the plugin does not fall back to another account.
+- **Agents in task worktrees.** The agent's own shell in a task worktree gets its GitHub login from
+  Kandev's own GitHub integration (or the executor profile), not from this plugin; the plugin
+  cannot change it. Set it to the same account as the workspace's gh account here. The GitHub card
+  shows this note with the chosen login.
+- If the CLI is missing, not logged in, slow (10 s limit) or its token is refused, actions fail
+  with "The gh CLI is not available or not logged in on the Kandev server" (glab respectively).
+  There is no fallback to a typed token. This is the case when Kandev runs in Docker or on a
+  machine without the CLI: use a token there.
+- glab: only the login glab stores is read; a token given to glab only through the
+  `GITLAB_TOKEN` environment variable is not seen.
+- Saving a token switches the service back to the token method; **Remove token** disconnects
+  either method and keeps the mappings. GitLab requests now send the token as
+  `Authorization: Bearer`, which works for personal access tokens and glab's login.
+
 ## Backlog issues
 
 These features use only the projects selected in the Backlog settings. The plugin only reads
@@ -233,6 +473,10 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
 - **Link to task.** **Link to task** in the same menu links an existing task. A task links one issue
   only; several tasks may link the same issue. **Unlink Backlog issue** in the task's menu removes
   the link and changes nothing in Backlog.
+- **Link an issue from the task.** In a task's **Link** menu, next to **GitHub Issue**, choose
+  **Link Backlog issue** and enter an issue key (`PROJ-123`) or paste the issue's
+  `https://<space>/view/PROJ-123` link. The entry is hidden while the task is linked; unlink first
+  to link another issue.
 - **`#` references.** In the message composer, type `#` and choose **Backlog issues** to reference
   an issue by key or title. Kandev checks the issue again when the message is sent.
 - **Backlog panel in the task.** Open the **Backlog issue** panel from the task's **+** panel menu to
@@ -246,7 +490,11 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
   handled before, never gets another one. A watch stops with a visible error when Backlog refuses
   the sign-in, the workflow was removed, or its ledger of 5000 handled issues is full. Rows have
   Edit, Run now, Pause/Resume and Delete; deleting a watch keeps its tasks and links.
-- **Badge and status sync.** A linked task's card shows a badge such as `PROJ-120 · Resolved`. The
+- **Badge and status sync.** A linked task shows a badge such as `PROJ-120 · Resolved` on its
+  Kanban card, on its row in **Home > Tasks** and the sidebar task list, and in the task top bar
+  (right of the workflow steps). Hovering or focusing the badge shows the issue key, summary and
+  status; clicking it opens the issue in a new tab. The summary is stored with the link and
+  refreshed with the status, so older links show it after the next check. The
   plugin checks the status of linked issues every 5 minutes by default; an admin can set the
   interval (at least 1 minute) in the **Issue sync** section of the Backlog settings, and
   **Refresh** on the Issues list checks at once. A badge says **may be out of date** after three failed checks,

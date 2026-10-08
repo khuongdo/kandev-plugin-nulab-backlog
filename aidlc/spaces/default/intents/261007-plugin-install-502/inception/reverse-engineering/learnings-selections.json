@@ -1,0 +1,3 @@
+{"stage_slug":"reverse-engineering","space":"default","intent":"261007-plugin-install-502","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"A plugin upload install that fails with a 47-byte 400 after exactly 30 s means Kandev's server.readTimeout (30 s default, KANDEV_SERVER_READTIMEOUT) cut the multipart body (`missing multipart field \"package\"`); tailscale serve shows it to the browser as 502"}
+]}

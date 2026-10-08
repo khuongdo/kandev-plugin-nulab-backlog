@@ -3,7 +3,16 @@ import { describe, expect, it } from "vitest";
 import { en } from "../messages/en";
 import { readFailure } from "../settings/state";
 import { actionError } from "../testing/harness";
-import { gitNotice, noticeText, prBadgeLabel, watchProgress, watchStatusKey } from "./git-state";
+import {
+  gitNotice,
+  noticeText,
+  prBadgeLabel,
+  providerName,
+  scmNotice,
+  stateText,
+  watchProgress,
+  watchStatusKey,
+} from "./git-state";
 
 describe("git-state (M4, M6)", () => {
   it("builds the PR badge screen-reader text", () => {
@@ -52,5 +61,41 @@ describe("git-state (M4, M6)", () => {
   it("formats notices from a given catalogue", () => {
     const pseudo = { ...en, gitSaved: "⟦Saved⟧" };
     expect(noticeText({ key: "gitSaved" }, pseudo)).toBe("⟦Saved⟧");
+  });
+});
+
+describe("source control states and notices (A3, FR2.4, NFR5)", () => {
+  it("names draft and declined pull requests", () => {
+    expect(stateText("draft")).toBe(en.stateDraft);
+    expect(stateText("declined")).toBe(en.stateDeclined);
+  });
+
+  it("maps provider failures to provider words", () => {
+    expect(scmNotice(actionError(401, { code: "reconnect_required" }))).toEqual({ key: "scmTokenRefused" });
+    expect(scmNotice(actionError(400, { code: "validation", field: "token" }))).toEqual({
+      key: "scmNoToken",
+    });
+    expect(noticeText(scmNotice(actionError(429, { code: "rate_limited", retryAfterSeconds: 9 })))).toBe(
+      "The provider is limiting requests. Try again in 9 s",
+    );
+    expect(scmNotice(actionError(503, { code: "unreachable" }))).toEqual({
+      key: "scmUnreachable",
+      retry: true,
+    });
+    expect(scmNotice(actionError(409, { code: "conflict" }))).toEqual({ key: "scmUnmapped" });
+    expect(noticeText(scmNotice(actionError(503, { code: "cli_unavailable" })))).toBe(
+      "The gh / glab CLI is not available or not logged in on the Kandev server.",
+    );
+    expect(noticeText(scmNotice(actionError(409, { code: "cli_account_missing" })))).toBe(
+      "The chosen gh account is not logged in on the Kandev server. Log in again or pick another account under Source control.",
+    );
+    expect(scmNotice(actionError(404, { code: "not_found" }))).toEqual({ key: "gitNotFound" });
+  });
+
+  it("names the providers", () => {
+    expect(providerName("github")).toBe("GitHub");
+    expect(providerName("gitlab")).toBe("GitLab");
+    expect(providerName("bitbucket")).toBe("Bitbucket");
+    expect(providerName("backlog")).toBe("Backlog Git");
   });
 });

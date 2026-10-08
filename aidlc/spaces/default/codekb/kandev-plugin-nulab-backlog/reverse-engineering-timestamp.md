@@ -2,99 +2,66 @@
 
 ## Run Information
 
-- Date: 2026-10-07
-- Commit: `2b4325fcbd0c14ae0beb23603c6249849fc0ddda` (branch `feature/add-default-queries-87j`)
-- Intent: `261007-github-parity-actions` (scope express, depth Minimal)
-- Type: FOCUSED SCAN merged into a STALE store (prior store: intent `261007-uiux-github-style`, full rescan at `86ae473`). Snapshot paths: `ui/src/`, `internal/plugin/`, `internal/git/`, `internal/issues/`, `manifest.yaml`. Prose outside the focus area (gateway, connection, tooling, dependencies) is preserved from the prior store; the prior deep coverage is demoted to shallow because it could not be re-verified.
-- External reference (not in scope): `/home/k_do_webfrontier/repo/kandev`, tag `v0.96.0`, commit `f099a46dc7aab16f6ff5806cd29b2b480296303f`
-- Baselines: Go `go test -race` all 9 test packages pass, total 92.7%; UI Vitest 286/286, `tsc`, ESLint, Prettier clean. Details: [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines).
+- Date: 2026-10-08
+- Commit: `ca8146ca529f0bf6caa4604cf44239c3f555eda5` (v0.5.2 records on `main`; branch `feature/gh-cli-profile-scope-q1o`)
+- Intent: `261008-gh-cli-profile` (scope express, depth Minimal)
+- Type: **FULL RESCAN** of `./` at Minimal depth. All 9 artifacts were replaced; the scope block below records only this run. Prior focused-run history lives in the earlier intent records.
+- Pre-scan snapshot: paths `./`, store_generation `sha256:36ae6e8147b7ca6e24623d66b33daf14aeb8910cc6c15d9f4c94478df2376e4a`, source_fingerprint `git:f9ee5e321fa96ae433d8f38544b5034c3b896c33`.
+- Depth note: the whole repo was in the snapshot, but only the files listed under `analyzed.paths` were read deeply (intent area: gh CLI credential, per-workspace SCM settings, task creation from Backlog issues). Everything else was skimmed, so the block is `kind: partial`.
+- External evidence (not coverage): Kandev checkout `~/repo/kandev` at `v0.96.0` (`f099a46dc`): `internal/github/gh_accounts.go`, `internal/github/auth_resolver.go`, `internal/orchestrator/executor/executor_credentials.go`, `pkg/pluginsdk/{host.go,data_types.go,plugin.go,types.go}`.
+- Baseline: **recorded** — 1383 Go test results passing, 0 failures (see [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines)).
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
 kind: partial
-intent: 261007-github-parity-actions
-fingerprint: 45039258deef5df0bf71376f6f420a5208512146
+intent: 261008-gh-cli-profile
+fingerprint: 0579d12edc9ff08dd841a3b17d4aac2f68a48f5e
 analyzed:
   paths:
-    - manifest.yaml
-    - ui/src/index.ts
-    - ui/src/layout.ts
-    - ui/src/host-ui.ts
-    - ui/src/icons.tsx
-    - ui/src/jsx.d.ts
-    - ui/src/page/BacklogPage.tsx
-    - ui/src/issues/issues-page.tsx
-    - ui/src/issues/issues-state.ts
-    - ui/src/issues/task-menu.ts
-    - ui/src/issues/i18n.ts
-    - ui/src/git/pr-list.tsx
-    - ui/src/git/pr-toolbar.tsx
-    - ui/src/git/save-query-dialog.tsx
-    - ui/src/git/git-state.ts
-    - ui/src/settings/saved-queries-section.tsx
-    - ui/src/settings/section-parts.tsx
-    - ui/src/settings/use-list.ts
-    - ui/src/settings/SettingsScreen.tsx
+    - internal/scm/cli_token.go
+    - internal/scm/service.go
+    - internal/scm/types.go
+    - internal/scm/store.go
+    - internal/scm/client.go
+    - internal/github/client.go
+    - internal/plugin/scm_actions.go
     - internal/plugin/runtime.go
-    - internal/plugin/issue_actions.go
-    - internal/plugin/git_actions.go
     - internal/plugin/host_port.go
-    - internal/issues/types.go
+    - internal/plugin/credential.go
     - internal/issues/service.go
-    - internal/issues/store.go
-    - internal/issues/watch.go
-    - internal/git/types.go
-    - internal/git/service.go
-    - internal/git/store.go
-    - internal/git/watcher.go
-  components:
-    - KandevAdapter
-    - Issues
-    - Git
-    - UI Registration
-    - UI Shared Kit
-    - UI Page
-    - UI Settings
-    - UI Issues
-    - UI Git
-shallow:
-  paths:
-    - Makefile
+    - internal/issues/types.go
+    - ui/src/settings/source-control-section.tsx
+    - ui/src/page/start-task.tsx
+    - manifest.yaml
     - go.mod
     - .kandev-sdk-ref
-    - .nvmrc
-    - .gitignore
-    - server/main.go
-    - internal/plugin/
-    - internal/git/
-    - internal/issues/
-    - ui/package.json
-    - ui/tsconfig.json
-    - ui/vitest.config.ts
-    - ui/eslint.config.js
-    - ui/.prettierrc
-    - ui/src/index.test.ts
-    - ui/src/brand/
-    - ui/src/page/
-    - ui/src/settings/
-    - ui/src/git/
-    - ui/src/issues/
-    - ui/src/switch/
-    - ui/src/testing/harness.ts
-    - ui/src/messages/en.ts
-    - docs/brand/backlog-logo.md
+  components:
+    - SCM
+    - GitHub Client
+    - KandevAdapter
+    - Issues
+    - UI Bundle
+shallow:
+  paths:
     - internal/backlog/
-    - internal/connection/
-    - internal/redact/
-    - internal/testutil/
+    - internal/bitbucket/
+    - internal/gitlab/
     - internal/ci/
     - cmd/ci/
-    - internal/pkgverify/
     - cmd/verifypkg/
+    - internal/pkgverify/
+    - internal/connection/
+    - internal/git/
+    - internal/issues/
+    - internal/scm/
+    - internal/plugin/
+    - internal/redact/
+    - internal/testutil/
+    - server/
+    - ui/src/
     - .github/workflows/
+    - Makefile
     - .golangci.yml
-    - README.md
-    - docs/manual-checks/
 ```

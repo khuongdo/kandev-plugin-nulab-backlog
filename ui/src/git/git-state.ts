@@ -12,6 +12,8 @@ const STATE_KEYS: Record<string, MessageKey> = {
   open: "stateOpen",
   closed: "stateClosed",
   merged: "stateMerged",
+  draft: "stateDraft", // A3: GitHub and GitLab drafts
+  declined: "stateDeclined", // A3: Bitbucket
 };
 
 /** The name of a pull request state. */
@@ -134,4 +136,108 @@ export async function loadImpact(
 /** Appends an impact sentence to a dialog body. */
 export function withImpact(body: string, impact: string): string {
   return impact ? `${body} ${impact}` : body;
+}
+
+/** A source control provider; "backlog" is Backlog Git (FR1.1). */
+export type ScmProvider = "github" | "gitlab" | "bitbucket";
+
+const PROVIDER_KEYS: Record<string, MessageKey> = {
+  backlog: "providerBacklog",
+  github: "providerGithub",
+  gitlab: "providerGitlab",
+  bitbucket: "providerBitbucket",
+};
+
+/** The display name of a provider. */
+export function providerName(provider: string, messages: Messages = en): string {
+  return messages[PROVIDER_KEYS[provider] ?? "providerBacklog"];
+}
+
+/** Backlog project to repositories of one provider (FR3.1). */
+export interface Mapping {
+  projectKey: string;
+  repos: string[];
+}
+
+/** One provider as scm.providers.list returns it; never a token (NFR1). */
+export interface ProviderView {
+  provider: ScmProvider;
+  state: string;
+  /** How the provider is connected: a typed token or the server's CLI login. */
+  method?: "token" | "cli";
+  account?: string;
+  /** The chosen gh login of a GitHub CLI connection (intent 261008-gh-cli-profile). */
+  login?: string;
+  lastError?: string;
+  mappings: Mapping[];
+}
+
+/** One github.com login stored by gh on the Kandev server. */
+export interface CliAccount {
+  login: string;
+  active: boolean;
+}
+
+/** The notice of a failed scm.* action, in provider words (FR2.4, NFR5). */
+export function scmNotice(error: unknown): Notice {
+  const f = readFailure(error);
+  switch (f.code) {
+    case "reconnect_required":
+      return { key: "scmTokenRefused" };
+    case "rate_limited":
+      return { key: "scmRateLimited", params: { seconds: f.retryAfterSeconds ?? 60 }, retry: true };
+    case "unreachable":
+      return { key: "scmUnreachable", retry: true };
+    case "conflict":
+      return { key: "scmUnmapped" };
+    case "cli_unavailable":
+      return { key: "scmCliUnavailable", params: { cli: "gh / glab" } };
+    case "cli_account_missing":
+      return { key: "scmCliAccountMissingAny" };
+    case "validation":
+      if (f.field === "token") return { key: "scmNoToken" };
+  }
+  return gitNotice(error);
+}
+
+/** The providers of a workspace; none when they cannot be read. */
+export async function loadProviders(host: PluginHostApi, workspaceId: string): Promise<ProviderView[]> {
+  try {
+    const r = await host.api.invokeAction<{ providers?: ProviderView[] }>("scm.providers.list", {
+      workspaceId,
+    });
+    return r?.providers ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** The providers whose token works, which can list pull requests. */
+export function usableProviders(views: ProviderView[]): ProviderView[] {
+  return views.filter((v) => v.state === "connected");
+}
+
+/**
+ * The mapped repositories of the selected projects as options valued
+ * "PROJ:owner/name" (FR3.3); projects no longer selected are hidden (FR6.2).
+ */
+export function scmRepoOptions(
+  view: ProviderView | undefined,
+  selected: string[],
+  messages: Messages = en,
+): RepoOption[] {
+  return (view?.mappings ?? [])
+    .filter((m) => selected.includes(m.projectKey))
+    .flatMap((m) =>
+      m.repos.map((repo) => ({
+        value: `${m.projectKey}:${repo}`,
+        label: format(messages.scmRepoOption, { project: m.projectKey, repo }),
+      })),
+    );
+}
+
+/** Splits "PROJ:owner/name" into the project key and repository. */
+export function splitScmRepo(value: string): { projectKey: string; repo: string } {
+  const i = value.indexOf(":");
+  return { projectKey: value.slice(0, i), repo: value.slice(i + 1) };
 }

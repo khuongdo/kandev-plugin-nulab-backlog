@@ -31,6 +31,8 @@
 
 - Run the packaged-host contract test locally with make contract-test KANDEV_MIN_DIR=../kandev while the SDK checkout is at the minimum version tag, and run it 10 times to catch host startup races (learned 2026-10-07) <!-- cid:261007-uiux-github-style:build-and-test:31ed7cfc6ba57c51da8ed86142ad7477ca9b62962e5639ce6369fe59ff05b304 -->
 
+- When the worktree has no Go, install Go 1.26.x to ~/.local/go (checksum-verified from go.dev) and run make coverage, make package/verify-package and 10x make contract-test KANDEV_MIN_DIR=../kandev locally, so no target stays Unverified (learned 2026-10-08) <!-- cid:261008-link-task-modal:build-and-test:7411cc3a5909a40be757dfd57583b4bc1d361741cf20c247d10cd7d7f70b408a -->
+
 ## Guard Policy
 
 <!-- Project-specific. Mode: strict, relaxed, or off. Strict here holds for every intent and cannot be changed from chat. A section under the retired Change Control heading, written by an earlier release, is still read. -->
@@ -38,6 +40,14 @@
 ## Deployment
 
 <!-- Project-specific specialisation. -->
+
+- ALWAYS check the latest GitHub release (gh release list) and origin/main before asking the release-version question, not only manifest.yaml on the working branch (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:12964151cf0ce3bec78bd3f03e2d6bd8c45cf5181838d6e854009164f19858e6 -->
+
+- ALWAYS re-check gh release list and origin/main right before asking the version question AND again before tagging; v0.4.0 was released on main (PR #9) while this intent ran, after the first version question had proposed 0.4.0, forcing a rebase, a loop-back and release 0.4.1 (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:deployment-pipeline:d702f15b3c44e75136756728f4224aad87d8129a42bc32f0c72b2b2ca9b1f1d1 -->
+
+- ALWAYS put the README upgrade-note text for the version at the top of the auto-generated GitHub Release notes (gh release edit), keeping the generated PR list below it (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:deployment-execution:b9b96fad7055c7dd4f07cb217b9400018bfad9d50f5b5ed1e3858f617ed65ac9 -->
+
+- The user treats a UI fix that adds a small task-side action (Link Backlog issue) plus a dialog restyle as a patch release (0.5.2), not a minor one (learned 2026-10-08) <!-- cid:261008-link-task-modal:deployment-pipeline:0a77fb75dd32578c82cb64e7ef1e8a0b181d5b99ce58fd8cb8c3299997182c51 -->
 
 ## Code Style
 
@@ -110,3 +120,14 @@
 - Read the issue watch answers as at most one new task per watch per run, with a per-watch interval (default 5 minutes) set in the watch dialog (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:f11570a4a09290d2e3f6bc0632c4cded73c1830d1ec39718fcc29028381a185d -->
 - In refactor scope (no units or domain design), treated the existing code structure from the code knowledge base as the domain design for Functional Design (learned 2026-10-07) <!-- cid:261007-uiux-github-style:functional-design:2369d780bf4e1983217919608f3224e7182dc767c72884e45a728feca8091cd3 -->
 - For Deployment Pipeline, asked only release-specific questions (version, upgrade notes) because the team Deployment practice already settles strategy, gates, approvals, rollback and feature flags (learned 2026-10-07) <!-- cid:261007-uiux-github-style:deployment-pipeline:da684d7f076fb85473387dd397f644dc998ea4caacd02a2228d75b67c5f951d5 -->
+- v0.2.0 was released on main while this intent ran, so the first version question (0.1.2/0.2.0) was wrong and was corrected to 0.3.0 via Request changes; rebase onto origin/main before release (learned 2026-10-07) <!-- cid:261007-opt-in-default:deployment-pipeline:d44f93a1dd652c310b3d3e63ff829ad927ccd6d55fa160f7ea85d37099d787ab -->
+- Used the local Kandev checkout at ~/repo/kandev (pinned v0.96.0) as the reference for the GitHub integration UI, since ../kandev is not present in this worktree. (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:reverse-engineering:012a437c392e763ed113473c5488daaa3868f835350ed66b0d73434ad1a05b1c -->
+- Take the CodeKB snapshot with directory paths ending in '/' (ui/src/, internal/plugin/, internal/issues/) because codekb-publish treats a path as a directory only with a trailing slash (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:reverse-engineering:fa8ea088dcad376906db8de78ef254b36c4f251a2f3e5ffd212454fa33f29071 -->
+- Read 'show the task clearly' on the Kanban badge as 'the badge clearly shows the linked Backlog issue', since the card already is the task (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:requirements-analysis:a347b258d2db14fbbb91ac3b611230992225e0260caa0cd1ae3f45f13d05afdc -->
+- Treated the later answer that the issue URL works correctly as superseding the first answer that it was wrong (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:requirements-analysis:e94cd5fd3528ce0aa7e19d519763f3d0dab8efe084d1004c6e7e022fd4361981 -->
+- Write AI-DLC stage artifacts with the Write/Edit tools only; a file written through the shell has no recorded write and the review request is refused until it is re-saved (learned 2026-10-07) <!-- cid:261007-backlog-panel-retouch:functional-design:e6a53d664dc9aab59e2967137ef3878b87121474135ab302162fcb72c7292cb9 -->
+- A plugin upload install that fails with a 47-byte 400 after exactly 30 s means Kandev's server.readTimeout (30 s default, KANDEV_SERVER_READTIMEOUT) cut the multipart body (`missing multipart field "package"`); tailscale serve shows it to the browser as 502 (learned 2026-10-07) <!-- cid:261007-plugin-install-502:reverse-engineering:df5518eb2972f142f2820ffbd4f28286dc7093be3ddf33905802867345ab5e33 -->
+- The package platform list lives in four places: manifest.yaml runtime.executables, Makefile PLATFORMS, internal/pkgverify executables, and internal/plugin/manifest_test.go; internal/plugin/testdata/v030/manifest.yaml is a frozen 0.3.0 snapshot and stays unchanged (learned 2026-10-07) <!-- cid:261007-plugin-install-502:code-generation:bdf8961f3a2441971ee1c0b44ce3d49be8852fe36ad687d074a9a3d12db6b975 -->
+- Included Kandev's GitHub link-dialog (~/repo/kandev v0.96.0) as a read-only reference in the focused scan, since the request was to mimic it (learned 2026-10-08) <!-- cid:261008-link-task-modal:reverse-engineering:1287cc98aa0e27669a6b859c794913796aed3b9831dc2f3f5386ffd67733f026 -->
+- Read "restyle the issue-side dialog" (Q1=D) as keeping its task search and list and changing only the shell and feedback (description, width, inline error, Save/Saving..., Enter submits, toast, links-store refresh) (learned 2026-10-08) <!-- cid:261008-link-task-modal:requirements-analysis:2bb7d074fd280d0f735566913cf5236369049a1a45c4f86fe661b361c91aa20f -->
+- Plan Approval needs --session <id>; the id is the session directory name under aidlc/.aidlc-sessions/ (it is not printed in the conversation context) (learned 2026-10-08) <!-- cid:261008-link-task-modal:code-generation:7157daafa70d23cd9a53aab8e6ca1548945a892b88b149b1fb3c310b3678158a -->

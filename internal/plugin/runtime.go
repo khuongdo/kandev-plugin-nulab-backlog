@@ -22,6 +22,7 @@ import (
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/git"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/issues"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/redact"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/scm"
 )
 
 // Build information, set with -ldflags -X by the Makefile.
@@ -44,9 +45,10 @@ const (
 
 // guarded reports whether an action is refused while Backlog is off for the
 // workspace (BR7.3). Every action is, except the two the UI needs to show the
-// state and turn Backlog back on, so later units' actions are guarded by default.
+// state and turn Backlog back on, and reading the source control settings
+// (FR6.1), so later units' actions are guarded by default.
 func guarded(action string) bool {
-	return action != actionGet && action != actionSetEnabled
+	return action != actionGet && action != actionSetEnabled && action != actionSCMProviders
 }
 
 // errBadBody marks a request body that is not the expected JSON object.
@@ -119,7 +121,13 @@ type Runtime struct {
 	syncer  *issues.Syncer
 	// issueWatcher runs the issue watches (intent 261007, FR3).
 	issueWatcher *issues.Watcher
-	log          *slog.Logger
+	// scm and scmWatcher are GitHub, GitLab and Bitbucket (intent
+	// 261007-source-control-agnostic). They never listen to ConnectionChanged (FR6.2).
+	scm        *scm.Service
+	scmWatcher *scm.Watcher
+	stores     hostStores
+	ports      hostPort
+	log        *slog.Logger
 
 	lifeMu   sync.Mutex
 	started  bool
@@ -162,6 +170,7 @@ func (r *Runtime) Start() {
 	r.watcher.Start()
 	r.syncer.Start()
 	r.issueWatcher.Start()
+	r.scmWatcher.Start()
 }
 
 // Close stops the workers and the subscriptions. Safe to call more than once.
@@ -175,6 +184,7 @@ func (r *Runtime) Close() {
 	r.watcher.Stop()
 	r.syncer.Stop()
 	r.issueWatcher.Stop()
+	r.scmWatcher.Stop()
 	for _, stop := range r.unlisten {
 		stop()
 	}
@@ -182,6 +192,7 @@ func (r *Runtime) Close() {
 	r.watcher = git.NewWatcher(r.git, r.log)
 	r.syncer = issues.NewSyncer(r.issues, r.log)
 	r.issueWatcher = issues.NewWatcher(r.issues, r.log)
+	r.scmWatcher = scm.NewWatcher(r.scm, r.log)
 }
 
 func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
@@ -197,14 +208,17 @@ func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	// injects it from a background goroutine after NewRuntime returns; a
 	// call that comes first waits for SetHost (T-COMPAT-01).
 	stores := hostStores{host: r.Host, ready: r.hostReady}
+	r.stores = stores
 	r.service = connection.NewService(gateway, connection.NewStore(stores, stores))
 	r.service.Config = stores
 	ports := hostPort{host: r.Host, ready: r.hostReady}
+	r.ports = ports
 	r.git = git.NewService(gateway, r.service, ports, git.NewStore(stores))
 	r.watcher = git.NewWatcher(r.git, r.log)
 	r.issues = issues.NewService(gateway, r.service, issueHost{ports}, issues.NewStore(stores))
 	r.syncer = issues.NewSyncer(r.issues, r.log)
 	r.issueWatcher = issues.NewWatcher(r.issues, r.log)
+	r.wireSCM(scmClients())
 	r.log.Info("plugin started", "event", "plugin_started", "version", Version,
 		"platform", runtime.GOOS+"-"+runtime.GOARCH, "sdkRef", SDKRef)
 	return r
@@ -290,11 +304,11 @@ func statusFor(code string) int {
 		return 401
 	case codeNotFound:
 		return 404
-	case connection.CodeConflict, connection.CodeIntegrationDisabled:
+	case connection.CodeConflict, connection.CodeIntegrationDisabled, codeCLIAccountMissing:
 		return 409
 	case connection.CodeRateLimited:
 		return 429
-	case connection.CodeUnreachable:
+	case connection.CodeUnreachable, codeCLIUnavailable:
 		return 503
 	default:
 		return 500
@@ -318,6 +332,9 @@ type outcome struct {
 // classify maps an action error to its code: U4's Git and U3's issue
 // errors first, then the connection's table.
 func classify(err error) outcome {
+	if out, ok := classifySCM(err); ok {
+		return out
+	}
 	var open *git.OpenPRExistsError
 	switch {
 	case errors.As(err, &open):

@@ -1,0 +1,43 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1", "FR1.1", "FR1.2", "FR1.3", "FR1.4",
+    "FR2", "FR2.1", "FR2.2", "FR2.3",
+    "FR3", "FR3.1", "FR3.2", "FR3.3",
+    "FR4", "FR4.1", "FR4.2", "FR4.3",
+    "FR5", "FR5.1", "FR5.2", "FR5.3",
+    "FR6", "FR6.1", "FR6.2",
+    "NFR1", "NFR2", "NFR3", "NFR4", "NFR5"
+  ],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR1.1", "status": "OK", "target": "ui/src/settings/source-control-section.tsx" },
+    { "id": "FR1.2", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR1.3", "status": "OK", "target": "internal/scm/service_test.go" },
+    { "id": "FR1.4", "status": "OK", "target": "manifest.yaml" },
+    { "id": "FR2", "status": "OK", "target": "internal/scm/cli_token.go" },
+    { "id": "FR2.1", "status": "OK", "target": "internal/scm/cli_token.go" },
+    { "id": "FR2.2", "status": "OK", "target": "internal/gitlab/client.go" },
+    { "id": "FR2.3", "status": "OK", "target": "internal/scm/cli_token_test.go" },
+    { "id": "FR3", "status": "OK", "target": "internal/scm/cli_token.go" },
+    { "id": "FR3.1", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR3.2", "status": "OK", "target": "internal/scm/cli_token.go" },
+    { "id": "FR3.3", "status": "OK", "target": "internal/scm/service_test.go" },
+    { "id": "FR4", "status": "OK", "target": "internal/scm/errors.go" },
+    { "id": "FR4.1", "status": "OK", "target": "internal/plugin/scm_actions.go" },
+    { "id": "FR4.2", "status": "OK", "target": "ui/src/settings/source-control-section.tsx" },
+    { "id": "FR4.3", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR5", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR5.1", "status": "OK", "target": "internal/scm/service.go" },
+    { "id": "FR5.2", "status": "OK", "target": "ui/src/settings/source-control-section.tsx" },
+    { "id": "FR5.3", "status": "OK", "target": "internal/scm/service_test.go" },
+    { "id": "FR6", "status": "OK", "target": "internal/scm/store.go" },
+    { "id": "FR6.1", "status": "OK", "target": "internal/scm/store_test.go" },
+    { "id": "FR6.2", "status": "OK", "target": "manifest.yaml" },
+    { "id": "NFR1", "status": "OK", "target": "internal/scm/service_test.go" },
+    { "id": "NFR2", "status": "OK", "target": "internal/scm/cli_token.go" },
+    { "id": "NFR3", "status": "OK", "target": "internal/scm/cli_token_test.go" },
+    { "id": "NFR4", "status": "OK", "target": "internal/scm/cli_token_test.go" },
+    { "id": "NFR5", "status": "OK", "target": "internal/plugin/actions_scm_test.go" }
+  ]
+}

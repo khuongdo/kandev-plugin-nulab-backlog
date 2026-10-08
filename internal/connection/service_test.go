@@ -151,6 +151,7 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	secrets, state := newFakeSecrets(), newFakeState()
+	switchOn(t, state, ws, "ws-a", "ws-b")
 	gw := &fakeGateway{user: testUser}
 	buf := &syncBuffer{}
 	log := slog.New(redact.NewHandler(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -295,7 +296,7 @@ func TestConnectCancelledWritesNothingAndReturnsCancellation(t *testing.T) {
 	_, err := h.svc.Connect(ctx, ws, ConnectInput{SpaceURL: "a.backlog.com", APIKey: testutil.APIKey(t)})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, h.secrets.snapshot())
-	require.Empty(t, h.state.snapshot())
+	require.Empty(t, h.state.nonSwitch())
 }
 
 func TestSecondConnectInTheSameWorkspaceIsAConflict(t *testing.T) {
@@ -308,7 +309,13 @@ func TestSecondConnectInTheSameWorkspaceIsAConflict(t *testing.T) {
 		_, err := h.svc.Connect(h.ctx, ws, ConnectInput{SpaceURL: "a.backlog.com", APIKey: testutil.APIKey(t)})
 		done <- err
 	}()
-	<-h.gw.entered
+	// Fail fast instead of hanging if the first Connect returns before it
+	// reaches Backlog (for example when the workspace is off).
+	select {
+	case <-h.gw.entered:
+	case err := <-done:
+		require.FailNow(t, "first Connect returned before calling Backlog", "err: %v", err)
+	}
 
 	_, err := h.svc.Connect(h.ctx, ws, ConnectInput{SpaceURL: "a.backlog.com", APIKey: testutil.APIKey(t)})
 	require.ErrorIs(t, err, ErrConflict)

@@ -1,6 +1,12 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { createSaveQueryDialog, queryFilters, type Query } from "../git/save-query-dialog";
+import {
+  createSaveQueryDialog,
+  queryFilters,
+  scmQueryFilters,
+  type Query,
+  type ScmQuery,
+} from "../git/save-query-dialog";
 import { hostUi } from "../host-ui";
 import { issueQueryFilters, type IssueQuery } from "../issues/issues-state";
 import { en, format, type Messages } from "../messages/en";
@@ -8,7 +14,7 @@ import { createConfirmDialog } from "./confirm-dialog";
 import { createSectionParts } from "./section-parts";
 import { useActionList } from "./use-list";
 
-type Saved = (Query | IssueQuery) & { id?: string; isDefault?: boolean };
+type Saved = (Query | IssueQuery | ScmQuery) & { id?: string; isDefault?: boolean };
 
 interface Kind {
   /** issues.queries or git.queries. */
@@ -59,6 +65,18 @@ export function createSavedQueriesSection(
     title: messages.scopePRs,
     empty: messages.savedQueriesEmpty,
     filters: (q) => queryFilters(q as Query, messages),
+  };
+
+  // Intent 261007-source-control-agnostic (FR4.2, FR3.4): one default per provider.
+  const scmKind: Kind = {
+    action: "scm.queries",
+    testId: "backlog-saved-scm-quer",
+    title: messages.scmSavedQueriesTitle,
+    empty: messages.scmSavedQueriesEmpty,
+    filters: (q) => {
+      const text = scmQueryFilters(q as ScmQuery, messages);
+      return (q as ScmQuery).unmapped ? `${text} · ${messages.scmUnmapped}` : text;
+    },
   };
 
   function QueryTable({ workspaceId, kind }: { workspaceId: string; kind: Kind }) {
@@ -174,6 +192,7 @@ export function createSavedQueriesSection(
           <div className="flex flex-col gap-4">
             <QueryTable workspaceId={workspaceId} kind={issueKind} />
             <QueryTable workspaceId={workspaceId} kind={prKind} />
+            <QueryTable workspaceId={workspaceId} kind={scmKind} />
           </div>
         </SettingsSection>
       </div>

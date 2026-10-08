@@ -1,0 +1,12 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "internal/pkgverify/pkgverify.go" },
+    { "path": "internal/pkgverify/pkgverify_test.go" },
+    { "path": "internal/plugin/manifest_test.go" },
+    { "path": "manifest.yaml" },
+    { "path": "Makefile" },
+    { "path": "README.md" }
+  ]
+}

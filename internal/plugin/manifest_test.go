@@ -73,15 +73,15 @@ func TestManifestDeclaresTheMinimumKandevVersion(t *testing.T) {
 	require.Equal(t, "0.96.0", loadManifest(t).MinKandevVersion) // NFR6.1
 }
 
-func TestManifestListsExactlyTheFiveExecutables(t *testing.T) {
+// Windows is not packaged (intent 261007-plugin-install-502, FR1.2).
+func TestManifestListsExactlyTheFourExecutables(t *testing.T) {
 	m := loadManifest(t)
 	require.Equal(t, "binary", m.Runtime.Type)
 	require.Equal(t, map[string]string{
-		"linux-amd64":   "server/plugin-linux-amd64",
-		"linux-arm64":   "server/plugin-linux-arm64",
-		"darwin-amd64":  "server/plugin-darwin-amd64",
-		"darwin-arm64":  "server/plugin-darwin-arm64",
-		"windows-amd64": "server/plugin-windows-amd64.exe",
+		"linux-amd64":  "server/plugin-linux-amd64",
+		"linux-arm64":  "server/plugin-linux-arm64",
+		"darwin-amd64": "server/plugin-darwin-amd64",
+		"darwin-arm64": "server/plugin-darwin-arm64",
 	}, m.Runtime.Executables) // BR5.1
 }
 
@@ -97,8 +97,8 @@ func TestManifestActionsAndAccess(t *testing.T) {
 	access := map[string]string{}
 	for _, a := range m.Actions {
 		require.Regexp(t, `^[a-z0-9][a-z0-9._-]*$`, a.Key, "Kandev's action key rule")
-		if slices.Contains(u4Actions, a.Key) || slices.Contains(u3Actions, a.Key) {
-			continue // TestU4_Manifest_ActionsAndProvider, TestU3_Manifest_Actions
+		if slices.Contains(u4Actions, a.Key) || slices.Contains(u3Actions, a.Key) || slices.Contains(scmActions, a.Key) {
+			continue // TestU4_Manifest_ActionsAndProvider, TestU3_Manifest_Actions, TestSCM_Manifest_Actions
 		}
 		require.Equal(t, "workspace", a.Scope, a.Key)
 		require.Equal(t, 8192, a.MaxBodyBytes, a.Key)

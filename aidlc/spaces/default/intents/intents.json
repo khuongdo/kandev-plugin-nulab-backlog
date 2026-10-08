@@ -19,5 +19,68 @@
     "dirName": "261007-github-parity-actions",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a114d8-0997-7d2e-8f8a-a32d9310e7e4",
+    "slug": "opt-in-default",
+    "dirName": "261007-opt-in-default",
+    "scope": "bugfix",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a11636-2212-76f6-bef2-de0748c5f40d",
+    "slug": "source-control-agnostic",
+    "dirName": "261007-source-control-agnostic",
+    "scope": "express",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a1161a-a0fb-7757-abf6-b285c836d1e1",
+    "slug": "backlog-panel-retouch",
+    "dirName": "261007-backlog-panel-retouch",
+    "scope": "refactor",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a11881-de30-7876-a5d1-34652c4c8bb2",
+    "slug": "plugin-install-502",
+    "dirName": "261007-plugin-install-502",
+    "scope": "bugfix",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a118d6-6f3a-712d-94c7-dd6bb477574b",
+    "slug": "ci-path-filter",
+    "dirName": "261008-ci-path-filter",
+    "scope": "express",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a11903-e4b2-7287-97f5-de59c87263f7",
+    "slug": "fix-uiux-backlog",
+    "dirName": "261008-fix-uiux-backlog",
+    "scope": "express",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a11971-93e0-7ac9-a8e8-9cdac36d8f70",
+    "slug": "gh-cli-auth",
+    "dirName": "261008-gh-cli-auth",
+    "scope": "express",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a1196f-c571-7c0d-83fb-d751a4143d06",
+    "slug": "link-task-modal",
+    "dirName": "261008-link-task-modal",
+    "scope": "bugfix",
+    "status": "complete"
+  },
+  {
+    "uuid": "01a11a18-cd49-7b5b-bc42-9ac7b9c4a116",
+    "slug": "gh-cli-profile",
+    "dirName": "261008-gh-cli-profile",
+    "scope": "express",
+    "status": "complete"
   }
 ]

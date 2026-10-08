@@ -202,10 +202,33 @@ func (d driver) actions(ctx context.Context) error {
 	if status != http.StatusOK || json.Unmarshal(raw, &view) != nil {
 		return fmt.Errorf("contract: connection.get answered %d", status)
 	}
-	if view.State != "not_connected" || !view.Enabled {
-		return fmt.Errorf("contract: connection.get gave state %q enabled %t, want not_connected enabled true", view.State, view.Enabled)
+	// Backlog is opt-in: a fresh install is off and refuses to connect until
+	// an admin turns it on (intent 261007-opt-in-default).
+	if view.State != "not_connected" || view.Enabled {
+		return fmt.Errorf("contract: connection.get gave state %q enabled %t, want not_connected enabled false", view.State, view.Enabled)
 	}
-	return d.connectValidation(ctx, workspace)
+	if err := d.connectBait(ctx, workspace, http.StatusConflict, "integration_disabled", ""); err != nil {
+		return err
+	}
+	if err := d.enable(ctx, workspace); err != nil {
+		return err
+	}
+	return d.connectBait(ctx, workspace, http.StatusBadRequest, "validation", "spaceUrl")
+}
+
+// enable turns Backlog on for the workspace, as an admin does on the card.
+func (d driver) enable(ctx context.Context, workspace string) error {
+	status, raw, err := d.action(ctx, workspace, "connection.set_enabled", map[string]any{"enabled": true})
+	if err != nil {
+		return err
+	}
+	var reply struct {
+		Enabled bool `json:"enabled"`
+	}
+	if status != http.StatusOK || json.Unmarshal(raw, &reply) != nil || !reply.Enabled {
+		return fmt.Errorf("contract: connection.set_enabled answered %d, want 200 enabled true", status)
+	}
+	return nil
 }
 
 func (d driver) firstWorkspace(ctx context.Context) (string, error) {
@@ -227,9 +250,10 @@ func (d driver) firstWorkspace(ctx context.Context) (string, error) {
 	return list.Workspaces[0].ID, nil
 }
 
-// connectValidation sends a bait key with a bad space address. The reply is
-// never echoed, and the key is redacted from the message (project.md Mandated).
-func (d driver) connectValidation(ctx context.Context, workspace string) error {
+// connectBait sends a bait key with a bad space address and expects the given
+// refusal. The reply is never echoed, and the key is redacted from the
+// message (project.md Mandated).
+func (d driver) connectBait(ctx context.Context, workspace string, wantStatus int, wantCode, wantField string) error {
 	key, err := baitKey()
 	if err != nil {
 		return err
@@ -242,11 +266,11 @@ func (d driver) connectValidation(ctx context.Context, workspace string) error {
 		Error struct{ Code, Field string } `json:"error"`
 	}
 	_ = json.Unmarshal(raw, &reply)
-	if status == http.StatusBadRequest && reply.Error.Code == "validation" && reply.Error.Field == "spaceUrl" {
+	if status == wantStatus && reply.Error.Code == wantCode && reply.Error.Field == wantField {
 		return nil
 	}
-	msg := fmt.Sprintf("contract: connection.connect_api_key answered %d code %q field %q, want 400 validation spaceUrl",
-		status, reply.Error.Code, reply.Error.Field)
+	msg := fmt.Sprintf("contract: connection.connect_api_key answered %d code %q field %q, want %d %s %s",
+		status, reply.Error.Code, reply.Error.Field, wantStatus, wantCode, wantField)
 	return errors.New(strings.ReplaceAll(msg, key, "[redacted]"))
 }
 

@@ -1,30 +1,28 @@
 # Business Overview — kandev-plugin-nulab-backlog
 
-## Business Context
+## Purpose
 
-A Kandev plugin (`id: nulab-backlog`, `version: 0.1.1`, `min_kandev_version: 0.96.0`, MIT) that connects a Kandev workspace to a Nulab Backlog space. Users are teams that hand work to AI agents in Kandev but keep issues, Git repositories and pull requests in Backlog. Released through GitHub Releases and the Kandev marketplace (public repo `khuongdo/kandev-plugin-nulab-backlog`); installation on the self-hosted Kandev server is manual.
+A Kandev plugin (id `nulab-backlog`, version `0.5.2` at commit `ca8146c`, MIT) that connects a Kandev workspace to a Nulab Backlog space. Developers see Backlog issues and pull requests inside Kandev, create Kandev tasks from issues, and keep both sides linked. It also gives Backlog projects pull-request context from GitHub, GitLab and Bitbucket.
 
 ## Key Functionality
 
-| Area | What it does | Who uses it |
-|---|---|---|
-| Connection | Connect a space with an API key or OAuth (Sign in with Nulab), test, disconnect, change space, pick projects, enable/disable per workspace, store a Git credential | Workspace admin |
-| Issues | Issue list on `/backlog` (Issues tab: search, Project/Status/Assignee filters, 20 rows per page, "..." row menu with Create task / Link to task), link/unlink task and issue, issue panel in a task, card badge, `#` reference source, status sync loop on a per-workspace poll interval (1–1440 min); issue watches that create at most one task per watch per run on a per-watch interval (default 5 min), managed in Settings | Members; poll interval set by an admin |
-| Git / PR | Backlog Git as a Kandev repository provider; link a PR to a task, PR status, create PR, review provider; PR list on `/backlog` (Pull requests tab, `git.prs.list`); saved PR queries used as a "Query" preset in the PR list and listed in Settings (rename/delete); PR watches that create review tasks, managed in Settings | Signed-in members |
+- **Connection**: one Backlog space per workspace, connected with an API key or OAuth; only `https` hosts under `backlog.com`, `backlog.jp`, `backlogtool.com` are accepted. Backlog is opt-in per workspace (switch on the Settings > Integrations card).
+- **Issues**: issue list with filters and saved queries, create tasks from issues (Kandev's own task dialog or issue watches), issue links and status sync, quick actions. A linked task shows an issue badge on its Kanban card, task rows and top bar. Linking works from both sides: the `/backlog` issue row ("Link to task") and the task's Link menu ("Link Backlog issue", host dialog).
+- **Backlog Git**: Backlog Git repository provider, PR link/create/status/list, PR watches, Git credential lease for `nulab-backlog` repositories.
+- **Source control (SCM)**: GitHub, GitLab and Bitbucket per workspace — repo search, project-to-repo mappings, PR lists, links, queries, watches. A provider is connected with a pasted access token (kept in Kandev's secret store) or, for GitHub and GitLab, with the `gh` / `glab` CLI login on the Kandev server (`scm.providers.use_cli`, token never stored). Details: [architecture.md](architecture.md#scm-provider-connection-and-credentials).
+- **Packaging and release**: one `.tar.gz` with 4 platform binaries and a UI bundle, verified offline, published as a GitHub Release and listed in the Kandev marketplace registry.
 
-Tasks from issues are created by the plugin itself (`issues.create_task`: title = issue summary, description = issue description + Backlog link). There are no prompt templates / quick actions, no start-task action on PR rows, no saved issue queries and no default query: the PR list opens empty until a repository or saved query is chosen. Details: [code-quality-assessment.md](code-quality-assessment.md#intent-261007-github-parity-actions-risks).
+## Users
 
-## Business Rules Locked by Code and Tests
+- Workspace members (`access: authenticated` actions) and admins (connection, project selection, Git credential, SCM credential actions with `access: admin`).
+- The self-hosted operator who installs the package on the Kandev server. That server's OS account is where the `gh` / `glab` login lives.
+- The maintainer, who merges through pull requests on a protected `main` and releases by tagging `vX.Y.Z`.
 
-- Only `https` space addresses under `backlog.com`, `backlog.jp`, `backlogtool.com` are accepted.
-- API keys, tokens and Git passwords live only in the Kandev secret store; never returned to the browser or logged (`internal/redact`).
-- The integration is enabled by default; when disabled the plugin refuses Backlog calls but keeps the connection. The settings card, switch and nav entry never depend on the enabled state (BR5.4/BR7.6/BR7.8).
-- Connection-changing actions and `issues.set_poll_interval` are `admin`; other issue and Git actions (including `git.queries.*`, `git.prs.list`, `issues.watches.*`) are `authenticated` ([api-documentation.md](api-documentation.md)).
-- A saved PR query needs a non-empty name (at most 100 runes), a repository in a selected project, at least one status, and assignee/creator `anyone|me`; at most 50 per workspace (`internal/git/types.go:179-215`, `internal/git/store.go`).
-- The Backlog logo is used under Nulab brand terms that forbid modified or recoloured versions (`docs/brand/backlog-logo.md`).
+## Current Intent Context
 
-## Current Intent (261007-github-parity-actions, express, Minimal)
+Intent `261008-gh-cli-profile` (scope express, depth Minimal): let the admin choose **which gh CLI account** a workspace uses for the GitHub connection (today `gh auth token` returns only the gh *active* account), and make `gh` inside a task worktree created from a Backlog task use that account.
 
-Match Kandev's first-party GitHub integration: (1) customizable quick actions (default Implement / Investigate prompts plus user-added ones) to start a task from an issue or PR; (2) a preinstalled default saved query for Issues and for PRs; (3) GitHub-aligned page margins and button positions on `/backlog`. External reference: [architecture.md](architecture.md#external-reference-kandev-github-integration-v0960). Risks: [code-quality-assessment.md](code-quality-assessment.md#intent-261007-github-parity-actions-risks).
+- The first half sits inside the plugin: the CLI command, its cache key, the per-workspace `scm.Settings`, one new action and the GitHub card. Change points: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile).
+- The second half is **outside the plugin's reach** with pluginsdk v0.96.0: Kandev's executor sets `GH_TOKEN` in the worktree from Kandev's own GitHub connection or executor profile, and the plugin cannot inject environment. See [architecture.md](architecture.md#task-creation-and-the-worktree-gh-environment).
 
-Previous intent `261007-uiux-github-style` (refactor, released as v0.1.1) delivered the single `/backlog` entry with Issues/PRs tabs, watches and saved queries in Settings, issue watches and host-styled controls.
+Earlier intents in this repo (`261007-*`, `261008-ci-path-filter`, `261008-fix-uiux-backlog`, `261008-gh-cli-auth`, `261008-link-task-modal`) are shipped up to v0.5.2; their history lives in their intent records.

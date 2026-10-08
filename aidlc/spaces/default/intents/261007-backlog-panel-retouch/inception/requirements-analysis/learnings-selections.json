@@ -1,0 +1,4 @@
+{"stage_slug":"requirements-analysis","space":"default","intent":"261007-backlog-panel-retouch","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Read 'show the task clearly' on the Kanban badge as 'the badge clearly shows the linked Backlog issue', since the card already is the task"},
+{"candidate_id":"c2","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Treated the later answer that the issue URL works correctly as superseding the first answer that it was wrong"}
+]}

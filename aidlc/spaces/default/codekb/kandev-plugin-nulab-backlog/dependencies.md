@@ -1,48 +1,42 @@
 # Dependencies — kandev-plugin-nulab-backlog
 
-## External Dependencies
+## External (Go, `go.mod`)
 
-### Go (`go.mod`)
+- `github.com/kandev/kandev` — `replace` to `../kandev/apps/backend`; Make targets refuse to build unless `../kandev` HEAD equals `.kandev-sdk-ref`. `../kandev` is absent in fresh worktrees.
+- `github.com/stretchr/testify` v1.12.1 — tests.
+- `gopkg.in/yaml.v3` v3.0.1 — manifest parsing in tooling and tests.
 
-| Module | Version | Purpose |
-|---|---|---|
-| `github.com/kandev/kandev` | `replace => ../kandev/apps/backend` at `.kandev-sdk-ref` | `pkg/pluginsdk` |
-| `github.com/hashicorp/go-plugin` | v1.8.0 (indirect) | Plugin protocol |
-| `google.golang.org/grpc` | v1.83.1 (indirect) | Transport |
-| `github.com/stretchr/testify` | v1.12.1 | Tests |
-| `gopkg.in/yaml.v3` | v3.0.1 | Manifest and workflow reading in CI tooling |
+## External (UI dev, `ui/package.json`)
 
-### UI (`ui/package.json`, devDependencies only)
+esbuild, typescript, vitest, jsdom, eslint, prettier, react types, axe-core. No runtime npm dependency: React, the UI kit and the registry come from the host.
 
-`@kandev/plugin-sdk` (path map to `../../kandev/apps/packages/plugin-sdk/src/index.ts`), typescript ~6.0.3, esbuild ^0.28.2, vitest ^5.0.3, jsdom ^30.1.2, axe-core ^4.14.0, eslint ^10.12.0, typescript-eslint ^8.71.1, @eslint/js ^10.0.1, prettier ^3.9.9, react / react-dom ^19.3.0 + `@types/*` (tests only).
+## External Services and Host Tools
 
-### External Systems
+- Kandev host: plugin RPC, state, secrets, tasks, repositories, UI registry ([api-documentation.md](api-documentation.md)).
+- Backlog REST v2; GitHub, GitLab, Bitbucket REST.
+- `gh` / `glab` on the Kandev server — optional runtime dependency, only for the CLI login method.
+- CI: GitHub Actions (SHA-pinned), Kandev checkouts at `.kandev-sdk-ref` and `v<min_kandev_version>`, `gh` in release jobs.
 
-- **Kandev host**: state and secret store, task API, events, `host.ui`. Coupled to SDK v0.96.0 (`PluginHostApi`, `PluginUIShape`); the GitHub-parity host components are listed in [api-documentation.md](api-documentation.md#kandev-ui-extension-points).
-- **Backlog API v2** at `https://<space>.backlog.com|backlog.jp|backlogtool.com/api/v2`; Nulab OAuth2. PR listing is per repository.
-- **Sibling checkout `../kandev`** at `.kandev-sdk-ref`: needed by `go build`, `tsc` and every `make` target (`make check-sdk`). CI checks it out; locally it must be provided (a symlink to `/home/k_do_webfrontier/repo/kandev` at `v0.96.0`; absent by default in a fresh worktree).
+## Internal (cross-package)
 
-## Internal Dependencies
-
-```mermaid
-flowchart TD
-  server --> plugin
-  plugin --> backlog
-  plugin --> connection
-  plugin --> git
-  plugin --> issues
-  plugin --> redact
-  git --> backlog
-  git --> connection
-  git --> redact
-  issues --> backlog
-  issues --> connection
-  issues --> redact
-  connection --> backlog
-  connection --> redact
-  backlog --> redact
+```
+server -> plugin
+plugin -> connection, issues, git, scm, github, gitlab, bitbucket, backlog, redact, pluginsdk
+connection -> backlog, redact
+issues -> backlog, connection, redact
+git -> backlog, connection, redact
+scm -> connection, redact
+github, gitlab, bitbucket -> scm
+backlog -> redact
+cmd/verifypkg -> pkgverify
+cmd/ci -> ci
 ```
 
-Text fallback: server → plugin; plugin → backlog, connection, git, issues, redact; git → backlog, connection, redact; issues → backlog, connection, redact; connection → backlog, redact; backlog → redact. Acyclic; only `plugin` and `server` import `pluginsdk`. `issues` and `git` do not import each other.
+Acyclic; only `plugin` and `server` import `pluginsdk`. Provider clients import `scm` (they implement `scm.Client`); `plugin` builds them and passes them to `scm.NewService`.
 
-UI: `index.ts` → `brand`, `page`, `settings`, `issues`, `git`, `switch`, `messages`; `page/BacklogPage.tsx` → `issues/issues-page.tsx`, `git/pr-list.tsx`; `git/pr-list.tsx` → `git/pr-toolbar.tsx`, `git/save-query-dialog.tsx`; `settings/SettingsScreen.tsx` → `settings/saved-queries-section.tsx` → `git/save-query-dialog.tsx`; `settings` → `issues` (`PollInterval`) and `git` (`GitAccess`); UI modules → `layout.ts`, `host-ui.ts`, `icons.tsx`; every module → `@kandev/plugin-sdk` (types) and the host object.
+## Internal (UI, intent area)
+
+```
+settings/source-control-section -> git/git-state (ProviderView), messages/en
+page/start-task -> host TaskCreateDialog, issues.link action
+```

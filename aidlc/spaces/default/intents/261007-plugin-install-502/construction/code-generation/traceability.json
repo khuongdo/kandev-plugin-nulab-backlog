@@ -1,0 +1,15 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": ["FR1.1", "FR1.2", "FR1.3", "FR2.1", "FR2.2", "FR2.3", "NFR1", "NFR2", "NFR3"],
+  "coverage": [
+    { "id": "FR1.1", "status": "OK", "target": "Makefile" },
+    { "id": "FR1.2", "status": "OK", "target": "internal/pkgverify/pkgverify.go" },
+    { "id": "FR1.3", "status": "Deferred", "target": "deployment-pipeline stage: patch release" },
+    { "id": "FR2.1", "status": "OK", "target": "README.md" },
+    { "id": "FR2.2", "status": "OK", "target": "README.md" },
+    { "id": "FR2.3", "status": "OK", "target": "README.md" },
+    { "id": "NFR1", "status": "OK", "target": "aidlc/spaces/default/intents/261007-plugin-install-502/construction/code-generation/code-summary.md" },
+    { "id": "NFR2", "status": "OK", "target": "internal/plugin/manifest_test.go" },
+    { "id": "NFR3", "status": "OK", "target": "internal/pkgverify/pkgverify_test.go" }
+  ]
+}

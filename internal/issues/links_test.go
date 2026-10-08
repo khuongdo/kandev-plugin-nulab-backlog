@@ -1,6 +1,7 @@
 package issues
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -108,4 +109,25 @@ func TestU3_Links_ParallelLinksAreKept(t *testing.T) {
 	}
 	wg.Wait()
 	require.Len(t, r.links(t), 10)
+}
+
+func TestFR2_Links_ViewCarriesTheIssueSummary(t *testing.T) {
+	r := newRig(t)
+	l, err := r.svc.Link(r.ctx, "ws-1", "task-17", "PROJ-118")
+	require.NoError(t, err)
+	require.Equal(t, "Fix login timeout", l.Summary, "FR2.1: stored when the link is made")
+	got, err := r.svc.Links(r.ctx, "ws-1")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "Fix login timeout", got[0].Summary, "FR2.3")
+}
+
+func TestFR2_Links_OldStoredLinkWithoutSummaryStillReads(t *testing.T) {
+	var l Link
+	require.NoError(t, json.Unmarshal([]byte(`{"issueKey":"PROJ-12","taskId":"task-1","state":"active","lastKnownStatus":"Open","connectionEpoch":1,"createdAt":"2026-10-01T00:00:00Z"}`), &l))
+	require.Equal(t, "PROJ-12", l.IssueKey)
+	require.Empty(t, l.Summary, "NFR5: the new field is optional")
+	b, err := json.Marshal(LinkView{TaskID: "task-1", IssueKey: "PROJ-12"})
+	require.NoError(t, err)
+	require.NotContains(t, string(b), "summary", "omitted when unknown")
 }

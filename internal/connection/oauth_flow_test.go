@@ -68,7 +68,7 @@ func TestOAuthStartRefusals(t *testing.T) {
 		out := Classify(err)
 		require.Equal(t, CodeValidation, out.Code)
 		require.Equal(t, FieldSpaceURL, out.Field)
-		require.Empty(t, u.state.snapshot())
+		require.Empty(t, u.state.nonSwitch())
 	})
 	t.Run("no OAuth config", func(t *testing.T) {
 		u := newU2(t)
@@ -116,7 +116,7 @@ func TestOAuthCompleteCancelledStoresNothing(t *testing.T) {
 	res := u.svc.CompleteOAuth(u.ctx, url.Values{"state": {state}, "error": {"access_denied"}}, u.verifier)
 	require.Equal(t, OutcomeCancelled, res.Outcome)
 	require.Equal(t, ws, res.WorkspaceID)
-	require.Empty(t, u.state.snapshot(), "the pending state is deleted")
+	require.Empty(t, u.state.nonSwitch(), "the pending state is deleted")
 	require.Empty(t, u.secrets.snapshot())
 	_, _, exchange, _ := u.gw.counts()
 	require.Zero(t, exchange)
@@ -200,7 +200,7 @@ func TestU2_StartNeedsAVerifierHash(t *testing.T) {
 			u := newU2(t)
 			_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: hash})
 			require.Equal(t, Outcome{Code: CodeValidation, Field: FieldVerifierHash}, Classify(err))
-			require.Empty(t, u.state.snapshot(), "no pending sign-in")
+			require.Empty(t, u.state.nonSwitch(), "no pending sign-in")
 		})
 	}
 	t.Run("a valid hash is stored with the pending sign-in", func(t *testing.T) {
@@ -267,7 +267,7 @@ func TestU2_EmptyVerifierNeverMatches(t *testing.T) {
 		u := newU2(t)
 		_, err := u.svc.StartOAuth(u.ctx, ws, StartInput{SpaceURL: "a.backlog.com", VerifierHash: emptyVerifierHash})
 		require.Equal(t, Outcome{Code: CodeValidation, Field: FieldVerifierHash}, Classify(err))
-		require.Empty(t, u.state.snapshot(), "no pending sign-in")
+		require.Empty(t, u.state.nonSwitch(), "no pending sign-in")
 	})
 
 	t.Run("a callback without a cookie or with an empty one fails and keeps the record", func(t *testing.T) {

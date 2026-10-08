@@ -35,6 +35,8 @@ export interface LinkView {
   taskId: string;
   taskKey?: string;
   issueKey: string;
+  /** The issue title; absent on links stored before it was kept (FR2). */
+  summary?: string;
   spaceHost?: string;
   state: string;
   status?: string;
@@ -114,6 +116,11 @@ export function badgeText(l: LinkView, messages: Messages = en): string {
   return format(messages.issueBadge, { key: l.issueKey, status: l.status ?? "" });
 }
 
+/** The hover card lines: key, summary when known, status (FR1.4, FR5.2). */
+export function badgeHover(l: LinkView): string[] {
+  return [l.issueKey, l.summary, l.status].filter((v): v is string => Boolean(v));
+}
+
 /** The badge detail shown on focus or tap. */
 export function badgeDetail(l: LinkView, relative: (v: string) => string, messages: Messages = en): string {
   if (l.state === "not_connected") return format(messages.reconnectToRestore, { host: l.spaceHost ?? "" });
@@ -145,8 +152,40 @@ export async function loadImpactText(
   return counts.issues || counts.links || counts.watches ? format(messages.impactAll, counts) : "";
 }
 
-/** Kandev's page of a task. */
-export const taskHref = (taskId: string) => `/t/${encodeURIComponent(taskId)}`;
+/** One task for the host's TaskRowIndicator; the host shows the real title when it knows the task. */
+export interface TaskRowLink {
+  id: string;
+  taskId: string;
+  fallbackTitle: string;
+}
+
+/** An issue row's linked tasks for TaskRowIndicator: the task key, else the id, as fallback (BR1.2). */
+export const taskRowLinks = (tasks: TaskLink[]): TaskRowLink[] =>
+  tasks.map((t) => ({ id: t.taskId, taskId: t.taskId, fallbackTitle: t.taskKey ?? t.taskId }));
+
+/** A pull request row's linked task ids for TaskRowIndicator: PRs carry no task key (BR1.2). */
+export const prTaskRowLinks = (ids: string[]): TaskRowLink[] =>
+  ids.map((id) => ({ id, taskId: id, fallbackTitle: id }));
+
+const BACKLOG_DOMAINS = ["backlog.com", "backlog.jp", "backlogtool.com"];
+
+/**
+ * The Backlog issue address a Kanban badge opens, or undefined when it cannot
+ * be opened: unavailable, not connected, no url, or not an https Backlog
+ * address (BR2.2, BR2.3). The url comes from the backend, which already
+ * validates the space; this re-check keeps any other href out of the card.
+ */
+export function badgeHref(l: LinkView): string | undefined {
+  if (l.state === "not_connected" || l.unavailable || !l.url) return undefined;
+  let url: URL;
+  try {
+    url = new URL(l.url);
+  } catch {
+    return undefined;
+  }
+  const backlog = BACKLOG_DOMAINS.some((d) => url.hostname.endsWith(`.${d}`));
+  return url.protocol === "https:" && backlog ? l.url : undefined;
+}
 
 /** A saved issue query (issues.queries.*, FR4.3); assignee is "", "me" or a user id. */
 export interface IssueQuery {

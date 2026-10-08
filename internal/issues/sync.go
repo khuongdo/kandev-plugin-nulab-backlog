@@ -303,6 +303,7 @@ func (s *Service) syncWorkspace(ctx context.Context, ws string, st *cycleStats) 
 						updated++
 						l.LastKnownStatus = r.issue.StatusName
 					}
+					l.Summary = r.issue.Summary // FR2.2: older links gain it, renames show
 					l.StatusUpdatedAt, l.FailCount, l.Unavailable = now, 0, false
 				case unavailable(r.err):
 					l.Unavailable = true

@@ -1,0 +1,15 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "ui/src/index.ts" },
+    { "path": "ui/src/index.test.ts" },
+    { "path": "ui/src/issues/issue-link.ts" },
+    { "path": "ui/src/issues/issue-link.test.ts" },
+    { "path": "ui/src/issues/issues-page.tsx" },
+    { "path": "ui/src/issues/link-task-dialog.tsx" },
+    { "path": "ui/src/issues/link-task-dialog.test.tsx" },
+    { "path": "ui/src/messages/en.ts" }
+  ]
+}

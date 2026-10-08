@@ -1,71 +1,57 @@
 # Component Inventory — kandev-plugin-nulab-backlog
 
-Health ratings: healthy / at-risk / degraded. "At-risk" for UI components means at risk for intent 261007-github-parity-actions, not broken: all tests pass ([code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines)).
+Health: healthy / at-risk. "At-risk" means touched by intent `261008-gh-cli-profile`. Reading depth per component: [reverse-engineering-timestamp.md](reverse-engineering-timestamp.md#scope-of-analysis).
 
-## Backend Components (Go)
+## Runtime Components (Go)
 
 ### Server Entrypoint
-- `server/main.go`. Calls `pluginsdk.Serve(plugin.NewRuntime())` only. Health: healthy. Not re-scanned this run.
+- `server/main.go`. Calls `pluginsdk.Serve(plugin.NewRuntime())`. Health: healthy.
 
 ### KandevAdapter
-- `internal/plugin/`. Routes 48 actions through one `handlers` map, OAuth webhook, `task.deleted`, host port (`hostPort`, `issueHost`), `#` reference source; maps domain errors to `ActionError`. Depends on: Connection, Issues, Git, BacklogGateway, Redact, `pluginsdk`. Health: healthy (`host_port.go:119-125` `ponytail:` gRPC code read by text match). New actions need manifest entries plus `manifest_test.go` updates.
+- `internal/plugin/`. Action routing, Host adapters (`hostPort`, `issueHost`, `scmHost`), webhooks, events, Backlog Git credential. Only package (with `server`) importing `pluginsdk`. Builds SCM clients (`scmClients`), wires SCM (`wireSCM`), maps errors (`classify`, `classifySCM`). Depends on: Connection, Issues, Git, SCM, GitHub Client, GitLab and Bitbucket Clients, BacklogGateway, Redact. Health: at-risk (new `scm.*` action and manifest entry; task creation passes no `Repositories`/`Launch`).
 
 ### BacklogGateway
-- `internal/backlog/`. Only Backlog API v2 client; per-group rate limiter; OAuth exchange and refresh; stateless about credentials. Depends on: Redact. Health: at-risk (process-wide rate-limit queue, `client.go:346`). Not re-scanned this run.
+- `internal/backlog/`. Backlog REST v2 client, rate limiter, OAuth. Depends on: Redact. Health: healthy.
 
 ### Connection
-- `internal/connection/`. API key / OAuth connection, lifecycle, space change, project selection, record and secret store (incl. `ConnectedUserID`), Git credential. Depends on: BacklogGateway, Redact. Health: healthy. Not re-scanned this run.
+- `internal/connection/`. Backlog space connection (API key, OAuth), switch, project selection, Backlog Git credential; supplies `FieldError`, `ErrStore`, outcome codes reused by SCM. Depends on: BacklogGateway, Redact. Health: healthy.
 
 ### Issues
-- `internal/issues/`. Issue list and filters (numeric assignee ids only), `CreateTask` with `NewTaskFor` (title = summary, description = body + link, priority mapped; no prompt, no agent launch), link/unlink, issue panel and comments, `#` suggestions, `Syncer`, issue watches and watcher. Depends on: BacklogGateway, Connection, Redact. Health: at-risk (store helpers copied from Git; `service.go:381` no relink when a link write fails after create; 893-line service).
+- `internal/issues/`. Issue list/detail, task creation from issues and watches, task search, links, sync, quick actions. Depends on: BacklogGateway, Connection, Redact. Health: healthy (task creation path is relevant context, not changed by the plugin-side part of the intent).
 
 ### Git
-- `internal/git/`. Repository provider, PR link/status/create, PR list (`git.prs.list`, one repository), PR watches (`Watcher`), saved PR queries (`git.queries`, max 50, repository required, no default flag). Depends on: BacklogGateway, Connection, Redact. Health: at-risk (unpruned watch ledger `store.go:153`; 925-line service).
+- `internal/git/`. Backlog Git PRs, links, queries, watches, Git credential leases for `nulab-backlog`. Depends on: BacklogGateway, Connection, Redact. Health: healthy.
+
+### SCM
+- `internal/scm/`. GitHub/GitLab/Bitbucket per workspace: `Settings`, token or CLI credential (`credential`, `cliToken`, `cliCache`), repo mappings, PR lists, links, queries, watches, `Watcher`. Depends on: Connection, Redact; providers via `scm.Client`; host via ports. Health: at-risk (CLI command has no account selector, server-wide cache, identity drift in `Test`). Details: [architecture.md](architecture.md#scm-provider-connection-and-credentials).
+
+### GitHub Client
+- `internal/github/`. Read-only GitHub REST client implementing `scm.Client`; `CurrentUser` returns `login` as `ID`. Depends on: SCM. Health: healthy (credential-agnostic).
+
+### GitLab and Bitbucket Clients
+- `internal/gitlab/`, `internal/bitbucket/`. Same shape. Depends on: SCM. Health: healthy (GitLab's `glab` has the same single-account CLI behaviour; out of scope unless requirements say otherwise).
 
 ### Redact
-- `internal/redact/`. Masks secrets and Backlog URL query strings. Health: healthy.
+- `internal/redact/`. `WithSecrets`, redacting slog handler. Health: healthy.
 
-### CI Tooling
-- `internal/ci/`, `cmd/ci/`. Secret scan, release preflight, marketplace entry, workflow policy, packaged-host contract driver. Health: healthy. Skimmed.
+## Build-Time Components
+
+### CI Workflows
+- `.github/workflows/ci.yml`, `release.yml`, `secrets.yml`. SHA-pinned actions. Depends on: Build Makefile. Health: healthy.
+
+### Build Makefile
+- `Makefile`, `.golangci.yml`. Depends on: CI Tooling, PackageVerify, sibling `../kandev`. Health: healthy.
 
 ### PackageVerify
-- `internal/pkgverify/`, `cmd/verifypkg/`. Package verification; fails if `ui/bundle.js` references a Nulab/Backlog asset URL (`pkgverify.go:46,79`). Health: healthy.
+- `internal/pkgverify/`, `cmd/verifypkg/`. Offline package verifier. Health: healthy.
+
+### CI Tooling
+- `internal/ci/`, `cmd/ci/`. Workflow policy, secret scan, contract test, release preflight, marketplace. Health: healthy.
 
 ### TestUtil
-- `internal/testutil/`. Fake keys and tokens. Health: healthy.
+- `internal/testutil/`. Test helpers. Health: healthy.
 
 ## UI Components (TypeScript)
 
-### UI Registration
-- `ui/src/index.ts`. All extension points ([api-documentation.md](api-documentation.md#kandev-ui-extension-points)); one nav item and one route `/backlog`; task menu action is Unlink only. Health: healthy.
-
-### UI Shared Kit
-- `ui/src/layout.ts`, `ui/src/host-ui.ts`, `ui/src/icons.tsx`. Tailwind class constants (`STACK`, `FIELD`, `ROW`, `BUTTON`; no page padding constant), `hostUi(host)` loose-props accessor, inline icon factory. Health: healthy.
-
-### UI Brand
-- `ui/src/brand/backlog-logo.tsx`. `PLUGIN_ICON` is the single selection point (card, nav entry, topbar). Health: healthy. Not re-scanned this run.
-
-### UI Page
-- `ui/src/page/BacklogPage.tsx`. `/backlog` with host `Tabs` (Issues / Pull requests, `?scope=prs`); root `STACK` with no padding while the host `PageShell` adds none, so content runs edge to edge. Health: at-risk (layout alignment target).
-
-### UI Settings
-- `ui/src/settings/`. `SettingsScreen` stacks `SettingsSection`s (connection, PR watches, issue watches, saved queries, ...); `saved-queries-section` lists PR queries with rename/delete (new queries only from the PR list); sections save per dialog (no page-level Save/Discard). Health: at-risk (a quick-actions section would be added here; 441-line screen).
-
-### UI Issues
-- `ui/src/issues/`. `issues-page` (625 lines: 400 ms debounced search, Project/Status/Assignee `Select`s, 20 rows per page, desktop `Table` and phone cards, "..." `RowMenu` with Create task / Link to task, icon Refresh; no saved queries or presets), `issues-state`, `task-menu` (Unlink only), `i18n`, panel, badge, linking. Health: at-risk (large file; differs from PR list in rows and toolbar).
-
-### UI Git
-- `ui/src/git/`. `pr-list` (loads `git.queries.list`, "Query" preset `Select`, `START` with empty repo so the list opens empty, `ChangeRequestRow` without `action`), `pr-toolbar` (hand-made imitation of `IntegrationListToolbar`, no border, no padding, no search), `save-query-dialog` (plugin-built, name only), `git-state` (first 50 repositories only, `git-state.ts:89`), watch form, providers. Health: at-risk (all three intent items touch it).
-
-### UI Switch
-- `ui/src/switch/`. `host.ui.IntegrationEnabledControl` in the card action slot; `enabled-events.ts` channel because v0.96.0 cannot read the switch back. Health: healthy.
-
-### UI Messages
-- `ui/src/messages/en.ts`. English catalogue (316 lines). Health: healthy.
-
-### UI Test Harness
-- `ui/src/testing/harness.ts`. Fake host with fakes for the `host.ui` components in use; `ChangeRequestRow` fake ignores `action`. Health: at-risk (every newly used host component needs a fake).
-
-## External Reference (Kandev v0.96.0, not in this repo)
-
-Model for intent 261007-github-parity-actions only; not inventoried or scoped: `apps/web/components/github/my-github/{action-presets.ts,quick-task-launcher.tsx,search-bar.tsx,use-default-query-presets.ts,saved-preset-model.ts,issue-list.tsx}`, `apps/web/components/github/action-presets-section.tsx`, `apps/web/components/integrations/{integration-start-task-menu.tsx,integration-list-toolbar.tsx,presets-scope-bar-base.tsx,integration-save-query-dialog.tsx,saved-query-default-button.tsx,change-request-list.tsx}`, `apps/web/app/github/github-page-client.tsx`, `apps/web/lib/plugins/host-api.ts`. Mapping: [architecture.md](architecture.md#external-reference-kandev-github-integration-v0960).
+### UI Bundle
+- `ui/src/` -> bundle. Settings (incl. Source control `ProviderCard` with the CLI login button), Backlog page, issue panel and badge, start-task menu (`page/start-task.tsx`, Kandev `TaskCreateDialog`), link actions. Host React and UI kit; no plugin CSS. Health: at-risk (GitHub card needs an account picker). File map: [code-structure.md](code-structure.md#ui-source-uisrc--intent-area).
