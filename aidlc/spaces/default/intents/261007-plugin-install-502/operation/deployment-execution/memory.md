@@ -6,6 +6,7 @@
 
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
+- 2026-10-07T23:55:00Z — rebasing onto origin/main conflicted only in intents.json (the previous intent was marked complete on main while this intent was added here); kept both changes
 
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
