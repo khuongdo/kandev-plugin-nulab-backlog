@@ -33,6 +33,20 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.5.2: link a Backlog issue from the task, GitHub-style
+
+- The task's Link menu (Kanban card menu, task switcher) has a new "Link Backlog issue" item, next
+  to "GitHub Issue" and "Link Backlog pull request". Type an issue key such as `PROJ-123` or paste
+  the issue link (`https://<space>.backlog.com/view/PROJ-123`, also `.backlog.jp` and
+  `.backlogtool.com`) and press Save or Enter. The item is hidden while the task already has a
+  Backlog issue; use "Unlink Backlog issue" first to change it.
+- The "Link to task" dialog on the Backlog issues page now looks like Kandev's GitHub link dialog:
+  a short description, a Save button, Enter saves the chosen task, errors show in red under the
+  list, and a "linked" message appears.
+- After linking from either place, the issue badge on the task updates at once instead of at the
+  next refresh.
+- Nothing to do after upgrading: no setting or permission changes.
+
 ### 0.5.1: connect GitHub or GitLab with the gh / glab CLI login
 
 - Settings > Source control: the GitHub card has a "Use gh CLI login" button and the GitLab card
