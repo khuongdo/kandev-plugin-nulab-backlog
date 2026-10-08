@@ -5,6 +5,7 @@
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations
+- 2026-10-08T05:20:00Z — main moved twice during the release (#19 v0.5.1 before the PR, then #20 records after the PR was opened); rebased twice and force-pushed the feature branch with --force-with-lease, re-checking gh release list and origin/main again before tagging.
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 
 ## Tradeoffs
