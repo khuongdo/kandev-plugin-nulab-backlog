@@ -144,10 +144,10 @@ describe("Watch form for other providers (FR4.3)", () => {
     ],
   };
 
-  function scmSetup(save = vi.fn(async (b: unknown) => ({ id: "s1", ...(b as object) }))) {
+  function scmSetup(save = vi.fn(async (b: unknown) => ({ id: "s1", ...(b as object) })), active = "") {
     const host = fakeHost(async (key, input) => {
       if (key === "git.repositories.list") return REPOS;
-      if (key === "scm.providers.list") return PROVIDERS;
+      if (key === "scm.providers.list") return { ...PROVIDERS, active };
       if (key === "scm.watches.save") return save(input?.body);
       throw new Error(`unexpected ${key}`);
     });
@@ -162,6 +162,17 @@ describe("Watch form for other providers (FR4.3)", () => {
       onSaved: vi.fn(),
       onCancel: vi.fn(),
     });
+
+  it("offers only the active service: no provider choice (FR1.5)", async () => {
+    const backlog = await renderScm(scmSetup(undefined, "backlog_git").host);
+    expect(byTestId(backlog, "backlog-watch-provider")).toBeNull();
+    expect(byTestId(backlog, "backlog-watch-issue"), "the Backlog Git form").not.toBeNull();
+    unmount();
+    const github = await renderScm(scmSetup(undefined, "github").host);
+    expect(byTestId(github, "backlog-watch-provider")).toBeNull();
+    expect(byTestId(github, "backlog-watch-issue")).toBeNull();
+    expect(optionValues(github, "backlog-watch-repo")).toEqual(["PROJ:acme/web"]);
+  });
 
   it("chooses the provider; Backlog Git keeps its own form", async () => {
     const { host } = scmSetup();

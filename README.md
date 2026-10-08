@@ -33,6 +33,24 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.6.0: one source control service per workspace
+
+- Settings > Source control now has a **Source control service** selector (Backlog Git, GitHub,
+  GitLab or Bitbucket) and shows only that service, in its own framed card. A workspace uses one
+  service at a time: pull request lists, watches, links, the PR list and watch form selectors and,
+  while an external service is active, Backlog Git's pull requests and Git access are all limited
+  to it. Only admins change it, after a confirmation.
+- Switching keeps the other services' tokens, repository mappings, saved queries, watches and
+  links, but turns them off until you switch back. Removing a token stays possible for any service.
+- On upgrade: a workspace with no GitHub, GitLab or Bitbucket connection uses Backlog Git; one with
+  exactly one connected service uses it. A workspace with two or three connected services keeps
+  working as before and shows a notice asking an admin to pick one.
+- Repository labels now name the service, e.g. "GitHub repositories linked to Backlog projects" and
+  "[GitHub] owner/name".
+- Note: while GitHub, GitLab or Bitbucket is the active service, task worktrees cannot fetch or push
+  Backlog Git repositories, because the plugin stops supplying the Backlog Git credential. Switch
+  back to Backlog Git if your tasks work on Backlog Git repositories.
+
 ### 0.5.3: choose the gh account per workspace
 
 - Settings > Source control: "Use gh CLI login" on the GitHub card now lists the accounts logged

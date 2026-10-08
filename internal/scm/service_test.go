@@ -69,6 +69,7 @@ func TestSetToken_ValidatesBeforeAnyCall(t *testing.T) {
 // FR2.4: a refused token is not stored; the error carries no secret.
 func TestSetToken_ARefusedTokenIsNotStored(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitLab)
 	h.clients[GitLab].setErr("CurrentUser", &HTTPError{Provider: GitLab, Status: 401})
 	_, err := h.svc.SetToken(h.ctx, ws, TokenInput{Provider: GitLab, Token: h.tokens[GitLab]})
 	require.True(t, IsStatus(err, 401))
@@ -79,6 +80,7 @@ func TestSetToken_ARefusedTokenIsNotStored(t *testing.T) {
 // FR2.4: test shows the account, or records a plain error code.
 func TestTest_ReturnsTheAccountOrRecordsTheError(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	_, err := h.svc.Test(h.ctx, ws, GitHub)
 	require.ErrorIs(t, err, ErrNoToken)
 
@@ -125,6 +127,7 @@ func TestRemoveToken_KeepsEverythingElse(t *testing.T) {
 // FR3.1, FR3.2: repositories of a selected project, validated by the provider.
 func TestSetMapping_ValidatesThroughTheProvider(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	_, err := h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitHub, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
 	require.ErrorIs(t, err, ErrNoToken)
 	h.connect(t, GitHub)
@@ -318,9 +321,9 @@ func TestCredentialRead_FailuresAreStoreErrors(t *testing.T) {
 // settingsFor reads p's stored settings.
 func (h *harness) settingsFor(t *testing.T, p Provider) Settings {
 	t.Helper()
-	st, err := h.svc.settings(h.ctx, ws, p)
+	list, err := h.store().Settings(h.ctx, ws)
 	require.NoError(t, err)
-	return st
+	return settingsOf(list, p)
 }
 
 func (h *harness) cliCached(p Provider) bool {
@@ -373,6 +376,7 @@ func TestUseCLI_ConnectsGitHubAndGitLab(t *testing.T) {
 // FR2.3: Bitbucket has no CLI login.
 func TestUseCLI_BitbucketIsAFieldError(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, Bitbucket)
 	h.withCLI("x")
 	_, err := h.svc.UseCLI(h.ctx, ws, Bitbucket, "")
 	require.Equal(t, FieldProvider, fieldOf(t, err))
@@ -403,6 +407,7 @@ func TestUseCLI_FailuresChangeNothing(t *testing.T) {
 // FR3.1: a CLI provider's calls use the CLI token, never the secret store.
 func TestCredential_CLIProviderNeverReadsTheSecretStore(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	cliTok := testutil.Token(t)
 	h.withCLI(cliTok)
 	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
@@ -416,6 +421,7 @@ func TestCredential_CLIProviderNeverReadsTheSecretStore(t *testing.T) {
 // FR1.3, FR5.3: a typed token replaces the CLI; remove clears the source and keeps mappings.
 func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	h.withCLI(testutil.Token(t))
 	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
@@ -447,6 +453,7 @@ func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
 // FR4.2, FR4.3: Test asks the CLI again, records cli_unavailable, and clears it once the CLI works.
 func TestTest_CLIProviderRecordsAndClearsCLIUnavailable(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	cli := h.withCLI(testutil.Token(t))
 	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
@@ -470,6 +477,7 @@ func TestTest_CLIProviderRecordsAndClearsCLIUnavailable(t *testing.T) {
 // FR3.3: after the server's CLI login changes, calls use the new token once the cache expires.
 func TestCredential_NewCLITokenAfterExpiry(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitLab)
 	first, second := testutil.Token(t), testutil.Token(t)
 	cli := h.withCLI(first)
 	_, err := h.svc.UseCLI(h.ctx, ws, GitLab, "")
@@ -487,6 +495,7 @@ func TestCredential_NewCLITokenAfterExpiry(t *testing.T) {
 // FR3.2: the link refresh forgets a CLI token the provider rejects.
 func TestRefreshLinks_ForgetsARejectedCLIToken(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	h.withCLI(testutil.Token(t))
 	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
@@ -508,6 +517,7 @@ func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
 	cli := h.withCLI(cliTok)
 	var texts []string
 	for _, p := range []Provider{GitHub, GitLab} {
+		h.use(t, p)
 		_, err := h.svc.UseCLI(h.ctx, ws, p, "")
 		require.NoError(t, err)
 		_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: p, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
@@ -517,6 +527,7 @@ func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
 		require.NoError(t, err)
 		h.clients[p].setErr("GetPR", &HTTPError{Provider: p, Status: 401})
 	}
+	require.NoError(t, h.store().SetActive(h.ctx, ws, ""), "both connected: pending, both usable")
 	h.svc.RefreshLinks(h.ctx, ws)
 	cli.set(cliTok, errors.New("exit status 1: "+cliTok))
 	_, err := h.svc.Test(h.ctx, ws, GitHub)
@@ -531,4 +542,195 @@ func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
 	texts = append(texts, string(b), string(state))
 	require.NotEmpty(t, h.logs.String())
 	testutil.AssertNoLeak(t, h.logs.String()+strings.Join(texts, "\n"), cliTok)
+}
+
+// FR1.1: the active service is one of the four services; there is no "none".
+func TestActive_SetActiveAcceptsOnlyTheFourServices(t *testing.T) {
+	h := newHarness(t)
+	for _, bad := range []Provider{"", "none", "svn"} {
+		require.Equal(t, FieldService, fieldOf(t, h.svc.SetActive(h.ctx, ws, bad)), bad)
+	}
+	for _, p := range Services {
+		require.NoError(t, h.svc.SetActive(h.ctx, ws, p))
+		a, err := h.svc.Active(h.ctx, ws)
+		require.NoError(t, err)
+		require.Equal(t, p, a)
+	}
+}
+
+// FR1.2, FR3.1-FR3.3: with nothing stored, the active service is derived
+// from the connected external providers.
+func TestActive_DerivedFromTheConnectedProviders(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		connected []Provider
+		want      Provider
+	}{
+		{"none connected: Backlog Git", nil, BacklogGit},
+		{"one connected: that provider", []Provider{GitLab}, GitLab},
+		{"two connected: pending", []Provider{GitHub, Bitbucket}, ""},
+		{"three connected: pending", Providers, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			for _, p := range tc.connected {
+				h.connect(t, p)
+			}
+			a, err := h.svc.Active(h.ctx, ws)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, a)
+		})
+	}
+}
+
+// FR3.3: while the pick is pending every connected provider keeps working;
+// after the pick only the chosen one does.
+func TestActive_PendingKeepsEveryProviderWorkingUntilThePick(t *testing.T) {
+	h := newHarness(t)
+	in := func(p Provider) PRListInput {
+		return PRListInput{Provider: p, ProjectKey: "PROJ", Repo: "acme/web", Statuses: []string{StateOpen}}
+	}
+	for _, p := range []Provider{GitHub, Bitbucket} {
+		h.mapRepo(t, p, "PROJ", "acme/web")
+	}
+	for _, p := range []Provider{GitHub, Bitbucket} {
+		_, err := h.svc.ListPRs(h.ctx, ws, in(p))
+		require.NoError(t, err, p)
+	}
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, Bitbucket))
+	_, err := h.svc.ListPRs(h.ctx, ws, in(Bitbucket))
+	require.NoError(t, err)
+	_, err = h.svc.ListPRs(h.ctx, ws, in(GitHub))
+	var inactive *InactiveError
+	require.ErrorAs(t, err, &inactive)
+	require.Equal(t, Bitbucket, inactive.Active)
+}
+
+// FR1.4: every action of a non-active provider is refused with an error
+// naming the active service; removing its token stays allowed.
+func TestActive_RefusesTheActionsOfAnInactiveProvider(t *testing.T) {
+	h := newHarness(t)
+	h.mapRepo(t, GitLab, "PROJ", "acme/web")
+	h.clients[GitLab].setPRs("acme/web", pr(GitLab, "acme/web", 1, "x", "b", StateOpen))
+	q, err := h.svc.SaveQuery(h.ctx, ws, query("Mine", GitLab))
+	require.NoError(t, err)
+	w, err := h.svc.SaveWatch(h.ctx, ws, watchInput(GitLab))
+	require.NoError(t, err)
+	url := "https://gitlab.com/acme/web/-/merge_requests/1"
+	l, err := h.svc.Link(h.ctx, ws, "task-1", url)
+	require.NoError(t, err)
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, GitHub))
+
+	view := func(_ ProviderView, err error) error { return err }
+	calls := map[string]func() error{
+		"SetToken": func() error {
+			return view(h.svc.SetToken(h.ctx, ws, TokenInput{Provider: GitLab, Token: h.tokens[GitLab]}))
+		},
+		"UseCLI": func() error { return view(h.svc.UseCLI(h.ctx, ws, GitLab, "")) },
+		"SetMapping": func() error {
+			return view(h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitLab, ProjectKey: "PROJ"}))
+		},
+		"Test": func() error { return view(h.svc.Test(h.ctx, ws, GitLab)) },
+		"SearchRepos": func() error {
+			_, err := h.svc.SearchRepos(h.ctx, ws, GitLab, "")
+			return err
+		},
+		"ListPRs": func() error {
+			_, err := h.svc.ListPRs(h.ctx, ws, PRListInput{Provider: GitLab, ProjectKey: "PROJ", Repo: "acme/web",
+				Statuses: []string{StateOpen}})
+			return err
+		},
+		"SaveQuery": func() error {
+			_, err := h.svc.SaveQuery(h.ctx, ws, query("Other", GitLab))
+			return err
+		},
+		"SaveWatch": func() error {
+			_, err := h.svc.SaveWatch(h.ctx, ws, watchInput(GitLab))
+			return err
+		},
+		"RunQuery": func() error {
+			_, err := h.svc.RunQuery(h.ctx, ws, q.ID)
+			return err
+		},
+		"SetQueryDefault": func() error {
+			_, err := h.svc.SetQueryDefault(h.ctx, ws, q.ID, true)
+			return err
+		},
+		"DeleteQuery": func() error { return h.svc.DeleteQuery(h.ctx, ws, q.ID) },
+		"RunWatch": func() error {
+			_, err := h.svc.RunWatch(h.ctx, ws, w.ID)
+			return err
+		},
+		"PauseWatch": func() error {
+			_, err := h.svc.PauseWatch(h.ctx, ws, w.ID)
+			return err
+		},
+		"DeleteWatch": func() error { return h.svc.DeleteWatch(h.ctx, ws, w.ID) },
+		"Link": func() error {
+			_, err := h.svc.Link(h.ctx, ws, "task-2", url)
+			return err
+		},
+		"Unlink": func() error { return h.svc.Unlink(h.ctx, ws, "task-1", l.Key(), "") },
+	}
+	for name, call := range calls {
+		err := call()
+		var inactive *InactiveError
+		require.ErrorAs(t, err, &inactive, name)
+		require.Equal(t, GitHub, inactive.Active, name)
+		require.Contains(t, err.Error(), "GitHub", name)
+	}
+	_, err = h.svc.RemoveToken(h.ctx, ws, GitLab)
+	require.NoError(t, err, "removing a stored token of a non-active service stays allowed")
+	h.assertNoTokenLeak(t)
+}
+
+// FR2.4: switching away hides the old provider's data; switching back
+// brings it back unchanged.
+func TestActive_SwitchAwayAndBackKeepsTheData(t *testing.T) {
+	h := newHarness(t)
+	h.mapRepo(t, GitHub, "PROJ", "acme/web", "acme/api")
+	h.clients[GitHub].setPRs("acme/web", pr(GitHub, "acme/web", 1, "x", "b", StateOpen))
+	_, err := h.svc.SaveQuery(h.ctx, ws, query("Mine", GitHub))
+	require.NoError(t, err)
+	_, err = h.svc.SaveWatch(h.ctx, ws, watchInput(GitHub))
+	require.NoError(t, err)
+	_, err = h.svc.Link(h.ctx, ws, "task-1", "https://github.com/acme/web/pull/1")
+	require.NoError(t, err)
+	counts := func() [3]int {
+		qs, err := h.svc.ListQueries(h.ctx, ws)
+		require.NoError(t, err)
+		watches, err := h.svc.ListWatches(h.ctx, ws)
+		require.NoError(t, err)
+		links, err := h.svc.Links(h.ctx, ws, "task-1", "")
+		require.NoError(t, err)
+		return [3]int{len(qs), len(watches), len(links)}
+	}
+
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, GitLab))
+	require.Equal(t, [3]int{0, 0, 0}, counts(), "GitHub items are hidden while GitLab is active")
+	views, err := h.svc.Providers(h.ctx, ws)
+	require.NoError(t, err)
+	require.Equal(t, StateConnected, views[0].State, "the GitHub token is kept")
+	require.Len(t, views[0].Mappings, 1)
+
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, GitHub))
+	require.Equal(t, [3]int{1, 1, 1}, counts(), "switching back re-enables them without re-entry")
+	_, err = h.svc.ListPRs(h.ctx, ws, PRListInput{Provider: GitHub, ProjectKey: "PROJ", Repo: "acme/web",
+		Statuses: []string{StateOpen}})
+	require.NoError(t, err)
+}
+
+// FR2.4: removing the token of a provider that is active only by derivation
+// stores it, so the workspace does not silently switch to Backlog Git.
+func TestActive_RemovingTheDerivedProviderKeepsItActive(t *testing.T) {
+	h := newHarness(t)
+	h.connect(t, GitHub)
+	_, err := h.svc.RemoveToken(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	a, err := h.svc.Active(h.ctx, ws)
+	require.NoError(t, err)
+	require.Equal(t, GitHub, a)
+	stored, err := h.svc.store.Active(h.ctx, ws)
+	require.NoError(t, err)
+	require.Equal(t, GitHub, stored)
 }

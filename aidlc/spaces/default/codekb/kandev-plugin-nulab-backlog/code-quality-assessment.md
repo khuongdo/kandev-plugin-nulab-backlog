@@ -3,13 +3,14 @@
 ## Test Coverage and Baselines
 
 - Go tests co-located in every `internal/*` package; `httptest` fakes with `testdata/` fixtures; SCM tests use `newHarness` with fake `Client`, secrets, state, clock and `CLIRunner` (no real `gh` runs).
-- UI tests: Vitest under `ui/src/**/*.test.ts(x)` with the shared fake host `ui/src/testing/harness.ts`.
+- UI tests: Vitest + jsdom + axe-core under `ui/src/**/*.test.ts(x)` with the shared harness `ui/src/testing/harness` (`fakeHost`, `mount`, `byTestId`, `axeViolations`, `expectOnlyCatalogueText`, `expectTestIds`, `pseudoCatalogue`, `rawControls`).
 - `make coverage`: 80% line floor over `./internal/... ./server/...`.
-- **Baseline (this run, 2026-10-08, commit `ca8146c`)**: `go test -count=1 ./...` passed — 13 packages with tests, 1383 passing results (tests plus subtests), 0 failures, 0 skips. Go 1.26.8 with a scratch `-modfile` pointing the SDK at `~/repo/kandev/apps/backend` (v0.96.0) because `../kandev` is missing; no repo file changed. Not run with `-race`; Vitest not run.
+- **Baseline (this run, 2026-10-08, commit `3d6a080`)**: `go test -race -count=1 ./internal/scm/... ./internal/github/... ./internal/gitlab/... ./internal/bitbucket/... ./internal/plugin/...` -> all 5 packages `ok`; `npx vitest run src/settings` -> 8 files, 121 tests passed. Full `make coverage` and the contract test were not run.
+- Previous full baseline (commit `ca8146c`): `go test ./...` 13 packages, 1383 results passing, 0 failures.
 
 ## Linting
 
-gofmt, go vet, golangci-lint with gosec (`.golangci.yml`), `tsc --noEmit` strict, ESLint, Prettier, actionlint plus `cmd/ci workflows` policy. Conventions: `//nolint:gosec // G204` on `exec.CommandContext` with fixed args; `G101` on credential-like action keys.
+gofmt, go vet, golangci-lint with gosec (`.golangci.yml`), `tsc --noEmit` strict, ESLint (`ui/eslint.config.js`), Prettier (`ui/.prettierrc`), actionlint plus `cmd/ci workflows` policy. Conventions: `//nolint:gosec // G204` on `exec.CommandContext` with fixed args; `G101` on credential-like action keys.
 
 ## CI/CD
 
@@ -17,34 +18,41 @@ gofmt, go vet, golangci-lint with gosec (`.golangci.yml`), `tsc --noEmit` strict
 
 ## Documentation
 
-README present; `doc.go` per package; doc comments cite FR/NFR/AC ids.
+README present; `doc.go` per package; Go and TS doc comments cite FR/NFR/AC ids; `ui/src/messages/en.ts` is the only source of UI text (tests enforce it).
 
-## Intent Findings: 261008-gh-cli-profile
+## Intent Findings: 261008-source-control-settings
 
-Request: per-workspace choice of gh account for the GitHub connection, and `gh` in a task worktree from a Backlog task uses that account.
+Request: clear separation between source control services on the settings page, repo-scope labels that name the service, and only one source control service usable at a time.
 
 | # | Area | Evidence | Change shape |
 |---|---|---|---|
-| 1 | CLI command | `cliCommand` (`internal/scm/cli_token.go:28-36`) is fixed to `gh auth token --hostname github.com`, no `--user` | Take the login: `gh auth token --hostname github.com --user <login>`; keep fixed-arg, no-shell exec. Fallback for gh without `--user`: accept only the active login, else `cli_unavailable` (Kandev pattern) |
-| 2 | Account list | Nothing lists gh accounts | Run `gh auth status --json hosts` (bounded output, never echoed) and return logins + active flag; new admin action (e.g. `scm.providers.cli_accounts`) in `manifest.yaml` and `scm_actions.go` (parity test) |
-| 3 | Stored choice | `scm.Settings` (`store.go:42-50`) has `Source`, `Account`, `AccountID` but no chosen login | Add an `omitempty` login field (or reuse `AccountID` as the chosen login); old documents stay readable. Migration default: existing CLI records keep their current `AccountID` |
-| 4 | Cache | `cliCache` keyed by provider only, "not per workspace" (`cli_token.go:59-63`) | Key by provider + login; `forgetCLI` likewise |
-| 5 | Connect / test | `UseCLI` (`service.go:250-271`) and `credential` (`:276-298`) use whoever is active; `Test` (`:310-335`) rewrites `Account`/`AccountID` on `gh auth switch` | Pass the chosen login through `UseCLI` (body gains `login`), `credential` and `Test`; a test must not silently change the identity |
-| 6 | UI | GitHub card shows one "Use gh CLI login" button (`ui/src/settings/source-control-section.tsx:233,302`) | Account picker next to it; `ProviderView` may expose the chosen login (non-secret) |
-| 7 | Worktree gh | Tasks come from Kandev's `TaskCreateDialog` (`ui/src/page/start-task.tsx:100-115`) or `Tasks().Create` without `Repositories`/`Launch` (`host_port.go:120-130`, `scm_actions.go:268-275`); Kandev's executor sets worktree `GH_TOKEN` | Not reachable by plugin code with pluginsdk v0.96.0. Options for Requirements: (a) document that Kandev's own GitHub integration must use the same gh account; (b) set `Launch.ExecutorProfileID` to a profile whose env carries the right token — only for tasks the plugin creates itself, not the dialog path; (c) record as a limitation / Kandev feature request |
+| 1 | Visual separation | Backlog Git + 3 provider blocks are bare `<section className={STACK}>` siblings in one `flex flex-col gap-6` inside one `SettingsSection` (`source-control-section.tsx:466-482`); no frame, border or divider; provider name is `h4 text-sm font-medium` (`:367`), same weight as the repo `h5` (`:424`) | Frame each service (host UI kit card or bordered block), stronger heading with status; keep test ids |
+| 2 | Repo-scope labels | `scmMappingsHeading` "Repositories of each selected Backlog project", `scmSearchLabel` "Search repositories for {project}", `scmManualLabel` "Repository name for {project}", `scmNoRepos` / `scmMappingLine` "{project}: ...", one shared `scmManualPlaceholder` "owner/name, group/project or workspace/repo" (`ui/src/messages/en.ts:390-398`); the service is implied only by DOM nesting | Add a `{provider}` param to these keys or new per-provider keys; per-provider placeholder format |
+| 3 | Overloaded "scope" | `scmScopes*` texts (`en.ts:365-369`) are token permission scopes, unrelated to repo mapping | Avoid "scope" for the mapping area in new copy |
+| 4 | One service at a time | No active-provider concept: per-provider `Settings` (`store.go:38-50`), `Providers` returns all three (`service.go:165-175`), connect/remove only touch their own entry (`service.go:227-406`), PR list and watch selectors offer every connected provider (`pr-list.tsx:127-132,217`; `watch-form.tsx:91-115`), link refresh loops over all (`watcher.go:137`) | Needs product decisions (below) before design |
+| 5 | CLI notice | `scmNotice` maps `cli_unavailable` to literal `{cli: "gh / glab"}` (`ui/src/git/git-state.ts:194`) | Name the card's own CLI |
 
-Constraints:
+Open decisions for "one service at a time" (Requirements Analysis):
 
-- **Secrets (NFR1, project rule)**: never log or return `gh` stdout/stderr (`gh auth status` can print token sources); keep redaction, 10 s timeout, 4 KiB cap; strip `GH_TOKEN` / `GITHUB_TOKEN` from the child env if the stored login must win over an env override (Kandev does).
-- **Scope**: GitLab `glab` has the same single-account behaviour; the intent names only gh, so scope it explicitly.
-- **Compatibility**: everything used must exist in Kandev 0.96.0 (`min_kandev_version`).
-- **Test environment**: link `../kandev` to v0.96.0 or reuse the scratch `-modfile` approach; run `-race` in Code Generation.
+- **(a) Backlog Git**: does it count as a service? It is always on through the Backlog connection and its Git access form sits in this section (`SettingsScreen.tsx:424-438`).
+- **(b) Enforcement**: UI only (hide/disable other cards) or a backend invariant (e.g. additive `activeProvider` in `scm.settings`, or "connecting one disconnects the others")? UI-only leaves the actions able to connect several.
+- **(c) Inactive providers' data**: mappings, queries, watches and links of non-active providers — keep disabled (the `RemoveToken` / FR2.2 precedent, `service.go:392-406`) or delete?
+- **(d) Upgrade path**: existing workspaces may have two or three providers connected; pick one automatically or ask the admin. `scm.settings` is schema version 1 and `load` refuses other versions (`store.go:229-233`): prefer an additive field over a version bump.
+- **(e) Manifest / action keys**: a new key (e.g. `scm.providers.set_active`) changes `manifest.yaml`, `scmHandlers`, `TestSCM_Manifest_Actions` and probably the `guarded()` allow-list; `internal/plugin/testdata/v030/manifest.yaml` stays frozen.
+
+Constraints to preserve:
+
+- Test ids `backlog-section-source-control`, `backlog-scm-<provider>-*`, `backlog-scm-<provider>-map-<project>`, `backlog-scm-backlog`; catalogue-only text and axe checks (`source-control-section.test.tsx`, 25 tests; `sections.test.tsx` asserts no `backlog-scm-github-save` for members).
+- `TestProviders_ListsAllThreeNotConfigured` assumes three entries; changing the list shape changes this test.
+- NFR1: never show or refill tokens (`setToken("")` after every action, `source-control-section.tsx:252`); `ProviderView` stays non-secret.
+- Everything must work on Kandev 0.96.0 (`min_kandev_version`).
 
 ## Technical Debt
 
-- `internal/scm/cli_token.go:59-63` — `ponytail:` one mutex for every provider with the CLI run under it.
-- `internal/plugin/host_port.go:139` — `workflowRefused` matches gRPC error text (`ponytail:`).
-- `internal/scm/store.go`, `watcher.go` — `ponytail:` unbounded dismissed list / ledger, single watcher worker.
-- `internal/github/client.go` — `SearchRepos` reads only the 100 most recent repos (`ponytail:`).
+- `ui/src/settings/source-control-section.tsx` (488 lines) holds three components with duplicated local `field`/`input` and `button` helpers (`:138-162` vs `:302-362`).
+- `internal/scm/store.go:105` — `ponytail:` one settings document per list; `:165`, `:181` dismissed list / ledger never pruned.
+- `internal/scm/cli_token.go:109` — `ponytail:` one global CLI lock; `internal/scm/watcher.go:200` — one watcher worker for all workspaces.
+- `internal/plugin/host_port.go:139` — `workflowRefused` matches gRPC error text (`ponytail:`, previous run).
+- `internal/github/client.go` — `SearchRepos` reads only the 100 most recent repos (`ponytail:`, previous run).
 - Platform list declared in four places (see [code-structure.md](code-structure.md#build-and-packaging)).
 - Dev environment: `../kandev` missing in fresh worktrees.

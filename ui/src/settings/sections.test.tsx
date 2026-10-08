@@ -182,7 +182,7 @@ function scripted(view: View, handlers: Record<string, Handler> = {}, lists: Rec
       case "issues.queries.list":
         return { queries: lists.issueQueries ?? [ISSUE_QUERY] };
       case "scm.providers.list":
-        return { providers: SCM_PROVIDERS };
+        return { providers: SCM_PROVIDERS, active: "" }; // pending: every provider, as before (FR3.3)
       case "scm.watches.list":
         return { watches: lists.scmWatches ?? [] };
       case "scm.queries.list":

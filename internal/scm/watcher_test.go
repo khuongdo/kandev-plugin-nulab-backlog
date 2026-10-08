@@ -230,3 +230,27 @@ func TestWatcher_StartRunsCyclesAndStopEnds(t *testing.T) {
 		w.Stop()
 	})
 }
+
+// FR1.5: the watcher runs and refreshes only the active provider's items.
+func TestCycle_TouchesOnlyTheActiveProvider(t *testing.T) {
+	h := newHarness(t)
+	for _, p := range []Provider{GitHub, GitLab} {
+		h.mapRepo(t, p, "PROJ", "acme/web")
+		h.clients[p].setPRs("acme/web", pr(p, "acme/web", 1, "x", "b", StateOpen))
+		_, err := h.svc.SaveWatch(h.ctx, ws, watchInput(p))
+		require.NoError(t, err)
+	}
+	for _, url := range []string{"https://github.com/acme/web/pull/1", "https://gitlab.com/acme/web/-/merge_requests/1"} {
+		_, err := h.svc.Link(h.ctx, ws, "task-1", url)
+		require.NoError(t, err)
+	}
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, GitLab))
+	before := h.clients[GitHub].count("GetPR") + h.clients[GitHub].count("ListPRs")
+	NewWatcher(h.svc, nil).cycle(h.ctx)
+	require.Equal(t, before, h.clients[GitHub].count("GetPR")+h.clients[GitHub].count("ListPRs"),
+		"no GitHub call while GitLab is active")
+	require.Positive(t, h.clients[GitLab].count("GetPR"), "GitLab links are refreshed")
+	tasks := h.tasks.all()
+	require.Len(t, tasks, 1)
+	require.Equal(t, "https://gitlab.com/acme/web/-/merge_requests/1", tasks[0].Description)
+}

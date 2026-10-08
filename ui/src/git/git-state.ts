@@ -72,6 +72,8 @@ export function gitNotice(error: unknown): Notice {
       return { key: "gitConflict" };
     case "validation":
       return { key: "errorInput" };
+    case "service_inactive":
+      return { key: "scmServiceInactive", params: { service: providerName(f.activeService ?? "") } };
   }
   return { key: "actionFailed", retry: true };
 }
@@ -143,6 +145,7 @@ export type ScmProvider = "github" | "gitlab" | "bitbucket";
 
 const PROVIDER_KEYS: Record<string, MessageKey> = {
   backlog: "providerBacklog",
+  backlog_git: "providerBacklog",
   github: "providerGithub",
   gitlab: "providerGitlab",
   bitbucket: "providerBitbucket",
@@ -200,16 +203,38 @@ export function scmNotice(error: unknown): Notice {
   return gitNotice(error);
 }
 
-/** The providers of a workspace; none when they cannot be read. */
-export async function loadProviders(host: PluginHostApi, workspaceId: string): Promise<ProviderView[]> {
+/**
+ * The workspace's source control service (intent 261008-source-control-settings):
+ * "backlog_git", a provider, or "" while an upgraded workspace with several
+ * connected providers waits for an admin to pick one (FR3.3).
+ */
+export const SERVICES = ["backlog_git", "github", "gitlab", "bitbucket"] as const;
+
+/** scm.providers.list: the providers and the active service. */
+export interface ScmSettings {
+  providers: ProviderView[];
+  active: string;
+}
+
+/** The providers and the active service; none and pending when they cannot be read. */
+export async function loadProviders(host: PluginHostApi, workspaceId: string): Promise<ScmSettings> {
   try {
-    const r = await host.api.invokeAction<{ providers?: ProviderView[] }>("scm.providers.list", {
-      workspaceId,
-    });
-    return r?.providers ?? [];
+    const r = await host.api.invokeAction<Partial<ScmSettings>>("scm.providers.list", { workspaceId });
+    return { providers: r?.providers ?? [], active: r?.active ?? "" };
   } catch {
-    return [];
+    return { providers: [], active: "" };
   }
+}
+
+/**
+ * The pull request sources the PR list and the watch form offer (FR1.5):
+ * only the active service ("backlog" is Backlog Git), or, while the pick is
+ * pending, Backlog Git and every usable provider as before.
+ */
+export function prChoices(s: ScmSettings): string[] {
+  if (s.active === "backlog_git") return ["backlog"];
+  if (s.active) return [s.active];
+  return ["backlog", ...usableProviders(s.providers).map((v) => v.provider)];
 }
 
 /** The providers whose token works, which can list pull requests. */

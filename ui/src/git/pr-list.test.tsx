@@ -1,7 +1,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { en } from "../messages/en";
+import { en, format } from "../messages/en";
 import {
   actionError,
   axeViolations,
@@ -49,13 +49,13 @@ const ROW = {
 
 type Handler = (body: Record<string, unknown>) => Promise<unknown>;
 
-function setup(handlers: Record<string, Handler> = {}) {
+function setup(handlers: Record<string, Handler> = {}, active = "") {
   return fakeHost(async (key, input) => {
     const body = (input?.body ?? {}) as Record<string, unknown>;
     if (handlers[key]) return handlers[key](body);
     switch (key) {
       case "scm.providers.list":
-        return { providers: PROVIDERS };
+        return { providers: PROVIDERS, active };
       case "scm.queries.list":
         return { queries: [] };
       case "scm.prs.list":
@@ -315,5 +315,34 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     expect(rawControls(c)).toEqual([]);
     expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
     expect(await axeViolations(c)).toEqual([]);
+  });
+});
+
+describe("Only the active source control service (intent 261008-source-control-settings)", () => {
+  it("offers no provider selector while Backlog Git is active (FR1.5)", async () => {
+    const host = setup({}, "backlog_git");
+    const c = await render(host);
+    expect(byTestId(c, "backlog-prs-provider")).toBeNull();
+    expect(byTestId(c, "backlog-prs-filters")).not.toBeNull();
+    expect(calls(host, "scm.prs.list")).toHaveLength(0);
+  });
+
+  it("lists only the active provider's pull requests, with no selector (FR1.5)", async () => {
+    const host = setup({}, "github");
+    const c = await render(host);
+    expect(byTestId(c, "backlog-prs-provider")).toBeNull();
+    expect(byTestId(c, "backlog-scm-prs-toolbar")).not.toBeNull();
+  });
+
+  it("names the active service when Backlog Git is refused (FR1.4)", async () => {
+    const host = setup({
+      "git.prs.list": async () => {
+        throw actionError(409, { code: "service_inactive", activeService: "github" });
+      },
+    });
+    const c = await render(host);
+    expect(byTestId(c, "backlog-prs-error")!.textContent).toContain(
+      format(en.scmServiceInactive, { service: "GitHub" }),
+    );
   });
 });

@@ -7,24 +7,44 @@ import (
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
 )
 
-// ListQueries returns the saved queries; one whose repository is no longer
-// mapped is marked unmapped, never deleted (FR3.4).
+// ListQueries returns the active service's saved queries; one whose
+// repository is no longer mapped is marked unmapped, never deleted (FR3.4).
+// Other providers' queries are kept but hidden (FR2.4).
 func (s *Service) ListQueries(ctx context.Context, ws string) ([]Query, error) {
+	qs, active, err := s.allQueries(ctx, ws)
+	return slices.DeleteFunc(qs, func(q Query) bool { return allowed(active, q.Provider) != nil }), err
+}
+
+// allQueries returns every saved query, marked unmapped, and the active service.
+func (s *Service) allQueries(ctx context.Context, ws string) ([]Query, Provider, error) {
 	qs, err := s.store.Queries(ctx, ws)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	settings, err := s.store.Settings(ctx, ws)
+	settings, active, err := s.settingsDoc(ctx, ws)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := []Query{}
 	for _, q := range qs {
 		q.Unmapped = !isMapped(settingsOf(settings, q.Provider), q.ProjectKey, q.Repo)
 		out = append(out, q)
 	}
-	return out, nil
+	return out, active, nil
 }
+
+// find returns the index of item id in list, refusing an item of a
+// non-active provider (FR1.4).
+func find[T any](list []T, id string, active Provider, input func(T) QueryInput) (int, error) {
+	i := slices.IndexFunc(list, func(x T) bool { return input(x).ID == id })
+	if i < 0 {
+		return i, ErrNotFound
+	}
+	return i, allowed(active, input(list[i]).Provider)
+}
+
+func queryInput(q Query) QueryInput   { return q.QueryInput }
+func watchInputOf(w Watch) QueryInput { return w.QueryInput }
 
 // requireMapped refuses a repository that is not mapped to the project (FR3.3).
 func (s *Service) requireMapped(ctx context.Context, ws string, q QueryInput) error {
@@ -67,10 +87,14 @@ func (s *Service) SaveQuery(ctx context.Context, ws string, in QueryInput) (Quer
 // SetQueryDefault stars or un-stars a query; starring clears the other
 // stars of the same provider, so each provider has at most one (FR4.2).
 func (s *Service) SetQueryDefault(ctx context.Context, ws, id string, isDefault bool) ([]Query, error) {
-	err := s.store.UpdateQueries(ctx, ws, func(list []Query) ([]Query, error) {
-		i := slices.IndexFunc(list, func(q Query) bool { return q.ID == id })
-		if i < 0 {
-			return nil, ErrNotFound
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	err = s.store.UpdateQueries(ctx, ws, func(list []Query) ([]Query, error) {
+		i, err := find(list, id, active, queryInput)
+		if err != nil {
+			return nil, err
 		}
 		for j := range list {
 			if isDefault && list[j].Provider == list[i].Provider {
@@ -88,27 +112,30 @@ func (s *Service) SetQueryDefault(ctx context.Context, ws, id string, isDefault 
 
 // DeleteQuery removes a saved query.
 func (s *Service) DeleteQuery(ctx context.Context, ws, id string) error {
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return err
+	}
 	return s.store.UpdateQueries(ctx, ws, func(list []Query) ([]Query, error) {
-		n := len(list)
-		list = slices.DeleteFunc(list, func(q Query) bool { return q.ID == id })
-		if len(list) == n {
-			return nil, ErrNotFound
+		i, err := find(list, id, active, queryInput)
+		if err != nil {
+			return nil, err
 		}
-		return list, nil
+		return slices.Delete(list, i, i+1), nil
 	})
 }
 
 // RunQuery returns the first page of a saved query (FR4.2). An unmapped
 // query cannot run (conflict).
 func (s *Service) RunQuery(ctx context.Context, ws, id string) (PRListPage, error) {
-	qs, err := s.ListQueries(ctx, ws)
+	qs, active, err := s.allQueries(ctx, ws)
 	if err != nil {
 		return PRListPage{}, err
 	}
-	i := slices.IndexFunc(qs, func(q Query) bool { return q.ID == id })
+	i, err := find(qs, id, active, queryInput)
 	switch {
-	case i < 0:
-		return PRListPage{}, ErrNotFound
+	case err != nil:
+		return PRListPage{}, err
 	case qs[i].Unmapped:
 		return PRListPage{}, ErrConflict
 	}
@@ -119,22 +146,29 @@ func (s *Service) RunQuery(ctx context.Context, ws, id string) (PRListPage, erro
 	return s.listPRs(ctx, ws, st, qs[i].QueryInput, 1)
 }
 
-// ListWatches returns the watches, marked unmapped like queries (FR3.4).
+// ListWatches returns the active service's watches, marked unmapped like
+// queries (FR3.4); other providers' watches are kept but hidden (FR2.4).
 func (s *Service) ListWatches(ctx context.Context, ws string) ([]Watch, error) {
+	list, active, err := s.allWatches(ctx, ws)
+	return slices.DeleteFunc(list, func(w Watch) bool { return allowed(active, w.Provider) != nil }), err
+}
+
+// allWatches returns every watch, marked unmapped, and the active service.
+func (s *Service) allWatches(ctx context.Context, ws string) ([]Watch, Provider, error) {
 	list, err := s.store.Watches(ctx, ws)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	settings, err := s.store.Settings(ctx, ws)
+	settings, active, err := s.settingsDoc(ctx, ws)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := []Watch{}
 	for _, w := range list {
 		w.Unmapped = !isMapped(settingsOf(settings, w.Provider), w.ProjectKey, w.Repo)
 		out = append(out, w)
 	}
-	return out, nil
+	return out, active, nil
 }
 
 // SaveWatch creates (no id) or edits a watch; an edit keeps its state,
@@ -165,13 +199,16 @@ func (s *Service) SaveWatch(ctx context.Context, ws string, in WatchInput) (Watc
 
 // DeleteWatch removes a watch; its ledger and created tasks stay.
 func (s *Service) DeleteWatch(ctx context.Context, ws, id string) error {
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return err
+	}
 	return s.store.UpdateWatches(ctx, ws, func(list []Watch) ([]Watch, error) {
-		n := len(list)
-		list = slices.DeleteFunc(list, func(w Watch) bool { return w.ID == id })
-		if len(list) == n {
-			return nil, ErrNotFound
+		i, err := find(list, id, active, watchInputOf)
+		if err != nil {
+			return nil, err
 		}
-		return list, nil
+		return slices.Delete(list, i, i+1), nil
 	})
 }
 
@@ -186,11 +223,15 @@ func (s *Service) ResumeWatch(ctx context.Context, ws, id string) (Watch, error)
 }
 
 func (s *Service) setWatchState(ctx context.Context, ws, id, state string) (Watch, error) {
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return Watch{}, err
+	}
 	var out Watch
-	err := s.store.UpdateWatches(ctx, ws, func(list []Watch) ([]Watch, error) {
-		i := slices.IndexFunc(list, func(w Watch) bool { return w.ID == id })
-		if i < 0 {
-			return nil, ErrNotFound
+	err = s.store.UpdateWatches(ctx, ws, func(list []Watch) ([]Watch, error) {
+		i, err := find(list, id, active, watchInputOf)
+		if err != nil {
+			return nil, err
 		}
 		list[i].State = state
 		out = list[i]

@@ -18,6 +18,7 @@ import (
 // GitHub's /user names each token's login. It returns the tokens by login.
 func (h *harness) withGHAccounts(t *testing.T) (*fakeCLI, map[string]string) {
 	t.Helper()
+	h.use(t, GitHub)
 	cli := h.withCLI("unused")
 	toks := map[string]string{"alice": testutil.Token(t), "bob": testutil.Token(t)}
 	cli.on(ghStatus, statusJSON("alice", "bob"), nil)
@@ -177,6 +178,7 @@ func TestCredential_TwoWorkspacesTwoAccountsConcurrently(t *testing.T) {
 	h.withGHAccounts(t)
 	chosen := map[string]string{"ws-1": "alice", "ws-2": "bob"}
 	for w, login := range chosen {
+		require.NoError(t, h.svc.SetActive(h.ctx, w, GitHub))
 		_, err := h.svc.UseCLI(h.ctx, w, GitHub, login)
 		require.NoError(t, err)
 	}

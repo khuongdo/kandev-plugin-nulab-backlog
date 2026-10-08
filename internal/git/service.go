@@ -84,6 +84,10 @@ type Service struct {
 	host    HostPort
 	store   *Store
 	Now     func() time.Time // clock for leases and watch runs
+	// Active reports whether Backlog Git is the workspace's source control
+	// service; nil means always. internal/plugin sets it from internal/scm,
+	// so this package stays independent of it (intent 261008, FR1.6).
+	Active func(ctx context.Context, ws string) bool
 
 	mu        sync.Mutex
 	lastEpoch map[string]int // the last ConnectionChanged epoch handled per workspace

@@ -2,19 +2,19 @@
 
 ## External (Go, `go.mod`)
 
-- `github.com/kandev/kandev` — `replace` to `../kandev/apps/backend`; Make targets refuse to build unless `../kandev` HEAD equals `.kandev-sdk-ref`. `../kandev` is absent in fresh worktrees.
+- `github.com/kandev/kandev` — `replace` to `../kandev/apps/backend`; Make targets refuse to build unless `../kandev` HEAD equals `.kandev-sdk-ref`. `../kandev` is absent in fresh worktrees (this run linked it to `~/repo/kandev` at v0.96.0, outside git).
 - `github.com/stretchr/testify` v1.12.1 — tests.
 - `gopkg.in/yaml.v3` v3.0.1 — manifest parsing in tooling and tests.
 
 ## External (UI dev, `ui/package.json`)
 
-esbuild, typescript, vitest, jsdom, eslint, prettier, react types, axe-core. No runtime npm dependency: React, the UI kit and the registry come from the host.
+esbuild, typescript, vitest, jsdom, eslint, typescript-eslint, prettier, react types, axe-core. No runtime npm dependency: React, the UI kit and the registry come from the host. Versions: [technology-stack.md](technology-stack.md).
 
 ## External Services and Host Tools
 
-- Kandev host: plugin RPC, state, secrets, tasks, repositories, UI registry ([api-documentation.md](api-documentation.md)).
+- Kandev host: plugin RPC, state, secrets, tasks, repositories, UI registry and UI kit ([api-documentation.md](api-documentation.md)).
 - Backlog REST v2; GitHub, GitLab, Bitbucket REST.
-- `gh` / `glab` on the Kandev server — optional runtime dependency, only for the CLI login method.
+- `gh` / `glab` on the Kandev server — optional, only for the CLI login method.
 - CI: GitHub Actions (SHA-pinned), Kandev checkouts at `.kandev-sdk-ref` and `v<min_kandev_version>`, `gh` in release jobs.
 
 ## Internal (cross-package)
@@ -37,6 +37,9 @@ Acyclic; only `plugin` and `server` import `pluginsdk`. Provider clients import 
 ## Internal (UI, intent area)
 
 ```
-settings/source-control-section -> git/git-state (ProviderView), messages/en
+settings/SettingsScreen -> settings/source-control-section (passes the Backlog Git form)
+settings/source-control-section -> git/git-state (ProviderView, providerName, scmNotice, loadProviders),
+                                   messages/en, settings/section-parts, settings/state, host-ui, layout
+git/pr-list, git/watch-form -> git/git-state (usableProviders)  # depend on "many providers"
 page/start-task -> host TaskCreateDialog, issues.link action
 ```

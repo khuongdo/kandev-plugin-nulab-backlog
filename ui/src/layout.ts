@@ -6,6 +6,8 @@ export const STACK = "flex flex-col gap-4";
 export const FIELD = "flex flex-col gap-2";
 /** Controls side by side, wrapping on narrow screens. */
 export const ROW = "flex flex-wrap items-center gap-2";
+/** A framed card that sets one block apart, such as the active source control service (FR4.1). */
+export const CARD = "flex flex-col gap-4 rounded-lg border p-4";
 /** Every host Button gets the pointer cursor, like the GitHub integration (BR5.2). */
 export const BUTTON = "cursor-pointer";
 /** The list toolbar under the scope bar, like the host's IntegrationListToolbar (FR5.2). */

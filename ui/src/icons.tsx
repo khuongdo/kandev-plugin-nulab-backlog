@@ -8,6 +8,15 @@ const PATHS = {
   plus: ["M12 5v14", "M5 12h14"],
   // An open issue: a ring with a dot, like Kandev's issue state icon.
   issue: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18", "M12 12h.01"],
+  // A Git branch: the generic mark of a source control service. The plugin
+  // ships no third-party brand marks (docs/brand/backlog-logo.md).
+  repo: [
+    "M7 4a2 2 0 1 0 0 4a2 2 0 1 0 0-4",
+    "M7 16a2 2 0 1 0 0 4a2 2 0 1 0 0-4",
+    "M17 4a2 2 0 1 0 0 4a2 2 0 1 0 0-4",
+    "M7 8v8",
+    "M9 18h6a2 2 0 0 0 2-2v-8",
+  ],
 } as const;
 
 export type IconName = keyof typeof PATHS;

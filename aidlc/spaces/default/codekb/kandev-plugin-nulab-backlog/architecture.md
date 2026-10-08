@@ -54,19 +54,35 @@ flowchart LR
 
 Text fallback: browser -> Kandev web -> UI Bundle -> Kandev backend -> RPC -> Server Entrypoint -> KandevAdapter -> Connection / Issues / Git / SCM. Backlog calls go through BacklogGateway. SCM calls providers through the `scm.Client` interface, reads secrets and state through ports implemented by KandevAdapter, and runs `gh` / `glab` with `os/exec` for the CLI method. Tasks are created through the Kandev Host API; Kandev alone prepares the worktree and its environment. Redact masks secrets on every outbound path.
 
-## SCM Provider Connection and Credentials
+## SCM Provider Model (multi-provider today)
 
-As of v0.5.2 (analyzed deeply in this run):
+As of v0.5.3 (analyzed deeply in this run):
 
-- **Two methods.** `scm.Settings` (`internal/scm/store.go:42-50`, state key `scm.settings`, one document per workspace) holds per provider: `Source` (`""`/`token` or `cli`), `HasToken`, `Account` (display name), `AccountID` (GitHub login, from `GET /user` `login`, `internal/github/client.go:54-64`), `LastError`, `Mappings`.
-  - **Token**: `SetToken` (`internal/scm/service.go`) validates with `CurrentUser`, stores `Credential` JSON in secret `backlog.scm.<provider>.<workspace>`, sets `Source=""`.
-  - **CLI**: `UseCLI` (`service.go:250-271`) runs the CLI, validates with `CurrentUser`, deletes any stored token, sets `Source=cli` and the account. The CLI token is never persisted.
-- **One credential read path.** `credential(ctx, ws, p)` (`service.go:276-298`): for `Source=cli` it calls `cliToken(p)`; otherwise it reads the secret. Every provider call (Test, SearchRepos, SetMapping, ListPRs, Link, runWatch, refreshProvider on the 1-minute watcher tick) goes through it and gets a `redact.WithSecrets` context.
-- **CLI runner** (`internal/scm/cli_token.go`): `cliCommand` is fixed to `gh auth token --hostname github.com` and `glab config get token --host gitlab.com` — **no account selector**, so it returns the CLI's *active* account. `runCLI`: no shell, 10 s timeout, 4 KiB stdout cap, stderr discarded. `cliCache` keeps one token **per provider, server-wide** (not per workspace, not per account) for 5 minutes under one mutex. Every failure becomes `ErrCLIUnavailable` (`cli_unavailable`); CLI output is never echoed. `Service.CLI` is an injectable `CLIRunner` for tests.
-- **Identity drift.** In CLI mode `Test` (`service.go:310-335`) forgets the cache and rewrites `Account`/`AccountID` with whoever is active now. After `gh auth switch` on the server, every CLI-mode workspace silently changes identity, and the PR "me" filter (`prs.go:61`, `watcher.go:58`, compares `AccountID`) follows it.
-- **View.** `ProviderView` (`service.go:~101-130`) carries `state`, `account`, `method` (`token`/`cli`), `lastError`, `mappings`; never the token. Readable by all members (`scm.providers.list`).
+- **One settings entry per provider.** `scm.Store` keeps one `Settings` per provider in the workspace state document `scm.settings` (`internal/scm/store.go:38-50`, `{schemaVersion: 1, items}`): `Provider`, `Source` (`""`/`token` or `cli`), `HasToken`, `Account`, `AccountID`, `LastError`, `Mappings` (`{projectKey, repos[]}`). There is **no workspace-level field naming an active provider.**
+- **All three always listed.** `Service.Providers` (`internal/scm/service.go:165-175`) returns GitHub, GitLab and Bitbucket every time, `not_configured` when nothing is stored. `TestProviders_ListsAllThreeNotConfigured` pins this.
+- **Independent connect / disconnect.** `SetToken`, `UseCLI` and `RemoveToken` (`service.go:227-406`) change only their own provider's entry and secret (`backlog.scm.<provider>.<workspace>`). Connecting GitHub never touches GitLab. `RemoveToken` keeps mappings, queries, watches and links and only disables them (FR2.2, `service.go:392-406`).
+- **Every downstream feature is per provider.** Links, saved queries and watches each carry a `provider` field; the watcher's link refresh loops over `Providers` (`internal/scm/watcher.go:137`); the PR list and watch form offer `"backlog"` plus every connected provider (`usableProviders` in `ui/src/git/git-state.ts`; `ui/src/git/pr-list.tsx:127-132,217`; `ui/src/git/watch-form.tsx:91-115`).
+- **Credentials.** `credential(ctx, ws, p)` reads the CLI token (CLI mode, per provider + gh login since v0.5.3, `cliKey` in `cli_token.go`) or the stored secret, and returns a `redact.WithSecrets` context. `ProviderView` carries `state`, `method`, `account`, `lastError`, `mappings`; never the token.
 
-Change shape for this intent: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile).
+Consequence for this intent: "one service at a time" is a new invariant. Nothing in the store, service, actions or UI enforces or expresses it today. Options and constraints: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-source-control-settings).
+
+## Source Control Settings Page Layout
+
+`createSourceControlSection` (`ui/src/settings/source-control-section.tsx:460-485`), mounted by `SettingsScreen.tsx`:
+
+```mermaid
+flowchart TB
+  S["SettingsSection 'Source control' (backlog-section-source-control)"]
+  S --> W["div flex flex-col gap-6 (no frame, border or divider)"]
+  W --> B["section backlog-scm-backlog: h4 'Backlog Git' + help + Git access form"]
+  W --> E["ListError (on load failure)"]
+  W --> P1["ProviderCard github: section STACK, h4 text-sm"]
+  W --> P2["ProviderCard gitlab"]
+  W --> P3["ProviderCard bitbucket"]
+  P1 --> M["ProjectRepos per selected Backlog project: h5 heading, search, manual input, mapping lines"]
+```
+
+Text fallback: one `SettingsSection` holds a single column with four sibling `<section>` blocks (Backlog Git, then one `ProviderCard` per provider). None has a card frame; the provider name is an `h4 text-sm font-medium` (line 367), the same visual weight as the `h5` repo heading inside it (line 424). Each `ProviderCard` holds status badge, token form or CLI login, Test / Remove, and a `ProjectRepos` block per selected Backlog project whose labels are provider-neutral (see [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-source-control-settings), finding 2).
 
 ## Task Creation and the Worktree gh Environment
 
@@ -75,107 +91,83 @@ How a task tied to a Backlog issue comes to exist, and who controls `gh` in its 
 | Path | Code | Repositories / Launch passed |
 |---|---|---|
 | Start task from an issue (UI) | `ui/src/page/start-task.tsx:100-115` renders Kandev's own `TaskCreateDialog`; on success the plugin only calls `issues.link` | Decided by the user in Kandev's dialog |
-| Issue watch creates a task | `issueHost.CreateTask` (`internal/plugin/host_port.go:120-130`) | none (workspace, workflow, step, title, description, priority) |
-| PR watch creates a task | `scmHost.CreateTask` (`internal/plugin/scm_actions.go:268-275`) | none (adds metadata) |
+| Issue watch creates a task | `issueHost.CreateTask` (`internal/plugin/host_port.go:120-130`) | none |
+| PR watch creates a task | `scmHost.CreateTask` (`internal/plugin/scm_actions.go`) | none (adds metadata) |
 
-The agent environment in the worktree (`GH_TOKEN` / `GITHUB_TOKEN`, host gh bridge) is set by Kandev's executor from Kandev's own workspace GitHub connection or the executor profile env (Kandev v0.96.0 `internal/orchestrator/executor/executor_credentials.go`, external reference). pluginsdk v0.96.0 gives the plugin **no way to inject environment**: `CreateTaskInput` has only `Repositories` and `Launch{AgentProfileID, ExecutorProfileID, Prompt, PlanMode}`; `ExecutorProfiles()` is read-only; the plugin Git credential handler serves only `nulab-backlog` repositories (`manifest.yaml` `repository_providers`). Options are listed in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile).
-
-## External Reference: Kandev gh Account Handling (v0.96.0, read-only)
-
-Kandev's own GitHub integration already supports picking a gh account (`~/repo/kandev/apps/backend/internal/github/gh_accounts.go`):
-
-- `ListGHAccounts` parses `gh auth status --json hosts` into per-host logins with an active flag.
-- `ResolveGHAccountToken(host, login)` runs `gh auth token --hostname <host> --user <login>` when `gh auth token --help` lists `--user`; otherwise it accepts the login only if it is the active one.
-- It strips `GH_TOKEN` / `GITHUB_TOKEN` from the child environment (so the stored login is read, not an env override) and never runs `gh auth switch`.
-- `gh` 2.97.0 on the scan host supports `--user`.
+The worktree's `GH_TOKEN` is set by Kandev's executor from Kandev's own GitHub connection or the executor profile env. pluginsdk v0.96.0 gives the plugin no way to inject environment (not re-verified in this run).
 
 ## Data Flow
 
 - UI -> host -> plugin action (JSON, `max_body_bytes` 8-256 KiB; 16 KiB for `scm.*`) -> domain service -> client -> external API. Errors map to pluginsdk codes only in `internal/plugin` (`classify`, `classifySCM`).
-- SCM settings and mappings in host state; tokens only in host secrets; CLI tokens only in process memory (`cliCache`).
+- SCM settings and mappings in host state (`scm.settings`); links, dismissed, queries, watches, ledger in their own workspace state keys; instance key `scm.index`. Tokens only in host secrets; CLI tokens only in process memory.
 - Issue links in host state, refreshed by the sync loop; the UI reads them via one `issues.links.list` per workspace (`LinksStore`).
 - Host events in: `task.deleted`; webhook in: `oauth-callback`.
 
 ## Interaction Diagrams
 
-### Connect GitHub with the gh CLI login (current; the transaction this intent changes)
+### Load the Source Control section (current)
 
 ```mermaid
 sequenceDiagram
-  participant U as Admin (GitHub card)
+  participant U as Member or admin
+  participant SC as source-control-section.tsx
   participant K as Kandev backend
   participant A as KandevAdapter (scm_actions.go)
   participant S as SCM Service
-  participant C as gh on the server
-  participant G as GitHub Client
-  participant ST as Kandev state / secrets
-  U->>K: scm.providers.use_cli {provider: github}
-  K->>A: HandleAction (admin)
-  A->>S: UseCLI(ctx, ws, github)
-  S->>S: forgetCLI(github)
-  S->>C: gh auth token --hostname github.com (active account only)
-  alt token printed
-    C-->>S: token (<= 4 KiB, stderr dropped)
-    S->>G: CurrentUser(Credential{token})
-    G-->>S: User{Name, ID=login}
-    S->>ST: DeleteSecret(backlog.scm.github.<ws>)
-    S->>ST: Settings{Source: cli, HasToken, Account, AccountID}
-    S-->>U: ProviderView{connected, method: cli, account}
-  else gh missing / logged out / timeout
-    S-->>U: cli_unavailable (nothing changed)
-  end
+  participant ST as Kandev state
+  U->>SC: open Settings
+  SC->>K: scm.providers.list
+  K->>A: HandleAction (authenticated; allowed even while Backlog is off)
+  A->>S: Providers(ctx, ws)
+  S->>ST: load scm.settings
+  S-->>SC: {providers: [github, gitlab, bitbucket]} (always three)
+  SC->>SC: render Backlog Git block + one ProviderCard per entry
 ```
 
-Text fallback: the admin clicks "Use gh CLI login"; the service runs `gh auth token` for github.com with no `--user`, proves the token with `GET /user`, deletes any typed token and records `Source=cli` plus the account. A CLI failure changes nothing.
+Text fallback: the section asks for the provider list once; the service always returns three views, and the UI renders one unframed card per view below the Backlog Git block.
 
-### Resolve the credential for any GitHub call (current)
+### Connect a provider with a token (current; no exclusivity)
 
 ```mermaid
 sequenceDiagram
-  participant C as Caller (ListPRs, runWatch, refreshProvider, ...)
-  participant S as SCM credential()
-  participant CC as cliCache (per provider, 5 min)
-  participant X as gh on the server
-  participant SS as secret store
-  C->>S: credential(ctx, ws, github)
-  S->>S: settings(ws, github)
-  alt Source == cli
-    S->>CC: token for github
-    alt fresh
-      CC-->>S: token
-    else expired
-      S->>X: gh auth token --hostname github.com
-      X-->>S: token of the ACTIVE account
-    end
-  else token method
-    S->>SS: GetSecret(backlog.scm.github.<ws>)
-  end
-  S-->>C: redact.WithSecrets(ctx, token), Credential
-```
-
-Text fallback: every call reads the workspace settings; CLI-mode workspaces share one cached token per provider, so two workspaces cannot use different gh accounts today.
-
-### Create a task from a Backlog issue (current)
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant P as start-task.tsx
-  participant D as Kandev TaskCreateDialog
-  participant K as Kandev backend
-  participant E as Kandev executor
+  participant U as Admin (ProviderCard)
   participant A as KandevAdapter
-  U->>P: issue "Start task"
-  P->>D: open (title, description from template)
-  U->>D: choose repo, agent, executor profile; create
-  D->>K: create task
-  K->>E: prepare worktree, env GH_TOKEN from Kandev GitHub connection / executor profile
-  D-->>P: onSuccess(task)
-  P->>K: issues.link {taskId, issueKey}
-  K->>A: HandleAction -> Issues.Link
+  participant S as SCM Service
+  participant C as Provider Client
+  participant ST as Kandev state / secrets
+  U->>A: scm.providers.set_token {provider, token, username?}
+  A->>S: SetToken(ctx, ws, provider, input)
+  S->>C: CurrentUser(Credential{token})
+  alt valid
+    S->>ST: SetSecret(backlog.scm.<provider>.<ws>)
+    S->>ST: update only this provider's Settings
+    S-->>U: ProviderView{connected}
+  else refused
+    S-->>U: validation / reconnect error (nothing stored)
+  end
+  Note over S,ST: other providers' entries are untouched, so several can be connected
 ```
 
-Text fallback: the plugin hands task creation to Kandev's dialog and only links the issue afterwards; the worktree's gh environment is fully decided by Kandev.
+Text fallback: connecting one provider validates and stores its own token and settings entry only; any other connected provider stays connected.
+
+### Map Backlog projects to repositories (current)
+
+```mermaid
+sequenceDiagram
+  participant U as Admin (ProjectRepos in a ProviderCard)
+  participant A as KandevAdapter
+  participant S as SCM Service
+  participant C as Provider Client
+  U->>A: scm.repos.search {provider, query}
+  A->>S: SearchRepos
+  S->>C: SearchRepos(credential)
+  C-->>U: {repos: [{fullName, url}]}
+  U->>A: scm.mappings.set {provider, projectKey, repos[]}
+  A->>S: SetMapping (max 20, each repo checked with the provider; empty list removes)
+  S-->>U: ProviderView{mappings}
+```
+
+Text fallback: the admin searches repos of the card's provider and saves the list per Backlog project; the provider is carried in the request but never named in the UI labels.
 
 ### Plugin action (e.g. list issues)
 
@@ -200,12 +192,15 @@ Text fallback: UI -> host -> adapter -> service -> gateway -> Backlog, and back.
 ## Key Design Decisions
 
 - Only `internal/plugin` and `server` import `pluginsdk`; domain packages stay host-agnostic.
-- Clients are stateless about credentials (`Credential` per call); only `credential()` decides the source. A per-account CLI token therefore needs no client change.
+- Clients are stateless about credentials (`Credential` per call); only `credential()` decides the source.
 - Tokens live only in the Kandev secret store or process memory; views carry account and method, never the token (NFR1).
 - The CLI is run with fixed arguments, no shell, bounded time and output (`//nolint:gosec // G204`).
-- Every manifest action key has a runtime handler and vice versa (`internal/plugin/manifest_test.go` parity test).
+- Every manifest action key has a runtime handler and vice versa (`internal/plugin/manifest_test.go`, `TestSCM_Manifest_Actions`).
+- SCM state documents are `schemaVersion: 1`; `load` refuses any other version and never overwrites it (`store.go:229-233`), so changes should be additive JSON fields.
+- Disconnecting a provider keeps its data disabled rather than deleting it (FR2.2).
 
 ## Improvement Opportunities
 
-- Per-workspace gh account: list accounts, store the chosen login, pass `--user`, key the cache by provider+login, and stop `Test` from drifting the identity ([code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile)).
-- Worktree `gh` alignment needs either Kandev configuration (its GitHub integration on the same account) or a Kandev SDK capability the plugin lacks today.
+- Frame each service as its own card with a clear heading, and name the service in the repo-mapping labels (UI + `en.ts` only).
+- Express "one service at a time" either as a UI rule or as a backend invariant (e.g. an additive `activeProvider` in `scm.settings`); see the open decisions in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-source-control-settings).
+- Worktree `gh` alignment still needs Kandev configuration or an SDK capability the plugin lacks.

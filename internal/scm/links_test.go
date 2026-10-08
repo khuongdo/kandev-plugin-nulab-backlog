@@ -114,6 +114,7 @@ func TestUnlink_AManualLinkIsRemovedWithoutDismissal(t *testing.T) {
 // The issue panel shows the task's manual links and its issue's auto-links.
 func TestLinks_FiltersByTaskOrIssue(t *testing.T) {
 	h := newHarness(t)
+	h.use(t, GitHub)
 	require.NoError(t, h.store().UpdateLinks(h.ctx, ws, func([]Link) ([]Link, error) {
 		return []Link{
 			{PRRef: PRRef{GitHub, "a/b", 1}, TaskID: "task-1"},
