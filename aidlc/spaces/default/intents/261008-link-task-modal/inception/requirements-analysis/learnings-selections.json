@@ -1,0 +1,3 @@
+{"stage_slug":"requirements-analysis","space":"default","intent":"261008-link-task-modal","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Read \"restyle the issue-side dialog\" (Q1=D) as keeping its task search and list and changing only the shell and feedback (description, width, inline error, Save/Saving..., Enter submits, toast, links-store refresh)"}
+]}

@@ -424,6 +424,10 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
 - **Link to task.** **Link to task** in the same menu links an existing task. A task links one issue
   only; several tasks may link the same issue. **Unlink Backlog issue** in the task's menu removes
   the link and changes nothing in Backlog.
+- **Link an issue from the task.** In a task's **Link** menu, next to **GitHub Issue**, choose
+  **Link Backlog issue** and enter an issue key (`PROJ-123`) or paste the issue's
+  `https://<space>/view/PROJ-123` link. The entry is hidden while the task is linked; unlink first
+  to link another issue.
 - **`#` references.** In the message composer, type `#` and choose **Backlog issues** to reference
   an issue by key or title. Kandev checks the issue again when the message is sent.
 - **Backlog panel in the task.** Open the **Backlog issue** panel from the task's **+** panel menu to

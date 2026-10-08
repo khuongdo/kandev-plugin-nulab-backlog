@@ -5,6 +5,7 @@ import { createPRLinkAction } from "./git/pr-link";
 import { createRepositoryProvider } from "./git/repository-provider";
 import { createReviewProvider } from "./git/review-provider";
 import { createIssueBadge } from "./issues/issue-badge";
+import { createIssueLinkAction } from "./issues/issue-link";
 import { createIssuePanel } from "./issues/issue-panel";
 import { messagesFor, registerMessages } from "./issues/i18n";
 import { createLinksStore } from "./issues/links-store";
@@ -90,6 +91,8 @@ const plugin: KandevPlugin = {
     // saved queries live in the settings, the PR list on /backlog (FR1, FR2).
     registry.registerRepositoryProvider(createRepositoryProvider(host, messages));
     registry.registerTaskAction(createPRLinkAction(host, messages));
+    // FR1, FR3: Link Backlog issue in the same Link menu, hidden for a linked task.
+    registry.registerTaskAction(createIssueLinkAction(host, links, messages));
     registry.registerReviewProvider(createReviewProvider(host, messages));
     // U3: the issue badge on cards (M6), task rows of Home > Tasks and the
     // sidebar (FR1) and the task top bar (FR5); one component, one links store

@@ -89,29 +89,47 @@ flowchart LR
   PU --> GR[(GitHub Release + attestation)]
 ```
 
-Text fallback: a pull request to `main` and a push to `main` both start `ci.yml`; job `checks` runs the Makefile quality and packaging targets, then `packaged-host-contract` installs the package on Kandev at the minimum version. The ruleset on `main` requires both job names as status checks before a squash merge. A `v*` tag push starts `release.yml`: `verify` (same checks plus `release-preflight`) -> `contract` -> `publish` (GitHub Release with attestation). Trigger and ruleset details as recorded by run 1 (later CI path-filter changes, PR #14, not re-verified): [api-documentation.md](api-documentation.md#github-actions-triggers-and-required-checks).
+Text fallback: a pull request to `main` and a push to `main` both start `ci.yml`; job `checks` runs the Makefile quality and packaging targets, then `packaged-host-contract` installs the package on Kandev at the minimum version. The ruleset on `main` requires both job names as status checks before a squash merge. A `v*` tag push starts `release.yml`: `verify` (same checks plus `release-preflight`) -> `contract` -> `publish` (GitHub Release with attestation). Trigger and ruleset details as recorded by run 1: [api-documentation.md](api-documentation.md#github-actions-triggers-and-required-checks). The CI path filter (intent `261008-ci-path-filter`, PR #14) was not re-verified since.
 
 ## UI Surfaces (Host Slots)
 
-All registrations happen once, synchronously, in `initialize` (`ui/src/index.ts`). Kandev v0.96.0 stages registry calls only while `initialize` runs (`stagedGenerationRegistry`); later registration is ignored and there is no per-item unregister.
+All registrations happen once, in `initialize` (`ui/src/index.ts`). Kandev v0.96.0 stages registry calls only while `initialize` runs (`stagedGenerationRegistry`); later registration is ignored and there is no per-item unregister.
 
-| Registration (`ui/src/index.ts`) | Kandev surface | Gated by the Backlog switch? |
+| Registration (`ui/src/index.ts`, v0.5.0) | Kandev surface | Gated by the Backlog switch? |
 |---|---|---|
 | `registerIntegrationSettings` | Settings > Integrations card + per-workspace switch | Card always shown (needed to turn Backlog on) |
-| `registerNavItem({ id: "backlog", section: "integrations", path: "/backlog" })` | Home > Integrations entry | No. Kandev `NavItem` has no `requires`/visibility field; plugin destinations are never availability-gated |
-| `registerRoute("/backlog")` | Backlog page | Page shows the OFF state (`integration_disabled`) |
-| `registerComponent(slot, IssueBadge)` | Kanban card (`task-card-tags`); since v0.5.0 also `task-row-metadata` and `chat-top-bar` (seen in passing at `ui/src/index.ts:98` in run 3, not re-read deeply) | Indirectly: the badge renders only when `issues.links.list` returns a link for the task |
-| `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider` | Task view, task menu, repository picker, review | Per handler |
+| `registerNavItem({ id: "backlog", section: "integrations", path: "/backlog" })` + `registerRoute("/backlog")` | Home > Integrations entry and Backlog page (Issues and Pull requests lists) | Yes, at load only (FR3): registered only when Backlog is ON in some workspace when `initialize` runs; a toggle shows after a reload |
+| `registerComponent(slot, IssueBadge)` for `task-card-tags`, `task-row-metadata`, `chat-top-bar` | Kanban card, Home > Tasks and sidebar rows, task top bar | Indirectly: renders only when `issues.links.list` returns a link for the task |
+| `registerTaskAction(createPRLinkAction)` (`placement: "link"`) | Task Link menu: "Link Backlog pull request" -> host `openTaskLinkDialog` | Per handler |
+| `registerTaskMenuAction(createUnlinkMenuAction)` | Task menu: "Unlink Backlog issue", visible only for a linked task | Per handler |
+| `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider` | Task panel, repository picker, review | Per handler |
+
+As scanned, no task-side "Link Backlog issue" action existed; issue-to-task linking was reachable only from the `/backlog` page issue row menu. Intent `261008-link-task-modal` has since added that action (`ui/src/issues/issue-link.ts`).
+
+Pre-v0.5.0 facts (run 3 / earlier, superseded where the table above differs): Kandev `NavItem` has no `requires`/visibility field, so plugin destinations are never availability-gated by the host; with Backlog OFF the `/backlog` page shows the OFF state (`integration_disabled`).
 
 Host facts (Kandev v0.96.0 reference checkout): Home > Tasks (`apps/web/app/tasks/rich-task-list-row.tsx`) renders first-party PR/MR icons and then `TaskRowMetadata`, which mounts the plugin slot `task-row-metadata` with props `{ taskId, workspaceId, workflowStepId, surface }`. The host UI kit exposes `Tooltip*` and `Popover*` to plugins. The Kandev registry's `setIntegrationEnabled`/`isIntegrationEnabled` drive only the Settings sidebar badge, not navigation.
 
-The Backlog settings page includes the **Source control** section (`ui/src/settings/source-control-section.tsx`, `createSourceControlSection`): one `ProviderCard` per provider with a token form (save/replace), Test, Remove, and the project-to-repository mappings. The card treats a provider as configured when `state !== "not_configured"`; PR lists elsewhere use only providers with `state === "connected"` (`usableProviders`, `ui/src/git/git-state.ts`).
+The Backlog settings page includes the **Source control** section (`ui/src/settings/source-control-section.tsx`, `createSourceControlSection`): one `ProviderCard` per provider with a token form (save/replace), Test, Remove, and the project-to-repository mappings (since v0.5.1 also a GitHub/GitLab CLI login control). The card treats a provider as configured when `state !== "not_configured"`; PR lists elsewhere use only providers with `state === "connected"` (`usableProviders`, `ui/src/git/git-state.ts`).
+
+### External reference: Kandev GitHub integration link UX (v0.96.0, read-only)
+
+Not plugin code; recorded because intent `261008-link-task-modal` asks to mimic it. Source: `~/repo/kandev` at `v0.96.0`.
+
+- The GitHub integration has **no issue-side "link to existing task" picker**. Issue rows (`apps/web/components/github/my-github/issue-list.tsx:79-90`) offer only the task indicator and "start task" (create, then auto-link).
+- Linking an existing task goes task -> issue: the task's **Link submenu** (`kanban-card-link-submenu.tsx:47-134`, also `task-switcher-link-menu.tsx`) lists "GitHub Pull Request", "GitHub Issue", then plugin `placement: "link"` actions.
+- **GitHub issue dialog** (`task-github-issue-dialog.tsx`): `DialogContent w-[calc(100vw-2rem)] sm:max-w-lg`, focus return via `onCloseAutoFocus`; title "Link GitHub issue" / "Change GitHub issue"; a `DialogDescription`; one `Label` "Issue" + `Input` (URL or number, prefilled when linked); inline error `text-xs text-destructive`; footer Unlink (only when linked) on the left, Cancel + "Save"/"Saving..." on the right; success toast and close.
+- **Shared host form** (`integrations/task-change-request-link-form.tsx`): `<form>` so Enter submits, `Input autoFocus`, `emptyError` check, `AbortController` per submit, success toast then close.
+- **Plugin access**: `host.openTaskLinkDialog(options)` (`apps/web/lib/plugins/host-api.ts:537, 561-586`) renders exactly that shared form with plugin copy; the plugin supplies `onSubmit(reference, signal)` and throws an `Error` whose message becomes the inline error. No Unlink button and no prefill through this API.
+
+Side-by-side comparison with the plugin dialog: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-link-task-modal).
 
 ## Data Flow
 
 - UI -> host -> plugin action (JSON, `max_body_bytes` 8-256 KiB; 16 KiB for `scm.*`) -> domain service -> gateway or client -> external API; responses mapped back to `pluginsdk` error codes only in `internal/plugin`.
-- Issue links: stored per workspace in host state (`Link`, `internal/issues/types.go`); the sync loop (`internal/issues/sync.go`) refreshes `LastKnownStatus`/`StatusUpdatedAt`. The UI reads them through one `issues.links.list` call per workspace, cached in `LinksStore` (`ui/src/issues/links-store.ts`).
-- SCM: provider settings and mappings in host state (`scm.Store`); provider tokens only in host secrets (`backlog.scm.<provider>.<workspace>`), read per call by `credential()`.
+- Issue links: stored per workspace in host state (`Link`, `internal/issues/types.go`, now carrying `Summary`); the sync loop (`internal/issues/sync.go`) refreshes `LastKnownStatus`/`StatusUpdatedAt`. The UI reads them through one `issues.links.list` call per workspace, cached in `LinksStore` (`ui/src/issues/links-store.ts`, timed refresh every 60 s and on window focus while listened to) and shared by the badge, the page, the task panel and the Unlink menu action.
+- Link writes: `issues.link` (task scope, body `{issueKey}`) and `issues.unlink` (task scope). The Unlink menu action calls `store.refresh` afterwards; the issue-side Link dialog updates only the `/backlog` page row (`addTask`) and does not refresh `LinksStore`, so badges catch up on the next timed or focus refresh (as scanned; the restyled dialog from `261008-link-task-modal` refreshes badges).
+- SCM: provider settings and mappings in host state (`scm.Store`); provider tokens only in host secrets (`backlog.scm.<provider>.<workspace>`), read per call by `credential()` (since v0.5.1 a CLI-login provider resolves its token from `gh` / `glab` instead and never stores it).
 - State and secrets live in the host (`capabilities.state`, `secrets`); the plugin keeps no database.
 - Host events in: `task.deleted`; webhook in: `oauth-callback` (public GET).
 - CI: `checks` uploads the `plugin-package` artifact; `packaged-host-contract` downloads it and checks `sha256sum -c` before installing. Release does the same with `release-package`.
@@ -173,7 +191,65 @@ sequenceDiagram
   end
 ```
 
-Text fallback: every GitHub call, including the background watcher every minute, goes through `credential()`, which reads the secret, refuses a missing or empty token, and returns a redacting context plus the `Credential` for the client. This single function is where a second credential source (the `gh` CLI) would plug in.
+Text fallback: every GitHub call, including the background watcher every minute, goes through `credential()`, which reads the secret, refuses a missing or empty token, and returns a redacting context plus the `Credential` for the client. This single function is where a second credential source (the `gh` CLI) would plug in (implemented in v0.5.1: `internal/scm/cli_token.go`).
+
+### Link an issue to an existing task (current, issue-side dialog)
+
+The transaction intent `261008-link-task-modal` changes.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant P as Backlog page (issues-page.tsx)
+  participant D as LinkTaskDialog (link-task-dialog.tsx)
+  participant K as Kandev backend
+  participant A as KandevAdapter (issue_actions.go)
+  participant I as Issues (service.go)
+  U->>P: issue row menu "Link to task"
+  P->>D: open {workspaceId, issueKey}
+  loop every keystroke (no debounce)
+    D->>K: issues.tasks.search {query}
+    K->>A: HandleAction
+    A->>I: SearchTasks(ctx, ws, query)
+    I-->>D: tasks[] (max 20, linkedIssueKey)
+  end
+  U->>D: choose task, click "Link"
+  D->>K: issues.link {taskId, body: {issueKey}}
+  K->>A: HandleAction
+  A->>I: Link (key checked by ParseIssueKey)
+  alt ok
+    I-->>D: Link
+    D->>P: onLinked(task) then onClose (no toast, LinksStore not refreshed)
+  else conflict / validation / not found
+    I-->>D: error -> <p role="alert"> below the list
+  end
+```
+
+Text fallback: the user opens the dialog from the issue row menu; each keystroke calls `issues.tasks.search` (stale replies dropped by a sequence counter); the user picks a task (tasks linked to another issue are disabled) and clicks Link; `issues.link` stores the link; on success the page row updates and the dialog closes without a toast; errors show as an unstyled alert paragraph.
+
+### Link from the task side (existing PR pattern, the GitHub-style flow)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant KW as Kandev web (task Link menu)
+  participant PA as createPRLinkAction (pr-link.ts)
+  participant HD as Host link dialog (openTaskLinkDialog)
+  participant K as Kandev backend
+  U->>KW: task Link menu "Link Backlog pull request"
+  KW->>PA: run(task)
+  PA->>HD: openTaskLinkDialog({title, description, inputLabel, placeholder, emptyError, ..., onSubmit})
+  U->>HD: type reference, Enter / Save
+  HD->>PA: onSubmit(reference, signal)
+  PA->>K: git.prs.link {taskId, body: {reference}}
+  alt ok
+    HD-->>U: success toast, close
+  else error
+    PA-->>HD: throw Error(mapped message) -> inline destructive error
+  end
+```
+
+Text fallback: the task's Link menu runs the plugin action, which opens the host dialog with plugin copy; the host owns input, Enter-to-submit, Save/Saving..., inline error and toast; the plugin's `onSubmit` calls the action and maps `not_found` / `validation` failures to messages. A "Link Backlog issue" action would follow the same shape against `issues.link`, but `issues.link` accepts only an issue key (no URL) and the plugin must refresh `LinksStore` itself. That action now exists (`ui/src/issues/issue-link.ts`, intent `261008-link-task-modal`).
 
 ### Pull request to merge
 
@@ -219,7 +295,7 @@ Text fallback: a tag push runs verify, contract, publish in order; `release-pref
 
 ```mermaid
 sequenceDiagram
-  participant KW as Kandev web (card or row)
+  participant KW as Kandev web (card, task row, top bar)
   participant BD as IssueBadge
   participant LS as LinksStore
   participant K as Kandev backend
@@ -229,14 +305,14 @@ sequenceDiagram
   alt workspace not loaded
     LS->>K: action issues.links.list (workspace)
     K->>I: Links(ctx, ws)
-    I-->>K: LinkView[]
+    I-->>K: LinkView[] (key, summary, status, url, stale, unavailable)
     K-->>LS: { links }
   end
   LS-->>BD: LinkView or none
-  BD-->>KW: key + status chip, click opens https://space/view/KEY (new tab)
+  BD-->>KW: key + status chip, hover summary; click opens https://space/view/KEY (new tab)
 ```
 
-Text fallback: the slot mounts the badge, the badge asks the shared store, the store calls `issues.links.list` once per workspace, and the badge renders key and status with a link to the issue.
+Text fallback: each slot mounts the badge, the badge asks the shared store, the store calls `issues.links.list` once per workspace, and the badge renders key, status and summary with a link to the issue.
 
 ### Plugin startup and the Home > Integrations entry
 
@@ -246,12 +322,16 @@ sequenceDiagram
   participant IX as UI Bundle initialize()
   participant R as Kandev plugin registry
   KW->>IX: initialize(registry, host)
-  IX->>R: registerIntegrationSettings, registerNavItem("backlog"), registerRoute, registerComponent, ...
-  Note over R: calls staged only until initialize returns
+  IX->>R: registerIntegrationSettings, registerTaskAction, registerComponent x3, registerTaskMenuAction, ...
+  IX->>IX: publishSwitches(workspaces)
+  opt Backlog ON in some workspace
+    IX->>R: registerNavItem("backlog"), registerRoute("/backlog")
+  end
   IX-->>KW: return
+  Note over R: calls staged only until initialize returns
 ```
 
-Text fallback: every registration happens inside `initialize`; after it returns the registry no longer accepts registrations.
+Text fallback: every registration happens inside `initialize`; after it returns the registry no longer accepts registrations. The nav entry and route are added only when Backlog is ON somewhere at load, and a toggle needs a reload to show in the menu.
 
 ### Install the package (intent 261007-plugin-install-502, history)
 
@@ -301,14 +381,17 @@ Text fallback: UI -> host -> adapter -> domain service -> gateway -> Backlog, an
 - SCM tokens live only in the Kandev secret store; settings and views carry `HasToken` and the account, never the token (NFR1). A token is stored only after `CurrentUser` accepts it.
 - One package carries all supported platform binaries (`manifest.yaml` `runtime.executables`); since v0.4.2 the set is 4 (`linux-amd64 linux-arm64 darwin-amd64 darwin-arm64`). Kandev picks the host platform at install time.
 - React is supplied by the host; the bundle fails the build if React is bundled. `@kandev/plugin-sdk` is imported as types only.
-- UI registrations never depend on the switch (BR5.4, BR7.6, BR7.8). The plugin tracks the switch with its own event bus because Kandev v0.96.0 offers no way to read or observe it.
+- Since v0.5.0 (FR3, superseding BR5.4/BR7.6/BR7.8) the nav entry and `/backlog` route are registered only when Backlog is ON somewhere at load; other UI registrations never depend on the switch. The plugin tracks the switch with its own event bus because Kandev v0.96.0 offers no way to read or observe it.
 - One `issues.links.list` per workspace, shared through `LinksStore`, instead of a call per card.
+- Task-side linking uses the host dialog (`openTaskLinkDialog`) for PRs, so Kandev owns the form, validation display, submit state and toast; issue-side task linking uses a plugin-built dialog because Kandev has no task picker.
 - Package verification is done by an in-repo verifier because Kandev v0.96.0 ships no verify CLI.
 - CI calls only `Makefile` targets, so local and CI results match; the workflows themselves are linted (`actionlint` plus `cmd/ci workflows` policy).
 - Merge gating is a repository ruleset (not classic branch protection) that requires the job names `checks` and `packaged-host-contract`.
 
 ## Improvement Opportunities
 
-- GitHub CLI login as a second SCM credential source (intent `261008-gh-cli-auth`): a credential-source choice inside `credential()`, one new admin action, a source field in `Settings`/`ProviderView`, and a GitHub-only control on the card. Options and constraints: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-auth). The design choice (resolve per call vs import once) belongs to the intent's requirements and design, not here.
+- Link Task modal (intent `261008-link-task-modal`): either add a task-side "Link Backlog issue" `placement: "link"` action modelled on `pr-link.ts`, or restyle the issue-side dialog to the GitHub dialog shell, or both; constraints in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-link-task-modal). Both were implemented in that intent.
+- Refresh `LinksStore` after any link write, not only after Unlink.
+- GitHub CLI login as a second SCM credential source (intent `261008-gh-cli-auth`, implemented in v0.5.1 with GitLab `glab` as well): a credential-source choice inside `credential()`, one new admin action, a source field in `Settings`/`ProviderView`, and a control on the card. Options and constraints: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-auth).
 - Install without a large browser upload: install by URL (`POST /api/plugins/install` JSON `{"url": ...}` to the GitHub Release asset), or document raising `KANDEV_SERVER_READTIMEOUT`.
-- Hiding the Home > Integrations entry while OFF needs a Kandev capability that v0.96.0 lacks. Details: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-fix-uiux-backlog).
+- Hiding the Home > Integrations entry while OFF beyond register-at-load needs a Kandev capability that v0.96.0 lacks. Details: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-fix-uiux-backlog).

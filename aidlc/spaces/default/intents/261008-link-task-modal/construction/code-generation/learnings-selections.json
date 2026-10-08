@@ -1,0 +1,3 @@
+{"stage_slug":"code-generation","space":"default","intent":"261008-link-task-modal","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Corrections","source":"orchestrator","text":"Plan Approval needs --session <id>; the id is the session directory name under aidlc/.aidlc-sessions/ (it is not printed in the conversation context)"}
+]}

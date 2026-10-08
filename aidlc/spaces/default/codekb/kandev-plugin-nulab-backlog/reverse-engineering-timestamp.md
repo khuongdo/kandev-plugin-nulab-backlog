@@ -3,7 +3,8 @@
 ## Run Information
 
 - Latest run date: 2026-10-08
-- The store has received three FOCUSED SCANS, each merged into a STALE store (the original store was built by `261007-plugin-install-502` as `kind: full`). Each run demotes the prior deep coverage to shallow, so the scope block below records **only Run 3**; prose from earlier runs is preserved.
+- The store has received four FOCUSED SCANS, each merged into a STALE store (the original store was built by `261007-plugin-install-502` as `kind: full`). Each run demotes the prior deep coverage to shallow, so the scope block below records **only Run 4** (`261008-link-task-modal`); prose from earlier runs is preserved.
+- Runs 3 and 4 started from the same base (`d3d17e5`, v0.5.0) and were merged when this branch was rebased onto `main` at `2182715` (v0.5.1, PR #19). Run 3's deep coverage is recorded under `shallow.paths`, so the next intent rescans it.
 - Run 1 (261008-ci-path-filter):
   - Commit: `f5a7529baaa685e2d02e30cf879a247ef0dd106b` (v0.4.2; branch `feature/plugin-install-faile-9qm`)
   - Intent: `261008-ci-path-filter` (depth Minimal)
@@ -28,46 +29,66 @@
   - Depth note: `internal/connection/` and `internal/git/` were inside the snapshot but only skimmed, so they are shallow. `ui/src/git/git-state.ts`, `ui/src/messages/en.ts`, `internal/redact/`, `internal/ci/changes.go` and `Makefile` were read outside the snapshot and are shallow.
   - External evidence (outside the repo, not coverage): Kandev `v0.96.0` checkout `~/repo/kandev` (HEAD `f099a46`): `pkg/pluginsdk/host.go` method list, plugin process spawn in `internal/plugins/runtime/manager.go`, `gh auth token` use in `internal/github/gh_accounts.go`.
   - Baselines: **recorded** — 709 Go tests passing (see [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines)).
+- Run 4 (261008-link-task-modal):
+  - Date: 2026-10-08
+  - Commit: `d3d17e508534650a495f566c7382cca867121fa6` (v0.5.0 on `main` plus records; branch `feature/fix-link-task-ui-do5`)
+  - Intent: `261008-link-task-modal` (scope bugfix, depth Minimal)
+  - Type: FOCUSED SCAN merged into the existing store (prior verdict STALE; prior store from intents `261008-ci-path-filter` and `261008-fix-uiux-backlog` at v0.4.2). Prior prose is preserved outside the focused area; sections on the Link Task dialog, `ui/src/issues/`, the `ui/src/git/pr-link.ts` pattern, the link actions in `internal/plugin/` and `internal/issues/`, and the UI registrations changed by v0.5.0 were updated. Per the STALE rule, the prior analyzed paths are demoted to `shallow.paths`.
+  - Pre-scan snapshot: paths `ui/src/,internal/plugin/,internal/issues/`, store_generation `sha256:584cda89d96e10dc00f0e7bdbb349875393270f93c9e4bb40cd7ab8c690b9575`, source_fingerprint `git:ea44524ff1774276a15f1f31e5a757b42417b725`.
+  - Depth note: `analyzed.paths` lists only the files read deeply inside the snapshot paths. `manifest.yaml` was read only for its version (outside the snapshot, recorded as shallow).
+  - External evidence (outside the snapshot, not coverage): Kandev `v0.96.0` checkout `~/repo/kandev` — GitHub issue/PR link dialogs, shared link form, task Link submenu, `openTaskLinkDialog` host API, plugin SDK types. Summarised in [architecture.md](architecture.md#external-reference-kandev-github-integration-link-ux-v0960-read-only).
+  - Baselines: not recorded (no Go toolchain, no `../kandev` link, no `ui/node_modules`). See [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines).
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
 kind: partial
-intent: 261008-gh-cli-auth
-fingerprint: 05ba6f4e57844516580ce283f766d26e0eb62638
+intent: 261008-link-task-modal
+fingerprint: 992b7f483af81b921d038eb526c06f416ae73971
 analyzed:
   paths:
-    - internal/scm/
-    - internal/github/
-    - internal/plugin/scm_actions.go
-    - internal/plugin/runtime.go
-    - internal/plugin/credential.go
-    - internal/plugin/manifest_test.go
-    - ui/src/settings/source-control-section.tsx
-    - manifest.yaml
+    - ui/src/issues/link-task-dialog.tsx
+    - ui/src/issues/link-task-dialog.test.tsx
+    - ui/src/issues/issues-page.tsx
+    - ui/src/git/pr-link.ts
+    - ui/src/git/pr-link.test.ts
+    - ui/src/issues/task-menu.ts
+    - ui/src/index.ts
+    - ui/src/host-ui.ts
+    - ui/src/layout.ts
+    - ui/src/messages/en.ts
+    - ui/src/issues/issues-state.ts
+    - internal/plugin/issue_actions.go
+    - internal/issues/service.go
+    - internal/issues/types.go
   components:
-    - SCM
-    - GitHub Client
+    - UI Bundle
+    - KandevAdapter
+    - Issues
 shallow:
   paths:
     - ./
-    - .github/
-    - Makefile
     - aidlc/
     - docs/
     - .claude/
+    - .github/
+    - Makefile
+    - manifest.yaml
     - internal/
     - internal/plugin/
-    - internal/plugin/issue_actions.go
+    - internal/plugin/runtime.go
+    - internal/plugin/scm_actions.go
+    - internal/plugin/credential.go
+    - internal/plugin/manifest_test.go
     - internal/backlog/
     - internal/connection/
     - internal/connection/service.go
     - internal/issues/
-    - internal/issues/service.go
-    - internal/issues/types.go
     - internal/issues/sync.go
     - internal/git/
+    - internal/scm/
+    - internal/github/
     - internal/gitlab/
     - internal/bitbucket/
     - internal/redact/
@@ -78,24 +99,26 @@ shallow:
     - cmd/ci/
     - ui/
     - ui/src/
-    - ui/src/index.ts
     - ui/src/index.test.ts
+    - ui/src/issues/
     - ui/src/issues/issue-badge.tsx
     - ui/src/issues/issue-badge.test.tsx
-    - ui/src/issues/issues-state.ts
     - ui/src/issues/links-store.ts
     - ui/src/issues/i18n.ts
+    - ui/src/page/
+    - ui/src/switch/
     - ui/src/switch/enabled-events.ts
     - ui/src/switch/integration-switch.tsx
+    - ui/src/settings/
     - ui/src/settings/SettingsScreen.tsx
     - ui/src/settings/issue-watches-section.tsx
     - ui/src/settings/pr-watches-section.tsx
+    - ui/src/settings/source-control-section.tsx
     - ui/src/settings/section-parts.tsx
     - ui/src/settings/sections.test.tsx
     - ui/src/settings/source-control-section.test.tsx
     - ui/src/git/git-state.ts
-    - ui/src/messages/en.ts
-    - ui/src/host-ui.ts
+    - ui/src/testing/
     - ui/src/testing/harness.ts
     - ui/package.json
     - ui/vitest.config.ts
