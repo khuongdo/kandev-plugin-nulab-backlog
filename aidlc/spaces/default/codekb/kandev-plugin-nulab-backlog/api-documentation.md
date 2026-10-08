@@ -2,15 +2,15 @@
 
 ## Kandev Host Contract (`manifest.yaml`)
 
-- `api_version: 2`, `runtime.type: binary`, 4 executables since v0.4.2 (5 up to v0.4.1), `min_kandev_version: "0.96.0"`.
+- `version: "0.4.2"`, `api_version: 2`, `runtime.type: binary`, 4 executables since v0.4.2 (`linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`; 5 up to v0.4.1), `min_kandev_version: "0.96.0"`.
 - Capabilities: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`, `events: [task.deleted]`.
-- `repository_providers: [nulab-backlog]`, 1 `reference_sources` entry, `config_schema` (OAuth client id/secret, public base URL), `ui.bundle: /ui/bundle.js`.
+- `repository_providers: [nulab-backlog]`, 1 `reference_sources` entry (`nulab-backlog-issues`), `config_schema` (OAuth client id/secret, public base URL), `ui.bundle: /ui/bundle.js`.
 
 ## Plugin Actions (77)
 
 | Prefix | Count | Notes |
 |---|---|---|
-| `connection.*` | 9 | connect API key / OAuth, get, disconnect, projects, switch, Git credential; admin-only where they change state |
+| `connection.*` | 9 | connect API key / OAuth, get, set_enabled, disconnect, projects, Git credential; admin-only where they change state |
 | `repositories.*` | 2 | repository provider |
 | `git.*` | 19 | Backlog PRs, watches, queries |
 | `issues.*` | 25 | list, tasks, links, sync, watches, quick actions, queries |
@@ -18,15 +18,36 @@
 
 Each action declares `scope` (workspace/task), `access` (authenticated/admin), `max_body_bytes` (8-256 KiB).
 
+### `issues.links.list` (workspace, authenticated)
+
+Handler in `internal/plugin/issue_actions.go`, service `Issues.Links`. Response `{ links: LinkView[] }`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `taskId`, `taskKey?` | string | Kandev task |
+| `issueKey`, `spaceHost` | string | Backlog issue |
+| `state` | string | link state |
+| `status?`, `statusUpdatedAt?` | string | last synced status |
+| `stale`, `unavailable` | bool | sync health |
+| `url` | string | `https://<space>/view/<KEY>` |
+
+No issue summary is returned today (the stored `Link` has none). The TS mirror is `LinkView` in `ui/src/issues/issues-state.ts`.
+
 ## Webhooks
 
 - `oauth-callback`: GET, public, 1 KiB body limit.
 
+## UI Registration API (Kandev plugin registry, consumed by `ui/src/index.ts`)
+
+Used: `registerIntegrationSettings`, `registerNavItem`, `registerRoute`, `registerComponent(slot, ...)`, `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider`, messages. Surface mapping and gating limits: [architecture.md](architecture.md#ui-surfaces-host-slots).
+
+Relevant Kandev v0.96.0 types (`apps/web/lib/plugins/types.ts`, external):
+- `NavItem = { id, label, path, icon, section }` — no visibility/`requires` field.
+- `TaskRowMetadataSlotProps = { taskId, workspaceId, workflowStepId, surface: "sidebar" | "task-list" }` for slot `task-row-metadata`.
+
 ## Kandev Install API (consumed by operators and by the contract test)
 
-- `POST /api/plugins/install`, either:
-  - multipart form with field `package` (the `.tar.gz`) — used by the web UI upload and by `internal/ci/contract.go` (expects 201, no `warning`); or
-  - JSON `{"url": "<package url>"}` — the backend downloads the package itself (100 MiB cap, Kandev `service_install.go`).
+- `POST /api/plugins/install`, either multipart field `package` (web UI upload, `internal/ci/contract.go`, expects 201) or JSON `{"url": "<package url>"}` (backend downloads, 100 MiB cap).
 - `GET /ready`, `GET /api/plugins/<id>`.
 - Error mapping in the install handler: 409 / 400 / 500 only; it never returns 502.
 

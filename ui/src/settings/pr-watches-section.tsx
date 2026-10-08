@@ -174,9 +174,8 @@ export function createPrWatchesSection(
     const body = list.error ? (
       <ListError testId="backlog-pr-watches" notice={list.error} onRetry={list.reload} />
     ) : !list.loading && !scmList.loading && all.length === 0 ? (
-      <ListEmpty testId="backlog-pr-watches" title={messages.watchesEmpty}>
-        {add("backlog-pr-watches-empty-add")}
-      </ListEmpty>
+      // FR4.3: the section header holds the only Add watch button.
+      <ListEmpty testId="backlog-pr-watches" title={messages.watchesEmpty} />
     ) : (
       <Card>
         <CardContent className="p-0">

@@ -9,7 +9,7 @@
 
 ## External (UI dev, `ui/package.json`)
 
-esbuild, typescript, vitest, jsdom, eslint + typescript-eslint, prettier, react/react-dom (types and tests only, never bundled), axe-core. Versions: [technology-stack.md](technology-stack.md).
+esbuild, typescript, vitest, jsdom, eslint + typescript-eslint, prettier, react/react-dom (types and tests only, never bundled), axe-core. No runtime npm dependency: React, the UI kit and the registry come from the host at runtime. Versions: [technology-stack.md](technology-stack.md).
 
 ## External (CI)
 
@@ -20,7 +20,7 @@ esbuild, typescript, vitest, jsdom, eslint + typescript-eslint, prettier, react/
 
 ## External Services
 
-- Kandev host (install API, plugin RPC, state, secrets): [api-documentation.md](api-documentation.md).
+- Kandev host (install API, plugin RPC, state, secrets, UI registry and slots): [api-documentation.md](api-documentation.md).
 - Backlog REST v2, GitHub, GitLab, Bitbucket REST.
 - Packaging tool: Kandev `cmd/plugin-pack` from the sibling checkout.
 - GitHub repository ruleset `24580280` (required checks): [api-documentation.md](api-documentation.md#required-status-checks-main-ruleset).
@@ -42,3 +42,15 @@ cmd/ci -> ci
 The graph is acyclic; only `plugin` and `server` import `pluginsdk`.
 
 Build-time chain: `ci.yml` / `release.yml` -> `Makefile` targets -> `cmd/ci`, `cmd/verifypkg`, Kandev `plugin-pack`.
+
+## Internal (UI, `ui/src/`)
+
+```
+index.ts -> issues/{issue-badge, links-store, ...}, settings/SettingsScreen, switch/*, page/*, git/*, messages
+issues/issue-badge -> issues/issues-state, issues/links-store (type), host-ui, layout, messages/en
+settings/SettingsScreen -> settings/{issue-watches-section, pr-watches-section, project-picker, ...}, switch/enabled-events
+settings/issue-watches-section -> settings/{section-parts, issue-watch-dialog, confirm-dialog, use-list}, git/git-state, messages/en
+switch/enabled-events <- index.ts, switch/integration-switch, settings/SettingsScreen, page/BacklogPage, git/*
+```
+
+`LinksStore` is created once in `index.ts` and shared by the badge, the `/backlog` page and the task panel.

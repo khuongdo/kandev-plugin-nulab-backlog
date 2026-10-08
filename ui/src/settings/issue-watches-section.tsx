@@ -153,9 +153,8 @@ export function createIssueWatchesSection(
     const body = list.error ? (
       <ListError testId="backlog-issue-watches" notice={list.error} onRetry={list.reload} />
     ) : !list.loading && list.items.length === 0 ? (
-      <ListEmpty testId="backlog-issue-watches" title={messages.watchesEmpty}>
-        {add("backlog-issue-watches-empty-add")}
-      </ListEmpty>
+      // FR4.3: the section header holds the only Add watch button.
+      <ListEmpty testId="backlog-issue-watches" title={messages.issueWatchesEmpty} />
     ) : (
       <Card>
         <CardContent className="p-0">

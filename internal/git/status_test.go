@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -81,4 +82,31 @@ func TestU4_Status_OnlyThatTasksLinks(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NotNil(t, got)
+}
+
+// TestFR5_Status_EveryLinkedPRCarriesTaskStatus: the host shows a Backlog PR in
+// the task top bar only when its summary carries taskStatus; one PR is one
+// button, two or more are grouped into the host dropdown (FR5.4).
+func TestFR5_Status_EveryLinkedPRCarriesTaskStatus(t *testing.T) {
+	for _, n := range []int{1, 2} {
+		t.Run(fmt.Sprintf("%d linked PRs", n), func(t *testing.T) {
+			r := newRig(t)
+			r.gw.setPRs("PROJ/web-app", []backlog.PullRequest{
+				{RepositoryID: 11, Number: 42, Summary: "Add login page", StatusID: 1},
+				{RepositoryID: 11, Number: 43, Summary: "Fix logout", StatusID: 3},
+			})
+			for i := range n {
+				r.addLink(t, Link{TaskID: "task-17", SpaceHost: host, ProjectKey: "PROJ", RepoName: "web-app",
+					RepositoryID: 11, Number: 42 + i, Status: StatusActive})
+			}
+			got, err := r.svc.Status(r.ctx, ws, "task-17")
+			require.NoError(t, err)
+			require.Len(t, got, n)
+			for _, s := range got {
+				require.NotNil(t, s.TaskStatus, "PR %d", s.ChangeRequestNumber)
+				require.Equal(t, s.ChangeRequestNumber, s.TaskStatus.Number)
+				require.Equal(t, s.State, s.TaskStatus.State)
+			}
+		})
+	}
 }

@@ -94,7 +94,7 @@ describe("Issue badge on the card (M6, task-card-tags)", () => {
     expect(badge.getAttribute("aria-label")).toBe("Backlog issue PROJ-120 · Resolved");
     // R-01: the detail is the tooltip and the link's description, so keyboard and screen readers get it.
     const detail = "updated at rel:2026-10-06T00:00:00Z · may be out of date";
-    expect(badge.getAttribute("title")).toBe(detail);
+    expect(badge.hasAttribute("title")).toBe(false); // FR1.4: the hover card replaces the native title
     const described = document.getElementById(badge.getAttribute("aria-describedby")!)!;
     expect(described.textContent).toBe(detail);
     expect(described.classList).toContain("sr-only");
@@ -106,6 +106,43 @@ describe("Issue badge on the card (M6, task-card-tags)", () => {
     expect(onDrag).not.toHaveBeenCalled();
     expect(await axeViolations(c)).toEqual([]);
     expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+  });
+
+  it("shows a hover card with the key, summary and status on hover and on keyboard focus (FR1.4, FR1.5, NFR4)", async () => {
+    const { host } = setup([
+      link("task-1", { issueKey: "PROJ-12", summary: "Fix login", status: "In Progress" }),
+    ]);
+    const c = await mount(createIssueBadge(host, createLinksStore(host)), card("task-1"));
+    const badge = byTestId(c, "backlog-issue-badge-task-1")!;
+    expect(badge.getAttribute("href")).toBe(`https://${HOST}/view/PROJ-120`);
+    expect(badge.getAttribute("aria-label")).toBe("Backlog issue PROJ-12 · In Progress, Fix login");
+    const hover = () => byTestId(c, "backlog-issue-badge-hover-task-1");
+    expect(hover()).toBeNull();
+    await act(async () => badge.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    expect(hover()!.getAttribute("data-host")).toBe("TooltipContent");
+    expect([...hover()!.querySelectorAll("[data-hover-line]")].map((e) => e.textContent)).toEqual([
+      "PROJ-12",
+      "Fix login",
+      "In Progress",
+    ]);
+    await act(async () => badge.dispatchEvent(new MouseEvent("mouseout", { bubbles: true })));
+    expect(hover()).toBeNull();
+    await act(async () => badge.focus());
+    expect(hover()).not.toBeNull();
+    expect(await axeViolations(c)).toEqual([]);
+  });
+
+  it("shows the key and status without an empty summary line for an old link (FR1.4)", async () => {
+    const { host } = setup([link("task-1", { summary: undefined })]);
+    const c = await mount(createIssueBadge(host, createLinksStore(host)), card("task-1"));
+    const badge = byTestId(c, "backlog-issue-badge-task-1")!;
+    expect(badge.getAttribute("aria-label")).toBe("Backlog issue PROJ-120 · Resolved");
+    await act(async () => badge.focus());
+    const hover = byTestId(c, "backlog-issue-badge-hover-task-1")!;
+    expect([...hover.querySelectorAll("[data-hover-line]")].map((e) => e.textContent)).toEqual([
+      "PROJ-120",
+      "Resolved",
+    ]);
   });
 
   it("is no link when the issue cannot be opened, and shows the detail on focus or tap (BR2.3, R-01, R-07)", async () => {
@@ -180,4 +217,37 @@ describe("Issue badge on the card (M6, task-card-tags)", () => {
     );
     expectOnlyCatalogueText(c, (ok, msg) => expect(ok, msg).toBe(true));
   });
+});
+
+describe("Issue badge on task rows and the task top bar (FR1.1, FR1.2, FR5.1, FR5.3, FR5.5)", () => {
+  const surfaces = [
+    { name: "Home > Tasks row", props: { surface: "task-list" } },
+    { name: "sidebar row", props: { surface: "sidebar" } },
+    { name: "desktop top bar", props: { presentation: "desktop", activeSessionId: null, sessionIds: [] } },
+    { name: "phone top bar", props: { presentation: "mobile", activeSessionId: null, sessionIds: [] } },
+  ];
+  for (const { name, props } of surfaces) {
+    it(`shows the badge for a linked task and nothing for an unlinked one on the ${name}`, async () => {
+      const { host } = setup([link("task-1")]);
+      const store = createLinksStore(host);
+      const Badge = createIssueBadge(host, store);
+      const slot = (taskId: string) => ({
+        slotProps: { taskId, workspaceId: "ws-1", workflowStepId: "s", ...props },
+      });
+      const both = () =>
+        React.createElement(
+          "div",
+          null,
+          React.createElement(Badge, slot("task-1")),
+          React.createElement(Badge, slot("task-2")),
+        );
+      const c = await mount(both, {});
+      const badge = byTestId(c, "backlog-issue-badge-task-1")!;
+      expect(badge.textContent).toBe("PROJ-120 · Resolved");
+      expect(badge.getAttribute("href")).toBe(`https://${HOST}/view/PROJ-120`);
+      expect(byTestId(c, "backlog-issue-badge-task-2")).toBeNull();
+      // FR5.5: the host's phone menu rules, a 44px touch target.
+      expect(badge.classList.contains("min-h-11")).toBe(props.presentation === "mobile");
+    });
+  }
 });

@@ -4,13 +4,14 @@
 |---|---|---|
 | Backend language | Go | `go 1.26.0` (go.mod) |
 | Plugin SDK | `github.com/kandev/kandev/pkg/pluginsdk` (local `replace` to `../kandev/apps/backend`) | Kandev `v0.96.0`, commit `f099a46dc7aab16f6ff5806cd29b2b480296303f` (`.kandev-sdk-ref`) |
+| UI plugin SDK | `@kandev/plugin-sdk` (tsconfig path alias to `../../kandev/apps/packages/plugin-sdk/src/index.ts`), types only | same Kandev pin |
 | RPC (indirect) | `hashicorp/go-plugin` / gRPC | v1.8.0 / v1.83.1 |
 | HTTP | Go stdlib `net/http` | — |
-| UI language | TypeScript (strict), TSX with host-provided React | ~6.0.3 |
+| UI language | TypeScript (strict), TSX via `h` factory with host-provided React and host UI kit (`Tooltip*`, `Popover*` available) | ~6.0.3 |
 | UI bundler | esbuild | ^0.28.2 |
 | Node | `.nvmrc` | 22 |
-| Tests | Go `testing` + testify; Vitest + jsdom | testify v1.12.1; vitest ^5.0.3 |
-| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 (both via `go run`, pinned in `Makefile`) |
+| Tests | Go `testing` + testify; Vitest + jsdom | testify v1.12.1; vitest ^5.0.3, jsdom ^30.1.2 |
+| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 (both via `go run`, pinned in `Makefile`); eslint ^10, prettier ^3.9 |
 | Build | GNU Make (bash, `-eu -o pipefail`) | — |
 | CI/CD | GitHub Actions | `.github/workflows/ci.yml`, `release.yml` |
 | Merge gating | GitHub repository ruleset on `main` | ruleset `24580280` |
@@ -26,10 +27,9 @@
 | actions/download-artifact | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
 | actions/attest-build-provenance (release only) | v4.2.2 | `4d101475d8b20a2381f78447822ac1eab6504dd8` |
 
-## Runtime Environment (observed, self-hosted)
+## Runtime Environment (observed, self-hosted, intent 261007)
 
-- Kandev v0.97.0, systemd user service `kandev --headless` on `:38429`.
-- Fronted by `tailscale serve` `https://webfrontier.tail152aaa.ts.net` -> `http://localhost:38429`.
-- Drift: runtime 0.97.0 vs SDK pin and `min_kandev_version` 0.96.0.
+- Kandev v0.97.0, systemd user service `kandev --headless`, fronted by `tailscale serve`.
+- Drift: runtime 0.97.0 vs SDK pin and `min_kandev_version` 0.96.0. Kandev v0.97.0 adds no plugin nav gating either.
 
 Library inventory: [dependencies.md](dependencies.md).

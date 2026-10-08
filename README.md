@@ -7,9 +7,10 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 - Adds a **Backlog** card under **Settings > Integrations**, with the plugin's outline icon and
   an on/off switch. The card holds every Backlog setting as framed sections: Connection,
-  PR watches, Issue watches, Saved queries, Quick actions, Issue sync, Source control (with
-  Git access) and Projects.
-- Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page. It opens the
+  Projects, PR watches, Issue watches, Saved queries, Quick actions, Issue sync and Source
+  control (with Git access).
+- Adds one **Backlog** entry to the **Integrations** menu on the Kandev home page when Backlog is
+  on in at least one workspace when Kandev loads (see [Turn Backlog on or off](#turn-backlog-on-or-off)). It opens the
   `/backlog` page with an **Issues** and a **Pull requests** list, like the GitHub integration:
   a scope bar with the two kinds, a built-in preset and a **Saved** menu, a toolbar with the
   filters and refresh, and the results below.
@@ -31,6 +32,19 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
   browser and never written to logs.
 
 ## Upgrade notes
+
+### 0.5.0: Backlog issue on task rows and the task top bar
+
+- The Backlog issue badge now shows on Home > Tasks rows, in the sidebar task list and in the
+  task top bar (right of the workflow steps), not only on Kanban cards. Hover or focus it to see
+  the issue key, summary and status; click it to open the issue.
+- The issue summary is filled in for existing links at the next issue sync; until then the badge
+  shows the key and status.
+- Home > Integrations shows Backlog only when Backlog is on in at least one workspace. After
+  turning Backlog on or off, reload the page. The Settings > Integrations card is always there.
+- Backlog settings: Projects now comes right after the connection; the empty issue watch list
+  says "No issue watches yet"; the extra "Add watch" button inside empty watch lists is gone.
+- Nothing to do after upgrading: no setting or permission changes.
 
 ### 0.4.2: smaller package, install From URL
 
@@ -106,8 +120,14 @@ Backlog is off by default after installation, in every workspace. A Kandev admin
 for one workspace with the switch on the Backlog card, then **Save**, and then connects. The
 same switch turns it off again. While it is off, the plugin refuses to connect or call Backlog
 for that workspace, but it keeps the existing connection: turning it back on restores it
-without connecting again. The home entry and the `/backlog` page stay
-available, so Backlog can always be turned back on.
+without connecting again. The **Backlog** card under **Settings > Integrations** always stays,
+so Backlog can always be turned back on.
+
+The **Backlog** entry in the home **Integrations** menu (and the `/backlog` page) is added only
+when Backlog is on in at least one workspace when Kandev loads. Kandev cannot hide a menu entry
+after it has loaded, so after turning Backlog on or off, reload the page to show or hide the
+entry. If the plugin cannot read the on/off state at load (an error, or no answer within
+3 seconds), it shows the entry.
 
 The plugin icon is an original outline drawing, not the Nulab logo; see
 [docs/brand/backlog-logo.md](docs/brand/backlog-logo.md).
@@ -373,7 +393,11 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
   handled before, never gets another one. A watch stops with a visible error when Backlog refuses
   the sign-in, the workflow was removed, or its ledger of 5000 handled issues is full. Rows have
   Edit, Run now, Pause/Resume and Delete; deleting a watch keeps its tasks and links.
-- **Badge and status sync.** A linked task's card shows a badge such as `PROJ-120 · Resolved`. The
+- **Badge and status sync.** A linked task shows a badge such as `PROJ-120 · Resolved` on its
+  Kanban card, on its row in **Home > Tasks** and the sidebar task list, and in the task top bar
+  (right of the workflow steps). Hovering or focusing the badge shows the issue key, summary and
+  status; clicking it opens the issue in a new tab. The summary is stored with the link and
+  refreshed with the status, so older links show it after the next check. The
   plugin checks the status of linked issues every 5 minutes by default; an admin can set the
   interval (at least 1 minute) in the **Issue sync** section of the Backlog settings, and
   **Refresh** on the Issues list checks at once. A badge says **may be out of date** after three failed checks,

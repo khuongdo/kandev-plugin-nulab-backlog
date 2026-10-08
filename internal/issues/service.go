@@ -456,7 +456,7 @@ func (s *Service) newLink(snap connection.Snapshot, issue backlog.Issue, task Ta
 	now := s.now()
 	project, _, _ := ParseIssueKey(issue.IssueKey)
 	return Link{IssueKey: issue.IssueKey, IssueID: issue.ID, ProjectKey: project, SpaceHost: snap.SpaceHost,
-		TaskID: task.ID, TaskKey: task.Key, State: StateActive, LastKnownStatus: issue.StatusName,
+		TaskID: task.ID, TaskKey: task.Key, Summary: issue.Summary, State: StateActive, LastKnownStatus: issue.StatusName,
 		StatusUpdatedAt: now, ConnectionEpoch: snap.ConnectionEpoch, CreatedAt: now}
 }
 
@@ -613,6 +613,7 @@ type LinkView struct {
 	TaskID          string `json:"taskId"`
 	TaskKey         string `json:"taskKey,omitempty"`
 	IssueKey        string `json:"issueKey"`
+	Summary         string `json:"summary,omitempty"`
 	SpaceHost       string `json:"spaceHost"`
 	State           string `json:"state"`
 	Status          string `json:"status,omitempty"`
@@ -630,7 +631,7 @@ func (s *Service) Links(ctx context.Context, ws string) ([]LinkView, error) {
 	}
 	out := make([]LinkView, 0, len(links))
 	for _, l := range links {
-		out = append(out, LinkView{TaskID: l.TaskID, TaskKey: l.TaskKey, IssueKey: l.IssueKey, SpaceHost: l.SpaceHost,
+		out = append(out, LinkView{TaskID: l.TaskID, TaskKey: l.TaskKey, IssueKey: l.IssueKey, Summary: l.Summary, SpaceHost: l.SpaceHost,
 			State: l.State, Status: l.LastKnownStatus, StatusUpdatedAt: l.StatusUpdatedAt, Stale: l.Stale(),
 			Unavailable: l.Unavailable, URL: IssueURL(l.SpaceHost, l.IssueKey)})
 	}

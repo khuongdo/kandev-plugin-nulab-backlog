@@ -54,5 +54,12 @@
     "dirName": "261008-ci-path-filter",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a11903-e4b2-7287-97f5-de59c87263f7",
+    "slug": "fix-uiux-backlog",
+    "dirName": "261008-fix-uiux-backlog",
+    "scope": "express",
+    "status": "in-flight"
   }
 ]

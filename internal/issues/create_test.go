@@ -23,7 +23,7 @@ func TestU3_Create_MakesTheTaskAndLink(t *testing.T) {
 		Description: "Steps in the attachment.\n\nBacklog: https://" + spaceHost + "/view/PROJ-118", Priority: "high"}}, r.host.creates)
 	l := byTask(r.links(t), "task-19")
 	require.Equal(t, Link{IssueKey: "PROJ-118", IssueID: 5118, ProjectKey: "PROJ", SpaceHost: spaceHost, TaskID: "task-19",
-		TaskKey: "T-19", State: StateActive, LastKnownStatus: "In Progress", StatusUpdatedAt: l.StatusUpdatedAt,
+		TaskKey: "T-19", Summary: "Fix login timeout", State: StateActive, LastKnownStatus: "In Progress", StatusUpdatedAt: l.StatusUpdatedAt,
 		ConnectionEpoch: 1, CreatedAt: l.CreatedAt}, l, "AC3.1.1")
 	require.NotEmpty(t, l.CreatedAt)
 	require.Equal(t, []backlog.CallClass{backlog.Interactive}, r.gw.classes["issue"])

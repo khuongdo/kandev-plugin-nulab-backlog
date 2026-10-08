@@ -4,6 +4,7 @@ import { en } from "../messages/en";
 import { actionError, fakeHost } from "../testing/harness";
 import {
   badgeDetail,
+  badgeHover,
   badgeHref,
   badgeText,
   issueQueryFilters,
@@ -143,5 +144,20 @@ describe("issues state helpers (M2, M6)", () => {
     expect(badgeHref({ ...LINK, url: "https://team.backlog.jp/view/A-1" })).toBe(
       "https://team.backlog.jp/view/A-1",
     );
+  });
+});
+
+describe("badgeHover (FR1.4, FR5.2)", () => {
+  it("lists the key, the summary and the status", () => {
+    expect(badgeHover({ ...LINK, issueKey: "PROJ-12", summary: "Fix login", status: "In Progress" })).toEqual(
+      ["PROJ-12", "Fix login", "In Progress"],
+    );
+  });
+
+  it("leaves out an unknown summary instead of an empty line", () => {
+    expect(badgeHover({ ...LINK, issueKey: "PROJ-12", summary: undefined, status: "In Progress" })).toEqual([
+      "PROJ-12",
+      "In Progress",
+    ]);
   });
 });

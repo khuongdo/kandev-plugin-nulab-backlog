@@ -17,7 +17,7 @@ beforeAll(async () => {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(views: Record<string, { enabled?: boolean } | Error>) {
+function setup(views: Record<string, { enabled?: boolean } | Error | "hang">) {
   const registry = {
     registerIntegrationSettings: vi.fn(),
     registerNavItem: vi.fn(),
@@ -42,6 +42,7 @@ function setup(views: Record<string, { enabled?: boolean } | Error>) {
       invokeAction: vi.fn(async (_key: string, input: { workspaceId: string }) => {
         const v = views[input.workspaceId];
         if (v instanceof Error) throw v;
+        if (v === "hang") return new Promise(() => undefined);
         return { connected: false, state: "not_connected", hasApiKey: false, ...v };
       }),
     },
@@ -97,12 +98,43 @@ describe("plugin entry", () => {
     });
   });
 
-  it("registers the entry and the route even when Backlog is off everywhere", async () => {
+  it("adds no Integrations entry or route when Backlog is OFF in every workspace, but keeps the settings card (FR3.1, FR3.3, FR3.5)", async () => {
     const s = setup({ "ws-1": { enabled: false }, "ws-2": { enabled: false } });
     await s.init();
-    await flush();
+    expect(s.registry.registerNavItem).not.toHaveBeenCalled();
+    expect(s.registry.registerRoute).not.toHaveBeenCalled();
+    expect(s.registry.registerIntegrationSettings).toHaveBeenCalledTimes(1);
+    expect(s.host.setIntegrationEnabled).toHaveBeenCalledWith("nulab-backlog", "ws-1", false);
+  });
+
+  it("adds the entry and the route when Backlog is ON in one workspace (FR3.1)", async () => {
+    const s = setup({ "ws-1": { enabled: false }, "ws-2": { enabled: true } });
+    await s.init();
     expect(s.registry.registerNavItem).toHaveBeenCalledTimes(1);
     expect(s.registry.registerRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds the entry when the ON/OFF state cannot be read (fail open, FR3.4)", async () => {
+    const s = setup({ "ws-1": { enabled: false }, "ws-2": actionError(500, { code: "internal" }) });
+    await s.init();
+    expect(s.registry.registerNavItem).toHaveBeenCalledTimes(1);
+    expect(s.registry.registerRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops waiting for the ON/OFF state well within the host's 10 s initialize limit and fails open (NFR3, FR3.4)", async () => {
+    const { ENTRY_CHECK_TIMEOUT_MS } = await import("./index");
+    expect(ENTRY_CHECK_TIMEOUT_MS).toBeLessThan(10_000);
+    vi.useFakeTimers();
+    try {
+      const s = setup({ "ws-1": { enabled: false }, "ws-2": "hang" });
+      const done = s.init();
+      await vi.advanceTimersByTimeAsync(ENTRY_CHECK_TIMEOUT_MS);
+      await done;
+      expect(s.registry.registerNavItem).toHaveBeenCalledTimes(1);
+      expect(s.registry.registerRoute).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("has exactly one Integrations entry and one route, /backlog (BR2.1, FR2.1, FR2.2)", async () => {
@@ -149,6 +181,16 @@ describe("plugin entry", () => {
         Component: expect.any(Function),
       }),
     );
+  });
+
+  it("registers one shared issue badge for Kanban cards, task rows and the task top bar (FR1.1-FR1.3, FR5.1, NFR2)", async () => {
+    const s = setup({});
+    await s.init();
+    const slots = ["task-card-tags", "task-row-metadata", "chat-top-bar"];
+    const calls = s.registry.registerComponent.mock.calls.filter(([slot]) => slots.includes(slot as string));
+    expect(calls.map(([slot]) => slot)).toEqual(slots);
+    // One component (so one links store): every slot shares one issues.links.list per workspace.
+    expect(new Set(calls.map(([, c]) => c)).size).toBe(1);
   });
 
   it("publishes each workspace's switch at start, only after a successful load (BR7.5)", async () => {

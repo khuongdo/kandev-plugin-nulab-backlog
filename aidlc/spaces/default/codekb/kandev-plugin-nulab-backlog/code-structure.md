@@ -5,13 +5,13 @@
 | Path | Classification | Notes |
 |---|---|---|
 | `server/main.go` | entrypoint | `pluginsdk.Serve(plugin.NewRuntime())` only |
-| `internal/plugin/` | adapter | handlers map, webhook, events, host port, credentials; `Version`/`SDKRef` set by ldflags |
+| `internal/plugin/` | adapter | handlers map, webhook, events, host port, credentials; `issue_actions.go` holds the `issues.*` handlers (e.g. `issues.links.list`); `Version`/`SDKRef` set by ldflags |
 | `internal/connection/`, `internal/issues/`, `internal/git/`, `internal/scm/` | domain services | see [component-inventory.md](component-inventory.md) |
 | `internal/backlog/`, `internal/github/`, `internal/gitlab/`, `internal/bitbucket/` | HTTP clients | stdlib `net/http`, `testdata/` JSON fixtures |
 | `internal/redact/`, `internal/testutil/` | utility / test helper | |
 | `internal/pkgverify/`, `cmd/verifypkg/` | build tooling | offline package verifier |
 | `internal/ci/`, `cmd/ci/` | build tooling | `secrets`, `workflows`, `contract`, `preflight`, `marketplace` |
-| `ui/src/` | UI bundle source | `index.ts` registration; areas `settings/`, `issues/`, `git/`, `page/`, `switch/`, `brand/`, `messages/`, `testing/` |
+| `ui/src/` | UI bundle source | see [UI source](#ui-source-uisrc) |
 | `manifest.yaml` | plugin contract | see [api-documentation.md](api-documentation.md) |
 | `Makefile` | build | every CI step goes through it |
 | `.github/workflows/` | CI/CD | `ci.yml`, `release.yml`; see [architecture.md](architecture.md#ci-and-release-pipeline) |
@@ -40,6 +40,30 @@ What each top-level path means for CI and release (developer scan, 2026-10-08):
 | `README.md`, `LICENSE`, `.gitignore` | non-app | read by no target |
 | `build/`, `dist/` | generated | local output, not inputs |
 
+## Issues Package (`internal/issues/`)
+
+- `types.go`: persisted records, including `Link` (issue key/id, project, space host, task, state, `LastKnownStatus`, `StatusUpdatedAt`, fail count, connection epoch) and `IssueURL`.
+- `service.go`: `Service` — `Link`/`newLink` (create a link), `Links` -> `[]LinkView` (UI view with status, stale, unavailable, `url`), `Detail` (live issue read, the only place with `Summary`).
+- `sync.go`: periodic status refresh of links (updates `LastKnownStatus`).
+- Others (watches, queries, quick actions, leak tests) not re-read in this run.
+
+## UI Source (`ui/src/`)
+
+| Path | Role |
+|---|---|
+| `index.ts` | `initialize`: all host registrations (table in [architecture.md](architecture.md#ui-surfaces-host-slots)) |
+| `host-ui.ts` | typed access to the host UI kit |
+| `issues/issue-badge.tsx` | `createIssueBadge` — task badge (key + status chip, link to issue) |
+| `issues/issues-state.ts` | `LinkView` TS type, `badgeHref` (https + Backlog host re-check), badge text helpers |
+| `issues/links-store.ts` | `LinksStore` — one `issues.links.list` per workspace, shared |
+| `issues/i18n.ts`, `messages/en.ts` | message catalogue (`messagesFor` falls back to English; only `en` exists) |
+| `switch/enabled-events.ts`, `switch/integration-switch.tsx` | plugin-owned bus and switch for the per-workspace Backlog ON/OFF |
+| `settings/SettingsScreen.tsx` | Backlog settings page; section order: connection, pr-watches, issue-watches, saved-queries, quick-actions, issue-sync, source-control, projects |
+| `settings/issue-watches-section.tsx`, `settings/pr-watches-section.tsx` | watch lists; header action `add(...)` plus an empty-state `add(...)` |
+| `settings/section-parts.tsx` | `SettingsSection`, `ListEmpty` (children optional) |
+| `settings/*`, `git/`, `page/`, `brand/` | other settings sections, Git UI, `/backlog` page, brand assets |
+| `testing/harness.ts` | shared fake host for Vitest |
+
 ## Build and Packaging
 
 `Makefile` (GNU Make, `SHELL := /bin/bash`, `-eu -o pipefail`). Every Go target first runs `check-sdk`: `../kandev` HEAD must equal `.kandev-sdk-ref`.
@@ -60,11 +84,20 @@ What each top-level path means for CI and release (developer scan, 2026-10-08):
 | `release-preflight` | needs `TAG`; tag format, tag == manifest version, tag on `origin/main`, no existing Release, first-release record in `docs/manual-checks/` |
 | `marketplace-entry`, `clean`, `help` | not used by CI |
 
-The platform list lives in four places: `manifest.yaml` `runtime.executables`, `Makefile` `PLATFORMS`, `internal/pkgverify` executables, `internal/plugin/manifest_test.go`.
+Packaging pipeline:
+
+1. `build` -> `build/server/plugin-{linux-amd64,linux-arm64,darwin-amd64,darwin-arm64}` (`CGO_ENABLED=0`, `-trimpath`, `-ldflags "-s -w -X ..."`).
+2. `ui-build` -> `build/ui/bundle.js` (esbuild).
+3. `package` -> stage `build/stage/{manifest.yaml,server/*,ui/bundle.js}` -> Kandev `cmd/plugin-pack` -> `dist/nulab-backlog-<version>.tar.gz` + `dist/checksums.txt`.
+4. `verify-package` -> `cmd/verifypkg` (checksums, required files, manifest id/version, executables, no Nulab asset URL in the bundle).
+5. `contract-test` -> builds Kandev at `min_kandev_version`, installs the package over loopback, calls two actions.
+
+The platform set lives in four places: `manifest.yaml` `runtime.executables`, `Makefile` `PLATFORMS`, `internal/pkgverify` `executables`, `internal/plugin/manifest_test.go` (`internal/plugin/testdata/v030/manifest.yaml` is a frozen 0.3.0 snapshot).
 
 ## Code Patterns
 
 - Ports-and-adapters: only `internal/plugin` maps domain errors to `pluginsdk` codes.
 - Errors wrapped with `%w`; `context.Context` first on I/O; responses bounded by `io.LimitReader`.
-- Tests co-located (`_test.go`, `*.test.ts[x]`), fake servers via `httptest`.
+- UI: factories `createXxx(host, ...)` return host-React components via the `h` JSX factory; test ids prefixed `backlog-`.
+- Tests co-located (`_test.go`, `*.test.ts[x]`), fake servers via `httptest`, fake host via `ui/src/testing/harness.ts`.
 - Makefile targets carry comments with traceability IDs (US7.4, AC7.5.2, R-01..R-03).
