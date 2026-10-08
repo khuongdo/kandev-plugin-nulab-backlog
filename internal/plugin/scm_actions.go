@@ -44,7 +44,13 @@ const (
 	actionSCMWatchesRun     = "scm.watches.run"
 	actionSCMWatchesPause   = "scm.watches.pause"
 	actionSCMWatchesResume  = "scm.watches.resume"
+	// actionSCMUseCLI connects GitHub or GitLab with the gh / glab login of
+	// the Kandev server (intent 261008-gh-cli-auth, FR1.2, FR2.1).
+	actionSCMUseCLI = "scm.providers.use_cli"
 )
+
+// codeCLIUnavailable: gh / glab is missing or not logged in on the Kandev server (FR4.1).
+const codeCLIUnavailable = "cli_unavailable"
 
 func init() { maps.Copy(handlers, scmHandlers) }
 
@@ -99,6 +105,9 @@ var scmHandlers = map[string]handler{
 	}),
 	actionSCMRemove: withProvider(func(r *Runtime, ctx context.Context, ws string, in providerBody) (any, error) {
 		return r.scm.RemoveToken(ctx, ws, in.Provider)
+	}),
+	actionSCMUseCLI: withProvider(func(r *Runtime, ctx context.Context, ws string, in providerBody) (any, error) {
+		return r.scm.UseCLI(ctx, ws, in.Provider)
 	}),
 	actionSCMRepos: withProvider(func(r *Runtime, ctx context.Context, ws string, in providerBody) (any, error) {
 		repos, err := r.scm.SearchRepos(ctx, ws, in.Provider, in.Query)
@@ -190,6 +199,8 @@ func classifySCM(err error) (out outcome, ok bool) {
 		return code(connection.CodeUnreachable)
 	case errors.Is(err, scm.ErrConflict):
 		return code(connection.CodeConflict)
+	case errors.Is(err, scm.ErrCLIUnavailable):
+		return code(codeCLIUnavailable)
 	case errors.Is(err, scm.ErrNoToken):
 		return outcome{Outcome: connection.Outcome{Code: connection.CodeValidation, Field: scm.FieldToken}}, true
 	}

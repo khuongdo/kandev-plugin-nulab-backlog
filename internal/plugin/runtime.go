@@ -308,7 +308,7 @@ func statusFor(code string) int {
 		return 409
 	case connection.CodeRateLimited:
 		return 429
-	case connection.CodeUnreachable:
+	case connection.CodeUnreachable, codeCLIUnavailable:
 		return 503
 	default:
 		return 500

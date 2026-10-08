@@ -41,6 +41,7 @@ type Mapping struct {
 // in Kandev's secret store (NFR1); HasToken says whether one is stored.
 type Settings struct {
 	Provider  Provider  `json:"provider"`
+	Source    string    `json:"source,omitempty"` // "" or MethodToken: a typed token; MethodCLI: the CLI login (FR6.1)
 	HasToken  bool      `json:"hasToken"`
 	Account   string    `json:"account,omitempty"`   // the token's account name (FR2.4)
 	AccountID string    `json:"accountId,omitempty"` // matches PullRequest.AuthorID for "me"

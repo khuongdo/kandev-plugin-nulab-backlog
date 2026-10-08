@@ -17,6 +17,10 @@ var (
 	// ErrNoToken means the provider has no token in this workspace; its text
 	// says where to add one.
 	ErrNoToken = errors.New("no access token is stored for this provider; add one under Source control in the Backlog settings")
+	// ErrCLIUnavailable means gh or glab is missing, not logged in, timed out
+	// or printed no usable token on the Kandev server (FR4.1). It never holds
+	// the CLI's output (NFR1).
+	ErrCLIUnavailable = errors.New("the gh or glab CLI is not available or not logged in on the Kandev server")
 )
 
 // HTTPError is a failed provider call (NFR5), shared by the three clients.

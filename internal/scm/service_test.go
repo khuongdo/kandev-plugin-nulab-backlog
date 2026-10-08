@@ -3,7 +3,9 @@ package scm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/testutil"
 )
 
 // FR2.1: every provider is listed, not configured until it has a token.
@@ -37,7 +40,8 @@ func TestSetToken_StoresTheSecretAndTheAccount(t *testing.T) {
 
 	views, err := h.svc.Providers(h.ctx, ws)
 	require.NoError(t, err)
-	require.Equal(t, ProviderView{Provider: GitHub, State: StateConnected, Account: "Lan", Mappings: []Mapping{}}, views[0])
+	require.Equal(t, ProviderView{Provider: GitHub, State: StateConnected, Method: MethodToken, Account: "Lan",
+		Mappings: []Mapping{}}, views[0])
 	b, _ := json.Marshal(views)
 	state, _ := json.Marshal(h.state.data)
 	h.assertNoTokenLeak(t, string(b), string(state))
@@ -309,4 +313,214 @@ func TestCredentialRead_FailuresAreStoreErrors(t *testing.T) {
 	h.secrets.data[SecretKey(GitHub, ws)] = "{broken"
 	_, err = h.svc.Test(h.ctx, ws, GitHub)
 	require.ErrorIs(t, err, connection.ErrStore)
+}
+
+// settingsFor reads p's stored settings.
+func (h *harness) settingsFor(t *testing.T, p Provider) Settings {
+	t.Helper()
+	st, err := h.svc.settings(h.ctx, ws, p)
+	require.NoError(t, err)
+	return st
+}
+
+func (h *harness) cliCached(p Provider) bool {
+	h.svc.cli.mu.Lock()
+	defer h.svc.cli.mu.Unlock()
+	_, ok := h.svc.cli.tokens[p]
+	return ok
+}
+
+// lastCred is the credential of p's last provider call.
+func (h *harness) lastCred(p Provider) Credential {
+	f := h.clients[p]
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.creds[len(f.creds)-1]
+}
+
+// FR1.2, FR1.3, FR2.1: the CLI token is checked, a typed token is deleted,
+// only the method and account are stored.
+func TestUseCLI_ConnectsGitHubAndGitLab(t *testing.T) {
+	for _, p := range []Provider{GitHub, GitLab} {
+		t.Run(string(p), func(t *testing.T) {
+			h := newHarness(t)
+			h.connect(t, p)
+			cliTok := testutil.Token(t)
+			cli := h.withCLI(cliTok)
+			v, err := h.svc.UseCLI(h.ctx, ws, p)
+			require.NoError(t, err)
+			require.Equal(t, ProviderView{Provider: p, State: StateConnected, Method: MethodCLI, Account: "Lan",
+				Mappings: []Mapping{}}, v)
+			require.Equal(t, cliTok, h.lastCred(p).Token, "checked with the current user call")
+			require.False(t, h.hasToken(p), "the typed token is deleted")
+			st := h.settingsFor(t, p)
+			require.Equal(t, Settings{Provider: p, Source: MethodCLI, HasToken: true, Account: "Lan", AccountID: "lan-id"}, st)
+			require.Equal(t, 1, cli.count())
+			state, _ := json.Marshal(h.state.data)
+			testutil.AssertNoLeak(t, string(state)+h.logs.String(), cliTok)
+		})
+	}
+}
+
+// FR2.3: Bitbucket has no CLI login.
+func TestUseCLI_BitbucketIsAFieldError(t *testing.T) {
+	h := newHarness(t)
+	h.withCLI("x")
+	_, err := h.svc.UseCLI(h.ctx, ws, Bitbucket)
+	require.Equal(t, FieldProvider, fieldOf(t, err))
+	_, err = h.svc.UseCLI(h.ctx, ws, "gitea")
+	require.Equal(t, FieldProvider, fieldOf(t, err))
+}
+
+// FR4.1: a failing CLI or a refused CLI token changes nothing.
+func TestUseCLI_FailuresChangeNothing(t *testing.T) {
+	h := newHarness(t)
+	h.connect(t, GitHub)
+	before := h.settingsFor(t, GitHub)
+	cli := h.withCLI("")
+	cli.set("", errors.New("exit status 1"))
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.ErrorIs(t, err, ErrCLIUnavailable)
+
+	cli.set(testutil.Token(t), nil)
+	h.clients[GitHub].setErr("CurrentUser", &HTTPError{Provider: GitHub, Status: 401})
+	_, err = h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.True(t, IsStatus(err, 401))
+	require.False(t, h.cliCached(GitHub), "a refused token is not kept")
+
+	require.True(t, h.hasToken(GitHub), "the typed token stays")
+	require.Equal(t, before, h.settingsFor(t, GitHub))
+}
+
+// FR3.1: a CLI provider's calls use the CLI token, never the secret store.
+func TestCredential_CLIProviderNeverReadsTheSecretStore(t *testing.T) {
+	h := newHarness(t)
+	cliTok := testutil.Token(t)
+	h.withCLI(cliTok)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	h.secrets.failGet = true
+	_, err = h.svc.SearchRepos(h.ctx, ws, GitHub, "web")
+	require.NoError(t, err)
+	require.Equal(t, cliTok, h.lastCred(GitHub).Token)
+}
+
+// FR1.3, FR5.3: a typed token replaces the CLI; remove clears the source and keeps mappings.
+func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
+	h := newHarness(t)
+	h.withCLI(testutil.Token(t))
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitHub, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
+	require.NoError(t, err)
+	require.True(t, h.cliCached(GitHub))
+
+	v, err := h.svc.SetToken(h.ctx, ws, TokenInput{Provider: GitHub, Token: h.tokens[GitHub]})
+	require.NoError(t, err)
+	require.Equal(t, MethodToken, v.Method)
+	require.False(t, h.cliCached(GitHub))
+	_, err = h.svc.SearchRepos(h.ctx, ws, GitHub, "")
+	require.NoError(t, err)
+	require.Equal(t, h.tokens[GitHub], h.lastCred(GitHub).Token)
+
+	_, err = h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	v, err = h.svc.RemoveToken(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	require.Equal(t, StateNotConfigured, v.State)
+	require.Empty(t, v.Method)
+	require.Equal(t, []Mapping{{ProjectKey: "PROJ", Repos: []string{"acme/web"}}}, v.Mappings)
+	require.False(t, h.cliCached(GitHub))
+	require.Empty(t, h.settingsFor(t, GitHub).Source)
+	_, err = h.svc.SearchRepos(h.ctx, ws, GitHub, "")
+	require.ErrorIs(t, err, ErrNoToken)
+}
+
+// FR4.2, FR4.3: Test asks the CLI again, records cli_unavailable, and clears it once the CLI works.
+func TestTest_CLIProviderRecordsAndClearsCLIUnavailable(t *testing.T) {
+	h := newHarness(t)
+	cli := h.withCLI(testutil.Token(t))
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+
+	cli.set("", errors.New("exit status 1"))
+	v, err := h.svc.Test(h.ctx, ws, GitHub)
+	require.NoError(t, err, "a failed test is a result")
+	require.Equal(t, StateError, v.State)
+	require.Equal(t, ErrorCLIUnavailable, v.LastError)
+	require.Equal(t, MethodCLI, v.Method)
+
+	fresh := testutil.Token(t)
+	cli.set(fresh, nil)
+	v, err = h.svc.Test(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	require.Equal(t, StateConnected, v.State)
+	require.Empty(t, v.LastError)
+	require.Equal(t, fresh, h.lastCred(GitHub).Token, "the test does not reuse the cache")
+}
+
+// FR3.3: after the server's CLI login changes, calls use the new token once the cache expires.
+func TestCredential_NewCLITokenAfterExpiry(t *testing.T) {
+	h := newHarness(t)
+	first, second := testutil.Token(t), testutil.Token(t)
+	cli := h.withCLI(first)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitLab)
+	require.NoError(t, err)
+	cli.set(second, nil)
+	_, err = h.svc.SearchRepos(h.ctx, ws, GitLab, "")
+	require.NoError(t, err)
+	require.Equal(t, first, h.lastCred(GitLab).Token)
+	h.now = h.now.Add(cliTTL)
+	_, err = h.svc.SearchRepos(h.ctx, ws, GitLab, "")
+	require.NoError(t, err)
+	require.Equal(t, second, h.lastCred(GitLab).Token)
+}
+
+// FR3.2: the link refresh forgets a CLI token the provider rejects.
+func TestRefreshLinks_ForgetsARejectedCLIToken(t *testing.T) {
+	h := newHarness(t)
+	h.withCLI(testutil.Token(t))
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitHub, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
+	require.NoError(t, err)
+	h.clients[GitHub].setPRs("acme/web", pr(GitHub, "acme/web", 1, "x", "b", StateOpen))
+	_, err = h.svc.Link(h.ctx, ws, "task-1", "https://github.com/acme/web/pull/1")
+	require.NoError(t, err)
+	require.True(t, h.cliCached(GitHub))
+	h.clients[GitHub].setErr("GetPR", &HTTPError{Provider: GitHub, Status: 401})
+	h.svc.RefreshLinks(h.ctx, ws)
+	require.False(t, h.cliCached(GitHub))
+}
+
+// NFR1: no CLI token in logs, errors or the provider list.
+func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
+	h := newHarness(t)
+	cliTok := testutil.Token(t)
+	cli := h.withCLI(cliTok)
+	var texts []string
+	for _, p := range []Provider{GitHub, GitLab} {
+		_, err := h.svc.UseCLI(h.ctx, ws, p)
+		require.NoError(t, err)
+		_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: p, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
+		require.NoError(t, err)
+		h.clients[p].setPRs("acme/web", pr(p, "acme/web", 1, "x", "b", StateOpen))
+		_, err = h.svc.Link(h.ctx, ws, "task-1", PRURL(PRRef{Provider: p, Repo: "acme/web", Number: 1}))
+		require.NoError(t, err)
+		h.clients[p].setErr("GetPR", &HTTPError{Provider: p, Status: 401})
+	}
+	h.svc.RefreshLinks(h.ctx, ws)
+	cli.set(cliTok, errors.New("exit status 1: "+cliTok))
+	_, err := h.svc.Test(h.ctx, ws, GitHub)
+	require.NoError(t, err)
+	_, err = h.svc.UseCLI(h.ctx, ws, GitLab)
+	require.Error(t, err)
+	texts = append(texts, err.Error(), fmt.Sprintf("%+v", err))
+	views, err := h.svc.Providers(h.ctx, ws)
+	require.NoError(t, err)
+	b, _ := json.Marshal(views)
+	state, _ := json.Marshal(h.state.data)
+	texts = append(texts, string(b), string(state))
+	require.NotEmpty(t, h.logs.String())
+	testutil.AssertNoLeak(t, h.logs.String()+strings.Join(texts, "\n"), cliTok)
 }

@@ -61,5 +61,12 @@
     "dirName": "261008-fix-uiux-backlog",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a11971-93e0-7ac9-a8e8-9cdac36d8f70",
+    "slug": "gh-cli-auth",
+    "dirName": "261008-gh-cli-auth",
+    "scope": "express",
+    "status": "in-flight"
   }
 ]

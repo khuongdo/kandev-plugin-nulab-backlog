@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -343,7 +344,7 @@ var scmActions = []string{
 	actionSCMPRList, actionSCMLink, actionSCMUnlink, actionSCMLinks, actionSCMTaskPRs,
 	actionSCMQueriesList, actionSCMQueriesSave, actionSCMQueriesDelete, actionSCMQueriesRun, actionSCMQueriesDefault,
 	actionSCMWatchesList, actionSCMWatchesSave, actionSCMWatchesDelete, actionSCMWatchesRun, actionSCMWatchesPause,
-	actionSCMWatchesResume,
+	actionSCMWatchesResume, actionSCMUseCLI,
 }
 
 // FR2.6, FR4, FR5: every scm action is declared; settings changes are admin.
@@ -360,12 +361,64 @@ func TestSCM_Manifest_Actions(t *testing.T) {
 	for _, k := range scmActions {
 		want[k] = "workspace/authenticated"
 	}
-	for _, k := range []string{actionSCMSetToken, actionSCMTest, actionSCMRemove, actionSCMRepos, actionSCMMapping} {
+	for _, k := range []string{actionSCMSetToken, actionSCMTest, actionSCMRemove, actionSCMRepos, actionSCMMapping,
+		actionSCMUseCLI} {
 		want[k] = "workspace/admin"
 	}
 	for _, k := range []string{actionSCMLink, actionSCMUnlink, actionSCMTaskPRs} {
 		want[k] = "task/authenticated"
 	}
 	require.Equal(t, want, got)
-	require.Len(t, scmActions, 22)
+	require.Len(t, scmActions, 23)
+}
+
+// FR1.2, FR1.4, FR4.1, NFR1 (intent 261008-gh-cli-auth): scm.providers.use_cli
+// connects with the server's CLI login; a missing CLI is cli_unavailable;
+// the CLI token and its stderr never reach a reply or a log.
+func TestSCM_Actions_UseCLI(t *testing.T) {
+	r := newSCMRig(t)
+	cliTok := testutil.Token(t)
+	var calls []string
+	r.rt.scm.CLI = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte(cliTok + "\n"), nil
+	}
+	resp, out := r.call(t, actionSCMUseCLI, map[string]string{"provider": "github"})
+	require.Equal(t, 200, resp.Status, out)
+	require.Equal(t, "cli", out["method"])
+	require.Equal(t, "connected", out["state"])
+	require.Equal(t, "Lan", out["account"])
+	require.Equal(t, []string{"gh auth token --hostname github.com"}, calls)
+	replies := []string{string(resp.Body)}
+	resp, _ = r.call(t, actionSCMProviders, nil)
+	replies = append(replies, string(resp.Body))
+
+	r.rt.scm.CLI = func(context.Context, string, ...string) ([]byte, error) {
+		return nil, errors.New("exit status 1: glab not logged in " + cliTok)
+	}
+	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "gitlab"})
+	require.Equal(t, 503, resp.Status)
+	require.Equal(t, "cli_unavailable", errorOf(t, out)["code"])
+	replies = append(replies, string(resp.Body))
+
+	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "bitbucket"})
+	require.Equal(t, 400, resp.Status)
+	require.Equal(t, "provider", errorOf(t, out)["field"])
+
+	r.host.mu.Lock()
+	state, _ := json.Marshal(r.host.state)
+	_, hasSecret := r.host.secrets["backlog.scm.github.ws-1"]
+	r.host.mu.Unlock()
+	require.False(t, hasSecret)
+	all := strings.Join(replies, "\n") + r.logs.String() + string(state)
+	testutil.AssertNoLeak(t, all, cliTok)
+	require.NotContains(t, all, "glab not logged in", "the CLI output is never surfaced")
+}
+
+// FR4.1: classifySCM maps ErrCLIUnavailable to cli_unavailable.
+func TestSCM_ClassifyCLIUnavailable(t *testing.T) {
+	out, ok := classifySCM(fmt.Errorf("read token: %w", scm.ErrCLIUnavailable))
+	require.True(t, ok)
+	require.Equal(t, codeCLIUnavailable, out.Code)
+	require.Equal(t, 503, statusFor(out.Code))
 }

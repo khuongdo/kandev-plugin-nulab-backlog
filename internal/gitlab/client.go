@@ -17,7 +17,9 @@ type Client struct {
 // New returns the production client for https://gitlab.com/api/v4 (NFR2).
 func New() *Client {
 	return &Client{API: scm.NewAPI(scm.GitLab, "https://gitlab.com/api/v4", func(r *http.Request, c scm.Credential) {
-		r.Header.Set("PRIVATE-TOKEN", c.Token) // a personal access token with read_api (FR2.2, FR2.3)
+		// A personal access token with read_api, or glab's OAuth token: GitLab
+		// accepts both as Bearer (FR2.2, intent 261008-gh-cli-auth).
+		r.Header.Set("Authorization", "Bearer "+c.Token)
 	})}
 }
 

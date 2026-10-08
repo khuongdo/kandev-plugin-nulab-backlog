@@ -163,6 +163,8 @@ export interface Mapping {
 export interface ProviderView {
   provider: ScmProvider;
   state: string;
+  /** How the provider is connected: a typed token or the server's CLI login. */
+  method?: "token" | "cli";
   account?: string;
   lastError?: string;
   mappings: Mapping[];
@@ -180,6 +182,8 @@ export function scmNotice(error: unknown): Notice {
       return { key: "scmUnreachable", retry: true };
     case "conflict":
       return { key: "scmUnmapped" };
+    case "cli_unavailable":
+      return { key: "scmCliUnavailable", params: { cli: "gh / glab" } };
     case "validation":
       if (f.field === "token") return { key: "scmNoToken" };
   }

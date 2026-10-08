@@ -50,15 +50,16 @@ func TestNew_UsesTheFixedHost(t *testing.T) {
 	require.Equal(t, "https://gitlab.com/api/v4", New().API.BaseURL) // NFR2
 }
 
-// FR2.2, FR2.4: PRIVATE-TOKEN header, never Authorization.
+// FR2.2 (intent 261008-gh-cli-auth): Authorization: Bearer, which works for
+// personal access tokens and glab's OAuth tokens; never PRIVATE-TOKEN.
 func TestCurrentUser(t *testing.T) {
 	tok := testutil.Token(t)
 	c, hits := fake(t, map[string]string{base + "/user": "user.json"}, nil, nil)
 	u, err := c.CurrentUser(context.Background(), scm.Credential{Token: tok})
 	require.NoError(t, err)
 	require.Equal(t, scm.User{ID: "lan.dev", Name: "Lan Nguyen"}, u)
-	require.Equal(t, tok, (*hits)[0].token)
-	require.Empty(t, (*hits)[0].auth)
+	require.Equal(t, "Bearer "+tok, (*hits)[0].auth)
+	require.Empty(t, (*hits)[0].token)
 }
 
 // FR3.2, NFR4: the projects the token is a member of, searched by GitLab.
