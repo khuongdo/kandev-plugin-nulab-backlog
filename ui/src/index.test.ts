@@ -153,6 +153,11 @@ describe("plugin entry", () => {
     expect(s.registry.registerTaskAction).toHaveBeenCalledWith(
       expect.objectContaining({ placement: "link" }),
     );
+    // FR1.1: Link Backlog issue sits next to Link Backlog pull request.
+    expect(s.registry.registerTaskAction.mock.calls.map(([a]) => a.id)).toEqual([
+      "nulab-backlog-link-pr",
+      "nulab-backlog-link-issue",
+    ]);
     expect(s.registry.registerReviewProvider).toHaveBeenCalledWith(
       expect.objectContaining({ id: "nulab-backlog" }),
     );

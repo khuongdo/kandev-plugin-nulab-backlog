@@ -115,7 +115,7 @@ export function createIssuesPage(
   const { ChangeRequestList, ChangeRequestRow, IntegrationListToolbar, IntegrationRepositoryFilter } = ui;
   const { TaskRowIndicator } = ui;
   const { RowMenu } = createSectionParts(host, messages);
-  const LinkTaskDialog = createLinkTaskDialog(host, messages);
+  const LinkTaskDialog = createLinkTaskDialog(host, messages, store);
   const StartTask = createStartTask(host, messages);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;

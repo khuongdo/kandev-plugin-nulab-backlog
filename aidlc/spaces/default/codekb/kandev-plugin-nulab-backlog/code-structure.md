@@ -5,7 +5,7 @@
 | Path | Classification | Notes |
 |---|---|---|
 | `server/main.go` | entrypoint | `pluginsdk.Serve(plugin.NewRuntime())` only |
-| `internal/plugin/` | adapter | handlers map, webhook, events, host port, Backlog Git credential (`credential.go`); `issue_actions.go` holds the `issues.*` handlers, `scm_actions.go` the `scm.*` handlers; `Version`/`SDKRef` set by ldflags |
+| `internal/plugin/` | adapter | handlers map, webhook, events, host port, Backlog Git credential (`credential.go`); `issue_actions.go` holds the `issues.*` handlers (`issues.links.list`, `issues.tasks.search`, `issues.link`, `issues.unlink`, ...), `scm_actions.go` the `scm.*` handlers; `runtime.go` maps domain errors to SDK codes; `Version`/`SDKRef` set by ldflags |
 | `internal/connection/`, `internal/issues/`, `internal/git/`, `internal/scm/` | domain services | see [component-inventory.md](component-inventory.md) |
 | `internal/backlog/`, `internal/github/`, `internal/gitlab/`, `internal/bitbucket/` | HTTP clients | stdlib `net/http`, `testdata/` JSON fixtures |
 | `internal/redact/`, `internal/testutil/` | utility / test helper | |
@@ -20,7 +20,7 @@
 
 ## Top-Level Path Classification
 
-What each top-level path means for CI and release (run 1, 2026-10-08):
+What each top-level path means for CI and release (run 1, 2026-10-08, `261008-ci-path-filter`; not re-read since):
 
 | Path | Class | Why |
 |---|---|---|
@@ -36,7 +36,7 @@ What each top-level path means for CI and release (run 1, 2026-10-08):
 | `.github/workflows/` | app (CI) | `make lint` runs actionlint and `cmd/ci workflows` on these files |
 | `aidlc/`, `.claude/` | non-app | read by no target except the repo-wide `check-secrets` scan |
 | `docs/brand/` | non-app | brand note |
-| `docs/manual-checks/` | non-app for CI, **release input** | read by `release-preflight`; allow-listed in the secret scan |
+| `docs/manual-checks/` | non-app for CI, **release input** | read by `release-preflight` (`internal/ci/release.go`); allow-listed in the secret scan |
 | `README.md`, `LICENSE`, `.gitignore` | non-app | read by no target |
 | `build/`, `dist/` | generated | local output, not inputs |
 
@@ -62,33 +62,41 @@ Plugin wiring for SCM (`internal/plugin/`): `scm_actions.go` (action keys, `scmC
 
 ## Issues Package (`internal/issues/`)
 
-- `types.go`: persisted records, including `Link` (issue key/id, project, space host, task, state, `LastKnownStatus`, `StatusUpdatedAt`, fail count, connection epoch) and `IssueURL`.
-- `service.go`: `Service` — `Link`/`newLink` (create a link), `Links` -> `[]LinkView` (UI view with status, stale, unavailable, `url`), `Detail` (live issue read).
+- `types.go`: persisted records, including `Link` (issue key/id, project, space host, task, task key, `Summary`, state, `LastKnownStatus`, `StatusUpdatedAt`, fail count, connection epoch) and `IssueURL`; `ParseIssueKey` with `issueKeyPattern` `^([A-Z][A-Z0-9_]*)-([1-9][0-9]{0,8})$` (lines 56-66).
+- `service.go`: `Service` — `SearchTasks` (case-insensitive title/key match, max 20 rows, `linkedIssueKey` per task; lines ~503-528), `Link`/`newLink` (key must parse, project selected, task already linked to another issue -> `ErrConflict`; lines ~542-583), `Unlink` (`ErrNotLinked`; lines ~600-609), `Links` -> `[]LinkView` (UI view with summary, status, stale, unavailable, `url`), `Detail` (live issue read).
 - `sync.go`: periodic status refresh of links (updates `LastKnownStatus`).
-- Recorded by run 2 (before v0.5.0); not re-read since.
+- Others (watches, queries, quick actions, store, watcher, leak tests) not re-read by the `261008-link-task-modal` scan.
 
 ## UI Source (`ui/src/`)
 
 | Path | Role |
 |---|---|
 | `index.ts` | `initialize`: all host registrations (table in [architecture.md](architecture.md#ui-surfaces-host-slots)) |
-| `host-ui.ts` | typed access to the host UI kit |
-| `issues/issue-badge.tsx` | `createIssueBadge` — task badge (key + status chip, link to issue) |
-| `issues/issues-state.ts` | `LinkView` TS type, `badgeHref` (https + Backlog host re-check), badge text helpers |
-| `issues/links-store.ts` | `LinksStore` — one `issues.links.list` per workspace, shared |
-| `issues/i18n.ts`, `messages/en.ts` | message catalogue (`messagesFor` falls back to English; only `en` exists); `scm*` strings for the Source control section |
+| `host-ui.ts` | typed access to the host UI kit (Dialog*, Input, Label, Button, Tooltip*, ...) |
+| `layout.ts` | shared host utility-class strings (`BUTTON`, `FIELD`, `STACK`); the plugin ships no CSS |
+| `issues/issues-page.tsx` | Issues list on `/backlog`; issue row menu "Link to task" opens `LinkTaskDialog` (wiring around lines 118, 395-418, 615-622); `addTask` updates the row after linking |
+| `issues/link-task-dialog.tsx` | `createLinkTaskDialog` — issue-side task picker: search field, task option buttons, Link/Cancel; test ids `backlog-link-task-*` |
+| `issues/task-menu.ts` | `createUnlinkMenuAction` — "Unlink Backlog issue" task-menu action; refreshes `LinksStore` |
+| `issues/issue-badge.tsx` | `createIssueBadge` — task badge (key + status chip, hover summary, link to issue) |
+| `issues/issue-panel.tsx` | task panel for the linked issue |
+| `issues/issues-state.ts` | `LinkView`/`TaskLink` TS types, `issueNotice` (error -> notice), `badgeHref` (https + Backlog host re-check), badge text helpers |
+| `issues/links-store.ts` | `LinksStore` — one `issues.links.list` per workspace, shared; `load`, `refresh`, timed refresh (60 s) and on focus |
+| `git/pr-link.ts` | `createPRLinkAction` — task-side "Link Backlog pull request" (`placement: "link"`) via host `openTaskLinkDialog`; maps `not_found`/`validation` to messages |
+| `issues/i18n.ts`, `messages/en.ts` | message catalogue (`messagesFor` falls back to English; only `en` exists): `linkToTask`, `linkTaskTitle`, `searchTasks`, `noTasksFound`, `linkedTo`, `linkPR*`, `unlinkIssue`, ...; `scm*` strings for the Source control section |
 | `switch/enabled-events.ts`, `switch/integration-switch.tsx` | plugin-owned bus and switch for the per-workspace Backlog ON/OFF |
 | `settings/SettingsScreen.tsx` | Backlog settings page and its section order |
-| `settings/source-control-section.tsx` | `createSourceControlSection`; `ProviderCard` per provider (token form: save/replace, Test, Remove; mappings). `hasToken = view.state !== "not_configured"`; calls `scm.providers.list`, `set_token`, `test`, `remove` |
+| `settings/source-control-section.tsx` | `createSourceControlSection`; `ProviderCard` per provider (token form: save/replace, Test, Remove; mappings; since v0.5.1 also the GitHub/GitLab CLI login control). `hasToken = view.state !== "not_configured"`; calls `scm.providers.list`, `set_token`, `test`, `remove` (and `use_cli` since v0.5.1) |
 | `settings/issue-watches-section.tsx`, `settings/pr-watches-section.tsx` | watch lists |
 | `settings/section-parts.tsx` | `SettingsSection`, `ListEmpty` |
+| `settings/*` (other) | other settings sections |
 | `git/git-state.ts` | `ProviderView` TS mirror, `scmNotice`, `usableProviders` (keeps `state === "connected"`) |
-| `settings/*`, `git/`, `page/`, `brand/` | other settings sections, Git UI, `/backlog` page, brand assets |
-| `testing/harness.ts` | shared fake host for Vitest |
+| `page/` | `/backlog` page; `start-task.tsx` creates a task then calls `issues.link` |
+| `brand/` | brand assets |
+| `testing/harness.ts` | shared fake host for Vitest (`fakeHost`, `mount`, `expectOnlyCatalogueText`, `axeViolations`; stubs `openTaskLinkDialog`) |
 
 ## Build and Packaging
 
-`Makefile` (GNU Make, `SHELL := /bin/bash`, `-eu -o pipefail`). Every Go target first runs `check-sdk`: `../kandev` HEAD must equal `.kandev-sdk-ref`.
+`Makefile` (GNU Make, `SHELL := /bin/bash`, `-eu -o pipefail`). Every Go target first runs `check-sdk`: `../kandev` HEAD must equal `.kandev-sdk-ref`. (Not re-read in this run.)
 
 | Target | Does |
 |---|---|
@@ -115,6 +123,7 @@ The platform set lives in four places: `manifest.yaml` `runtime.executables`, `M
 - Secrets: a token is registered with `redact.WithSecrets(ctx, token)` as soon as it is read or received, so logs and errors through that context mask it.
 - Injected dependencies for tests: SCM clock `Service.Now`; fakes for `Client`, secrets and state via `newHarness`.
 - `exec.CommandContext` with fixed arguments carries `//nolint:gosec // G204` (`internal/ci/changes.go:41`).
-- UI: factories `createXxx(host, ...)` return host-React components via the `h` JSX factory; test ids prefixed `backlog-`.
-- Tests co-located (`_test.go`, `*.test.ts[x]`), fake servers via `httptest`, fake host via `ui/src/testing/harness.ts`.
-- Package docs and Makefile targets carry traceability IDs (FR/NFR/US/AC).
+- UI: factories `createXxx(host, ...)` return host-React components via the `h` JSX factory; test ids prefixed `backlog-`; components carry doc comments citing story/AC ids.
+- Task-side link actions: `registerTaskAction({placement: "link", singleTaskOnly: true, run})` -> `host.openTaskLinkDialog({..., onSubmit})`; `onSubmit` throws an `Error` with a catalogue message on failure (`git/pr-link.ts`).
+- Tests co-located (`_test.go`, `*.test.ts[x]`), fake servers via `httptest`, fake host via `ui/src/testing/harness.ts`. A `openTaskLinkDialog` action is tested by asserting the options object and calling `options.onSubmit` directly (`git/pr-link.test.ts`).
+- Package docs and Makefile targets carry traceability IDs (FR/NFR/US/AC; e.g. US7.4, AC7.5.2, R-01..R-03).

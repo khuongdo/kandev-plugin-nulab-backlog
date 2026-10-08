@@ -1,0 +1,3 @@
+{"stage_slug":"build-and-test","space":"default","intent":"261008-link-task-modal","selections":[
+{"candidate_id":"c1","type":"learning","scope":"project","heading":"Testing Posture","source":"orchestrator","text":"When the worktree has no Go, install Go 1.26.x to ~/.local/go (checksum-verified from go.dev) and run make coverage, make package/verify-package and 10x make contract-test KANDEV_MIN_DIR=../kandev locally, so no target stays Unverified"}
+]}

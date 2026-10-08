@@ -33,6 +33,20 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.5.2: link a Backlog issue from the task, GitHub-style
+
+- The task's Link menu (Kanban card menu, task switcher) has a new "Link Backlog issue" item, next
+  to "GitHub Issue" and "Link Backlog pull request". Type an issue key such as `PROJ-123` or paste
+  the issue link (`https://<space>.backlog.com/view/PROJ-123`, also `.backlog.jp` and
+  `.backlogtool.com`) and press Save or Enter. The item is hidden while the task already has a
+  Backlog issue; use "Unlink Backlog issue" first to change it.
+- The "Link to task" dialog on the Backlog issues page now looks like Kandev's GitHub link dialog:
+  a short description, a Save button, Enter saves the chosen task, errors show in red under the
+  list, and a "linked" message appears.
+- After linking from either place, the issue badge on the task updates at once instead of at the
+  next refresh.
+- Nothing to do after upgrading: no setting or permission changes.
+
 ### 0.5.1: connect GitHub or GitLab with the gh / glab CLI login
 
 - Settings > Source control: the GitHub card has a "Use gh CLI login" button and the GitLab card
@@ -424,6 +438,10 @@ from Backlog: it never creates, changes or comments on a Backlog issue.
 - **Link to task.** **Link to task** in the same menu links an existing task. A task links one issue
   only; several tasks may link the same issue. **Unlink Backlog issue** in the task's menu removes
   the link and changes nothing in Backlog.
+- **Link an issue from the task.** In a task's **Link** menu, next to **GitHub Issue**, choose
+  **Link Backlog issue** and enter an issue key (`PROJ-123`) or paste the issue's
+  `https://<space>/view/PROJ-123` link. The entry is hidden while the task is linked; unlink first
+  to link another issue.
 - **`#` references.** In the message composer, type `#` and choose **Backlog issues** to reference
   an issue by key or title. Kandev checks the issue again when the message is sent.
 - **Backlog panel in the task.** Open the **Backlog issue** panel from the task's **+** panel menu to

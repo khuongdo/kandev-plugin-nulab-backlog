@@ -68,5 +68,12 @@
     "dirName": "261008-gh-cli-auth",
     "scope": "express",
     "status": "complete"
+  },
+  {
+    "uuid": "01a1196f-c571-7c0d-83fb-d751a4143d06",
+    "slug": "link-task-modal",
+    "dirName": "261008-link-task-modal",
+    "scope": "bugfix",
+    "status": "in-flight"
   }
 ]
