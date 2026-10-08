@@ -2,39 +2,23 @@
 
 | Layer | Technology | Version |
 |---|---|---|
-| Backend language | Go | `go 1.26.0` (go.mod); Go 1.26.8 used for the run 3 baseline |
-| Plugin SDK | `github.com/kandev/kandev/pkg/pluginsdk` (local `replace` to `../kandev/apps/backend`) | Kandev `v0.96.0`, commit `f099a46dc7aab16f6ff5806cd29b2b480296303f` (`.kandev-sdk-ref`) |
-| UI plugin SDK | `@kandev/plugin-sdk` (tsconfig path alias to `../../kandev/apps/packages/plugin-sdk/src/index.ts`), types only; actions via `host.api.invokeAction` | same Kandev pin |
-| RPC (indirect) | `hashicorp/go-plugin` / gRPC | v1.8.0 / v1.83.1 |
-| HTTP | Go stdlib `net/http` (team rule: no third-party HTTP client or provider SDK) | — |
-| Process execution | Go stdlib `os/exec` (at the `261008-gh-cli-auth` scan only in `internal/ci/changes.go`; v0.5.1 adds `internal/scm/cli_token.go` for `gh` / `glab`) | — |
-| UI language | TypeScript (strict), TSX via `h` factory with host-provided React and host UI kit (`Dialog*`, `Input`, `Label`, `Button`, `Tooltip*`, `Popover*`); host link dialog via `openTaskLinkDialog` | ~6.0.3 |
-| UI styling | Host utility classes only (`ui/src/layout.ts`); no plugin CSS | — |
-| UI bundler | esbuild | ^0.28.2 |
-| Node | `.nvmrc` | 22 |
-| Tests | Go `testing` + testify (`-race`); Vitest + jsdom + axe-core | testify v1.12.1; vitest ^5.0.3, jsdom ^30.1.2, axe-core ^4.14.0 |
-| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 (both via `go run`, pinned in `Makefile`); eslint ^10.12.0, prettier ^3.9.9 |
-| Build | GNU Make (bash, `-eu -o pipefail`) | — |
-| CI/CD | GitHub Actions | `.github/workflows/ci.yml`, `release.yml`, `secrets.yml` |
-| Merge gating | GitHub repository ruleset on `main` | ruleset `24580280` |
-
-## GitHub Actions (pinned by full SHA, recorded by run 1)
-
-As of the `261008-ci-path-filter` scan (not re-read in this run):
-
-| Action | Version | SHA |
-|---|---|---|
-| actions/checkout | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
-| actions/setup-go | v7.0.0 | `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e` |
-| actions/setup-node | v7.0.0 | `820762786026740c76f36085b0efc47a31fe5020` |
-| actions/upload-artifact | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
-| actions/download-artifact | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
-| actions/attest-build-provenance (release only) | v4.2.2 | `4d101475d8b20a2381f78447822ac1eab6504dd8` |
+| Backend language | Go | `go 1.26` (go.mod); Go 1.26.8 used for this run's baseline |
+| Plugin SDK | `github.com/kandev/kandev/pkg/pluginsdk` (`replace` to `../kandev/apps/backend`) | Kandev `v0.96.0`, commit `f099a46dc` (`.kandev-sdk-ref`) |
+| RPC (indirect) | hashicorp go-plugin / gRPC | via SDK |
+| HTTP | Go stdlib `net/http` (no third-party HTTP client or provider SDK) | — |
+| Process execution | Go stdlib `os/exec` (`internal/scm/cli_token.go` for `gh` / `glab`; `internal/ci/changes.go` for CI) | — |
+| UI language | TypeScript strict, TSX with host-provided React and UI kit | — |
+| UI plugin SDK | `@kandev/plugin-sdk` (types; `host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`) | same Kandev pin |
+| UI build | esbuild; Node from `.nvmrc` | — |
+| Tests | Go `testing` + testify (`-race` in CI), `httptest`; Vitest | testify v1.12.1; vitest ^5.0.3 |
+| Lint / format | gofmt, go vet, golangci-lint + gosec, `tsc --noEmit`, ESLint, Prettier, actionlint | pinned in `Makefile` / `ui/package.json` |
+| Build | GNU Make | — |
+| CI/CD | GitHub Actions (`ci.yml`, `release.yml`, `secrets.yml`), ruleset on `main` | — |
 
 ## Runtime Environment
 
-- Observed self-hosted install (intent 261007): Kandev v0.97.0, systemd user service `kandev --headless`, fronted by `tailscale serve`.
-- Drift: runtime 0.97.0 vs SDK pin and `min_kandev_version` 0.96.0. Anything the plugin uses (for example `openTaskLinkDialog`) must exist in 0.96.0.
-- The plugin binary inherits the Kandev process environment (`PATH`, `HOME`, `GH_TOKEN`, `GH_CONFIG_DIR`). At the `261008-gh-cli-auth` scan the GitHub CLI (`gh`) was **not** a dependency; since v0.5.1 the optional CLI login method needs `gh` / `glab` installed and logged in on the Kandev host (token-only use needs neither). Kandev itself uses `gh auth token` for its own GitHub integration (external reference).
+- The plugin binary runs on the Kandev server as a child process and inherits its environment.
+- Optional host tools for the SCM CLI method: `gh` (GitHub) and `glab` (GitLab), installed and logged in for the OS account that runs Kandev. `gh` 2.97.0 on the scan host (supports `gh auth token --user` and `gh auth status --json hosts`). Token-only use needs neither.
+- Task worktrees and agent environments are prepared by Kandev's executor, not the plugin.
 
 Library inventory: [dependencies.md](dependencies.md).

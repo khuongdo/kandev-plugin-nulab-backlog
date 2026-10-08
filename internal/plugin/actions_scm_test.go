@@ -22,10 +22,11 @@ import (
 
 // scmFake is one provider's scripted API for the action tests.
 type scmFake struct {
-	mu  sync.Mutex
-	p   scm.Provider
-	prs []scm.PullRequest
-	err error // every call fails with it when set
+	mu   sync.Mutex
+	p    scm.Provider
+	prs  []scm.PullRequest
+	err  error     // every call fails with it when set
+	user *scm.User // CurrentUser's answer when set; else Lan
 }
 
 func (f *scmFake) fail() error {
@@ -35,6 +36,9 @@ func (f *scmFake) fail() error {
 }
 
 func (f *scmFake) CurrentUser(context.Context, scm.Credential) (scm.User, error) {
+	if f.user != nil {
+		return *f.user, f.fail()
+	}
 	return scm.User{ID: "lan-id", Name: "Lan"}, f.fail()
 }
 
@@ -344,7 +348,7 @@ var scmActions = []string{
 	actionSCMPRList, actionSCMLink, actionSCMUnlink, actionSCMLinks, actionSCMTaskPRs,
 	actionSCMQueriesList, actionSCMQueriesSave, actionSCMQueriesDelete, actionSCMQueriesRun, actionSCMQueriesDefault,
 	actionSCMWatchesList, actionSCMWatchesSave, actionSCMWatchesDelete, actionSCMWatchesRun, actionSCMWatchesPause,
-	actionSCMWatchesResume, actionSCMUseCLI,
+	actionSCMWatchesResume, actionSCMUseCLI, actionSCMCLIAccounts,
 }
 
 // FR2.6, FR4, FR5: every scm action is declared; settings changes are admin.
@@ -362,14 +366,14 @@ func TestSCM_Manifest_Actions(t *testing.T) {
 		want[k] = "workspace/authenticated"
 	}
 	for _, k := range []string{actionSCMSetToken, actionSCMTest, actionSCMRemove, actionSCMRepos, actionSCMMapping,
-		actionSCMUseCLI} {
+		actionSCMUseCLI, actionSCMCLIAccounts} {
 		want[k] = "workspace/admin"
 	}
 	for _, k := range []string{actionSCMLink, actionSCMUnlink, actionSCMTaskPRs} {
 		want[k] = "task/authenticated"
 	}
 	require.Equal(t, want, got)
-	require.Len(t, scmActions, 23)
+	require.Len(t, scmActions, 24)
 }
 
 // FR1.2, FR1.4, FR4.1, NFR1 (intent 261008-gh-cli-auth): scm.providers.use_cli
@@ -379,7 +383,7 @@ func TestSCM_Actions_UseCLI(t *testing.T) {
 	r := newSCMRig(t)
 	cliTok := testutil.Token(t)
 	var calls []string
-	r.rt.scm.CLI = func(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.rt.scm.CLI = func(_ context.Context, _ int, name string, args ...string) ([]byte, error) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
 		return []byte(cliTok + "\n"), nil
 	}
@@ -388,12 +392,14 @@ func TestSCM_Actions_UseCLI(t *testing.T) {
 	require.Equal(t, "cli", out["method"])
 	require.Equal(t, "connected", out["state"])
 	require.Equal(t, "Lan", out["account"])
-	require.Equal(t, []string{"gh auth token --hostname github.com"}, calls)
+	require.Equal(t, "lan-id", out["login"])
+	require.Equal(t, []string{"gh auth status --json hosts --hostname github.com", // no --json: the active account
+		"gh auth token --hostname github.com", "gh auth token --hostname github.com --user lan-id"}, calls)
 	replies := []string{string(resp.Body)}
 	resp, _ = r.call(t, actionSCMProviders, nil)
 	replies = append(replies, string(resp.Body))
 
-	r.rt.scm.CLI = func(context.Context, string, ...string) ([]byte, error) {
+	r.rt.scm.CLI = func(context.Context, int, string, ...string) ([]byte, error) {
 		return nil, errors.New("exit status 1: glab not logged in " + cliTok)
 	}
 	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "gitlab"})
@@ -421,4 +427,76 @@ func TestSCM_ClassifyCLIUnavailable(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, codeCLIUnavailable, out.Code)
 	require.Equal(t, 503, statusFor(out.Code))
+}
+
+// ghCLI is a gh with alice (active) and bob logged in; a --user read prints
+// tok, and any login but alice and bob is unknown.
+func ghCLI(tok string) scm.CLIRunner {
+	return func(_ context.Context, _ int, _ string, args ...string) ([]byte, error) {
+		cmd := strings.Join(args, " ")
+		switch {
+		case strings.HasPrefix(cmd, "auth status"):
+			return []byte(`{"hosts":{"github.com":[{"login":"alice","active":true,"state":"success"},` +
+				`{"login":"bob","active":false,"state":"success"}]}}`), nil
+		case strings.HasSuffix(cmd, "--user alice"), strings.HasSuffix(cmd, "--user bob"):
+			return []byte(tok), nil
+		}
+		return nil, errors.New("exit status 1: no such account " + tok)
+	}
+}
+
+// FR1.1, FR1.2, AC1.1.1, AC1.1.6 (intent 261008-gh-cli-profile):
+// scm.providers.cli_accounts lists gh's logins with login and active only; a
+// dead gh is cli_unavailable.
+func TestSCM_Actions_CLIAccounts(t *testing.T) {
+	r := newSCMRig(t)
+	tok := testutil.Token(t)
+	r.rt.scm.CLI = ghCLI(tok)
+	resp, _ := r.call(t, actionSCMCLIAccounts, nil)
+	require.Equal(t, 200, resp.Status)
+	require.JSONEq(t, `{"accounts":[{"login":"alice","active":true},{"login":"bob","active":false}]}`, string(resp.Body))
+
+	r.rt.scm.CLI = func(context.Context, int, string, ...string) ([]byte, error) {
+		return nil, errors.New("exit status 1: " + tok)
+	}
+	resp, out := r.call(t, actionSCMCLIAccounts, nil)
+	require.Equal(t, 503, resp.Status)
+	require.Equal(t, "cli_unavailable", errorOf(t, out)["code"])
+	testutil.AssertNoLeak(t, string(resp.Body)+r.logs.String(), tok)
+}
+
+// FR2.1, FR5.1, AC1.1.5, AC1.1.7, AC3.1.1, AC3.2.3: use_cli takes a login;
+// an invalid one is a login field error, an unknown one cli_account_missing.
+func TestSCM_Actions_UseCLIWithLogin(t *testing.T) {
+	r := newSCMRig(t)
+	tok := testutil.Token(t)
+	r.rt.scm.CLI = ghCLI(tok)
+	r.fakes[scm.GitHub].user = &scm.User{ID: "bob", Name: "Bob"}
+	resp, out := r.call(t, actionSCMUseCLI, map[string]string{"provider": "github", "login": "bob"})
+	require.Equal(t, 200, resp.Status, out)
+	require.Equal(t, "bob", out["login"])
+	require.Equal(t, "Bob", out["account"])
+
+	for _, c := range []struct{ provider, login string }{{"github", "-x"}, {"github", "a;b"}, {"gitlab", "bob"}} {
+		resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": c.provider, "login": c.login})
+		require.Equal(t, 400, resp.Status, c)
+		require.Equal(t, "validation", errorOf(t, out)["code"])
+		require.Equal(t, "login", errorOf(t, out)["field"])
+	}
+
+	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "github", "login": "carol"})
+	require.Equal(t, 409, resp.Status)
+	require.Equal(t, "cli_account_missing", errorOf(t, out)["code"])
+	resp, _ = r.call(t, actionSCMProviders, nil)
+	require.Equal(t, 200, resp.Status)
+	require.Contains(t, string(resp.Body), `"login":"bob"`, "the failed change kept bob")
+	testutil.AssertNoLeak(t, string(resp.Body)+r.logs.String(), tok)
+}
+
+// FR5.1: classifySCM maps ErrCLIAccountMissing to cli_account_missing (409).
+func TestSCM_ClassifyCLIAccountMissing(t *testing.T) {
+	out, ok := classifySCM(fmt.Errorf("read token: %w", scm.ErrCLIAccountMissing))
+	require.True(t, ok)
+	require.Equal(t, codeCLIAccountMissing, out.Code)
+	require.Equal(t, 409, statusFor(out.Code))
 }

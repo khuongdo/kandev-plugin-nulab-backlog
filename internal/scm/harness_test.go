@@ -23,6 +23,8 @@ type fakeClient struct {
 	mu     sync.Mutex
 	p      Provider
 	user   User
+	users  map[string]User // by token; else user
+	seen   []string        // "<workspace tag> <method> <login of the token>"
 	repos  []Repo
 	prs    map[string][]PullRequest // by repo
 	err    map[string]error         // by method
@@ -39,7 +41,13 @@ func newFakeClient(p Provider) *fakeClient {
 		repos: []Repo{{FullName: "acme/web", URL: "https://example.test/acme/web"}, {FullName: "acme/api"}}}
 }
 
-func (f *fakeClient) hit(method string, cred Credential) error {
+// wsTag marks a test context with its workspace, so a fake client call
+// records which workspace made it.
+type wsTag struct{}
+
+func inWS(ctx context.Context, ws string) context.Context { return context.WithValue(ctx, wsTag{}, ws) }
+
+func (f *fakeClient) hit(ctx context.Context, method string, cred Credential) error {
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
@@ -47,6 +55,12 @@ func (f *fakeClient) hit(method string, cred Credential) error {
 	defer f.mu.Unlock()
 	f.calls[method]++
 	f.creds = append(f.creds, cred)
+	tag, _ := ctx.Value(wsTag{}).(string)
+	login := "?"
+	if u, ok := f.users[cred.Token]; ok {
+		login = u.ID
+	}
+	f.seen = append(f.seen, tag+" "+method+" "+login)
 	if f.onCall != nil {
 		f.onCall(method)
 	}
@@ -71,15 +85,20 @@ func (f *fakeClient) setPRs(repo string, prs ...PullRequest) {
 	f.prs[repo] = prs
 }
 
-func (f *fakeClient) CurrentUser(_ context.Context, c Credential) (User, error) {
-	if err := f.hit("CurrentUser", c); err != nil {
+func (f *fakeClient) CurrentUser(ctx context.Context, c Credential) (User, error) {
+	if err := f.hit(ctx, "CurrentUser", c); err != nil {
 		return User{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.users[c.Token]; ok {
+		return u, nil
 	}
 	return f.user, nil
 }
 
-func (f *fakeClient) SearchRepos(_ context.Context, c Credential, q string) ([]Repo, error) {
-	if err := f.hit("SearchRepos", c); err != nil {
+func (f *fakeClient) SearchRepos(ctx context.Context, c Credential, q string) ([]Repo, error) {
+	if err := f.hit(ctx, "SearchRepos", c); err != nil {
 		return nil, err
 	}
 	var out []Repo
@@ -91,8 +110,8 @@ func (f *fakeClient) SearchRepos(_ context.Context, c Credential, q string) ([]R
 	return out, nil
 }
 
-func (f *fakeClient) GetRepo(_ context.Context, c Credential, repo string) (Repo, error) {
-	if err := f.hit("GetRepo", c); err != nil {
+func (f *fakeClient) GetRepo(ctx context.Context, c Credential, repo string) (Repo, error) {
+	if err := f.hit(ctx, "GetRepo", c); err != nil {
 		return Repo{}, err
 	}
 	for _, r := range f.repos {
@@ -103,8 +122,8 @@ func (f *fakeClient) GetRepo(_ context.Context, c Credential, repo string) (Repo
 	return Repo{}, &HTTPError{Provider: f.p, Status: 404}
 }
 
-func (f *fakeClient) ListPRs(_ context.Context, c Credential, repo string, q ListQuery) (PRPage, error) {
-	if err := f.hit("ListPRs", c); err != nil {
+func (f *fakeClient) ListPRs(ctx context.Context, c Credential, repo string, q ListQuery) (PRPage, error) {
+	if err := f.hit(ctx, "ListPRs", c); err != nil {
 		return PRPage{}, err
 	}
 	f.mu.Lock()
@@ -119,8 +138,8 @@ func (f *fakeClient) ListPRs(_ context.Context, c Credential, repo string, q Lis
 	return page, nil
 }
 
-func (f *fakeClient) GetPR(_ context.Context, c Credential, repo string, n int) (PullRequest, error) {
-	if err := f.hit("GetPR", c); err != nil {
+func (f *fakeClient) GetPR(ctx context.Context, c Credential, repo string, n int) (PullRequest, error) {
+	if err := f.hit(ctx, "GetPR", c); err != nil {
 		return PullRequest{}, err
 	}
 	f.mu.Lock()
@@ -215,6 +234,7 @@ func (f *fakeTasks) all() []NewTask {
 }
 
 type harness struct {
+	t       *testing.T
 	svc     *Service
 	clients map[Provider]*fakeClient
 	conn    *fakeConn
@@ -232,6 +252,7 @@ const ws = "ws-1"
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	h := &harness{
+		t:       t,
 		clients: map[Provider]*fakeClient{},
 		conn:    &fakeConn{snap: connection.Snapshot{SpaceHost: "example-space.backlog.com", SelectedProjects: []string{"PROJ", "DEMO"}}},
 		secrets: &fakeSecrets{data: map[string]string{}},

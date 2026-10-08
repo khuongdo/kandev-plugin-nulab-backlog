@@ -71,6 +71,8 @@ const (
 	ErrorUnreachable  = "unreachable"
 	// ErrorCLIUnavailable: gh / glab is missing or not logged in (FR4.2).
 	ErrorCLIUnavailable = "cli_unavailable"
+	// ErrorCLIAccountMissing: gh has no login for the chosen account (FR5.1).
+	ErrorCLIAccountMissing = "cli_account_missing"
 )
 
 const (
@@ -84,6 +86,7 @@ const (
 var (
 	errToken    = errors.New("must be 1-1024 characters without spaces")
 	errUsername = errors.New("the Bitbucket user name is required")
+	errLogin    = errors.New("must be a GitHub login, and only for GitHub")
 	errProject  = errors.New("must be a selected Backlog project")
 	errRepos    = errors.New("must be at most 20 readable repositories")
 )
@@ -103,7 +106,7 @@ type Service struct {
 // NewService wires the component; clients has one Client per provider.
 func NewService(clients map[Provider]Client, conn Connection, secrets Secrets, tasks Tasks, store *Store) *Service {
 	return &Service{clients: clients, conn: conn, secrets: secrets, tasks: tasks, store: store, Now: time.Now,
-		CLI: runCLI, cli: cliCache{tokens: map[Provider]cachedToken{}}}
+		CLI: runCLI, cli: cliCache{tokens: map[cliKey]cachedToken{}}}
 }
 
 // SecretKey is where a provider's token is stored: backlog.scm.<provider>.<workspace>.
@@ -115,6 +118,7 @@ type ProviderView struct {
 	State     string    `json:"state"`
 	Method    string    `json:"method,omitempty"` // MethodToken or MethodCLI; empty when not configured
 	Account   string    `json:"account,omitempty"`
+	Login     string    `json:"login,omitempty"` // the chosen gh account (GitHub CLI only, FR2.2)
 	LastError string    `json:"lastError,omitempty"`
 	Mappings  []Mapping `json:"mappings"`
 }
@@ -126,6 +130,9 @@ func view(s Settings) ProviderView {
 	case !s.HasToken:
 	case s.Source == MethodCLI:
 		v.Method = MethodCLI
+		if s.Provider == GitHub {
+			v.Login = s.AccountID
+		}
 	default:
 		v.Method = MethodToken
 	}
@@ -244,19 +251,34 @@ func (s *Service) SetToken(ctx context.Context, ws string, in TokenInput) (Provi
 
 // UseCLI connects p with the gh / glab login of the Kandev server (FR1.2,
 // FR2.1): the CLI token is read, checked with the current user call, and
-// only the method and account are stored. A typed token is deleted (FR1.3).
-// A failure changes nothing (FR4.1).
-func (s *Service) UseCLI(ctx context.Context, ws string, p Provider) (ProviderView, error) {
+// only the method and account are stored. For GitHub, login picks the gh
+// account (empty: the active one) and is kept as AccountID (FR2.1, FR2.3);
+// GitLab takes no login. A typed token is deleted (FR1.3). A failure
+// changes nothing (FR4.1).
+func (s *Service) UseCLI(ctx context.Context, ws string, p Provider, login string) (ProviderView, error) {
 	if _, err := ParseProvider(string(p)); err != nil {
 		return ProviderView{}, err
 	}
+	if login != "" && (p != GitHub || !validLogin(login)) {
+		return ProviderView{}, &connection.FieldError{Field: FieldLogin, Err: errLogin}
+	}
+	if p == GitHub && login == "" {
+		active, err := s.activeLogin(ctx)
+		if err != nil {
+			return ProviderView{}, err
+		}
+		login = active
+	}
 	s.forgetCLI(p)
-	tok, err := s.cliToken(ctx, p)
+	tok, err := s.cliToken(ctx, p, login)
 	if err != nil {
 		return ProviderView{}, err
 	}
 	ctx = redact.WithSecrets(ctx, tok)
 	user, err := s.clients[p].CurrentUser(ctx, Credential{Token: tok})
+	if err == nil && p == GitHub && !strings.EqualFold(user.ID, login) {
+		err = ErrCLIAccountMissing
+	}
 	if err != nil {
 		s.forgetCLI(p)
 		return ProviderView{}, err
@@ -271,15 +293,28 @@ func (s *Service) UseCLI(ctx context.Context, ws string, p Provider) (ProviderVi
 	})
 }
 
-// credential reads p's token, from the CLI when that is p's method (FR3.1),
-// and returns a context that redacts it.
+// activeLogin is gh's active github.com login.
+func (s *Service) activeLogin(ctx context.Context) (string, error) {
+	accounts, err := s.ListCLIAccounts(ctx)
+	if err != nil {
+		return "", err
+	}
+	if i := slices.IndexFunc(accounts, func(a CLIAccount) bool { return a.Active }); i >= 0 {
+		return accounts[i].Login, nil
+	}
+	return "", ErrCLIUnavailable
+}
+
+// credential reads p's token, from the CLI when that is p's method (FR3.1)
+// and for GitHub as the workspace's chosen login (AccountID, FR4.1), and
+// returns a context that redacts it.
 func (s *Service) credential(ctx context.Context, ws string, p Provider) (context.Context, Credential, error) {
 	st, err := s.settings(ctx, ws, p)
 	if err != nil {
 		return ctx, Credential{}, err
 	}
 	if st.Source == MethodCLI && st.HasToken {
-		tok, err := s.cliToken(ctx, p)
+		tok, err := s.cliToken(ctx, p, st.AccountID)
 		if err != nil {
 			return ctx, Credential{}, err
 		}
@@ -309,7 +344,7 @@ func (s *Service) Test(ctx context.Context, ws string, p Provider) (ProviderView
 	ctx, cred, err := s.credential(ctx, ws, p)
 	var user User
 	switch {
-	case errors.Is(err, ErrCLIUnavailable): // recorded below (FR4.2)
+	case errors.Is(err, ErrCLIUnavailable), errors.Is(err, ErrCLIAccountMissing): // recorded below (FR4.2, FR5.1)
 	case err != nil:
 		return ProviderView{}, err
 	default:
@@ -322,11 +357,16 @@ func (s *Service) Test(ctx context.Context, ws string, p Provider) (ProviderView
 		}
 	}
 	return s.updateProvider(ctx, ws, p, func(st *Settings) error {
-		if err != nil {
+		switch {
+		case err != nil:
 			st.LastError = errorCode(err)
-			return nil
+		case st.Source == MethodCLI && p == GitHub && !strings.EqualFold(user.ID, st.AccountID):
+			st.LastError = ErrorCLIAccountMissing // the chosen login is never replaced (FR5.2)
+		case st.Source == MethodCLI && p == GitHub:
+			st.Account, st.LastError = user.Name, ""
+		default:
+			st.Account, st.AccountID, st.LastError = user.Name, user.ID, ""
 		}
-		st.Account, st.AccountID, st.LastError = user.Name, user.ID, ""
 		return nil
 	})
 }
@@ -336,6 +376,8 @@ func errorCode(err error) string {
 	switch {
 	case errors.Is(err, ErrCLIUnavailable):
 		return ErrorCLIUnavailable
+	case errors.Is(err, ErrCLIAccountMissing):
+		return ErrorCLIAccountMissing
 	case IsStatus(err, 401):
 		return ErrorInvalidToken
 	case IsStatus(err, 403):

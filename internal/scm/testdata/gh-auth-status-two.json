@@ -1,0 +1,1 @@
+{"hosts":{"github.com":[{"active":true,"gitProtocol":"https","host":"github.com","login":"alice","scopes":"gist, read:org, repo, workflow","state":"success","tokenSource":"/home/kandev/.config/gh/hosts.yml"},{"active":false,"gitProtocol":"https","host":"github.com","login":"bob","scopes":"repo","state":"success","tokenSource":"/home/kandev/.config/gh/hosts.yml"}]}}

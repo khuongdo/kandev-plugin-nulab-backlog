@@ -2,15 +2,13 @@
 
 ## System Overview
 
-A Kandev plugin made of two deliverables packed into one archive: a Go server binary (one per platform) that Kandev launches as a child process and talks to over the plugin SDK RPC, and an ESM UI bundle that the Kandev web app loads and renders with the host's React. All Backlog and SCM traffic leaves from the Go binary; the UI calls plugin actions through the host.
+Two deliverables in one package: a Go server binary (per platform) that Kandev launches as a child process and talks to over the pluginsdk RPC (hashicorp go-plugin / gRPC), and an ESM UI bundle that the Kandev web app loads with the host's React. All Backlog and SCM traffic leaves from the Go binary; the UI calls plugin actions through the host.
 
-The binary runs on the Kandev server host with the Kandev process's environment: Kandev v0.96.0 spawns it with `cmd.Env = append(os.Environ(), KANDEV_PLUGIN_DATA_DIR=...)` and `cmd.Dir = <install path>` (Kandev `internal/plugins/runtime/manager.go` lines 392-394, external reference). It therefore inherits the server user's `PATH`, `HOME`, `GH_TOKEN` and `GH_CONFIG_DIR`, and nothing in the plugin protocol restricts starting a subprocess.
-
-Around the plugin sits a delivery pipeline: GitHub Actions workflows (`ci.yml`, `release.yml`) that call `Makefile` targets, gated by a repository ruleset on `main`.
+The binary runs on the Kandev server host and inherits the Kandev process environment (`PATH`, `HOME`, `GH_TOKEN`, `GH_CONFIG_DIR`). So the `gh` / `glab` CLI the plugin runs is the server's CLI with the server user's logins — not the browser user's, and not the task worktree's.
 
 ## Architectural Style
 
-Modular monolith inside a host-plugin architecture. Evidence: one binary (`server/main.go` calls `pluginsdk.Serve(plugin.NewRuntime())`), domain packages under `internal/`, a single adapter package (`internal/plugin`) that alone imports `pluginsdk` (ports-and-adapters). Deployment is "install a package on a Kandev server"; there is no service of its own.
+Modular monolith inside a host-plugin architecture (ports and adapters). One binary (`server/main.go` calls `pluginsdk.Serve(plugin.NewRuntime())`), domain packages under `internal/`, and a single adapter package (`internal/plugin`) that alone imports `pluginsdk`. State and secrets live in the host; the plugin keeps no database. Component list: [component-inventory.md](component-inventory.md).
 
 ## Component Relationships
 
@@ -19,7 +17,9 @@ flowchart LR
   subgraph Host["Kandev server (min 0.96.0)"]
     KB[Kandev backend]
     KW[Kandev web app]
-    KS[(Kandev secret store)]
+    KS[(secret store)]
+    KT[(state)]
+    EX[Executor / worktree]
   end
   subgraph Plugin["nulab-backlog package"]
     UI[UI Bundle]
@@ -34,324 +34,148 @@ flowchart LR
     GLB[GitLab and Bitbucket Clients]
     RE[Redact]
   end
+  CLI[[gh / glab on the server]]
   KW --> UI
   UI -- plugin actions --> KB
   KB -- SDK RPC --> SE --> KA
   KA --> CO & IS & GI & SC
   CO & IS & GI --> BG
-  KA -- wires scm.Client per provider --> GHC & GLB
-  SC -- scm.Client interface --> GHC & GLB
-  SC -- secrets port via KandevAdapter --> KS
-  SC --> CO
+  KA -- builds clients --> GHC & GLB
+  SC -- scm.Client --> GHC & GLB
+  SC -- ports via KandevAdapter --> KS & KT
+  SC -- os/exec --> CLI
+  KA -- Tasks().Create --> KB
+  KB --> EX
   KA & CO & IS & GI & BG & SC --> RE
   BG --> BL[(Backlog REST v2)]
   GHC --> GHA[(api.github.com)]
   GLB --> EXT[(GitLab / Bitbucket)]
 ```
 
-Text fallback: browser -> Kandev web -> UI Bundle -> Kandev backend -> (RPC) -> Server Entrypoint -> KandevAdapter -> Connection / Issues / Git / SCM. Backlog paths go through BacklogGateway. SCM calls a provider through the `scm.Client` interface; KandevAdapter builds the GitHub, GitLab and Bitbucket clients (`scmClients`, `internal/plugin/scm_actions.go`) and hands them to SCM. SCM reads tokens from the Kandev secret store through a port that KandevAdapter implements, and reuses Connection's error and outcome types. Redact is used by every outbound path. Full list: [component-inventory.md](component-inventory.md).
-
-Build-time components (CI Workflows, Build Makefile, CI Tooling, PackageVerify) are not in the runtime graph; see [CI and Release Pipeline](#ci-and-release-pipeline) and [code-structure.md](code-structure.md#build-and-packaging).
+Text fallback: browser -> Kandev web -> UI Bundle -> Kandev backend -> RPC -> Server Entrypoint -> KandevAdapter -> Connection / Issues / Git / SCM. Backlog calls go through BacklogGateway. SCM calls providers through the `scm.Client` interface, reads secrets and state through ports implemented by KandevAdapter, and runs `gh` / `glab` with `os/exec` for the CLI method. Tasks are created through the Kandev Host API; Kandev alone prepares the worktree and its environment. Redact masks secrets on every outbound path.
 
 ## SCM Provider Connection and Credentials
 
-Current design (commit `d3d17e5`, v0.5.0), analyzed deeply in run 3:
+As of v0.5.2 (analyzed deeply in this run):
 
-- **One method today: access token.** `scm.providers.set_token` (admin) carries `scm.TokenInput{Provider, Token, Username}`. `(*scm.Service).SetToken` (`internal/scm/service.go:196`) validates the input, calls the provider's `CurrentUser` with the token, and only on success stores `scm.Credential{Token, Username}` as JSON in secret `backlog.scm.<provider>.<workspace>` (`SecretKey`, `service.go:99`), then records `HasToken`, `Account`, `AccountID` in the provider `Settings`.
-- **Settings are not secrets.** `scm.Settings` (`internal/scm/store.go:41-48`: `Provider`, `HasToken`, `Account`, `AccountID`, `LastError`, `Mappings`) lives in host state (schema version 1). There is no field that records **how** a provider was connected.
-- **One credential read path.** Every provider call gets its token from the private `(*scm.Service).credential(ctx, ws, p)` (`service.go:221-237`): read the secret, decode `Credential`, refuse an empty token, and return a context wrapped with `redact.WithSecrets(ctx, token)`. Its seven callers: `Test` (`service.go:242`), `SearchRepos` (`:294`), `checkRepos`/`SetMapping` (`:350`), `ListPRs` (`prs.go:53`), `Link` (`links.go:31`), `runWatch` (`watcher.go:50`) and the background `refreshProvider` (`watcher.go:170`, runs on the 1-minute watcher tick).
-- **Clients are credential-agnostic.** The `scm.Client` interface (`internal/scm/client.go:83`) takes `cred scm.Credential` on each of its five methods. The GitHub client sends `Authorization: Bearer <cred.Token>` (`internal/github/client.go:20-23`), so a token obtained another way (for example `gh auth token`) works without client changes. `Credential` hides `Token` in every `fmt` verb (`client.go:15-22`).
-- **State shown to the UI.** `ProviderView` (`service.go:101`) is derived from `Settings` by `view`: `not_configured` without `HasToken`, `error` when `LastError` is set, else `connected`. It never carries the token and is returned by the member-readable `scm.providers.list`.
-- **Errors.** `ErrNoToken` (`internal/scm/errors.go`) says "add one under Source control"; `classifySCM` (`internal/plugin/scm_actions.go:178-200`) maps it to `validation` with field `token`, 401/403 to `reconnect_required`, 429 to `rate_limited` with the wait.
-- **Removal.** `RemoveToken` deletes the secret and clears `HasToken`/account; mappings, links, queries and watches stay, disabled until a token exists again.
-- **What the host does not offer.** The pluginsdk `Host` (v0.96.0) exposes state, config, secrets, events, tasks, sessions, workspaces, workflows, repositories, messages and a utility agent, but no access to Kandev's own GitHub credential and no process-exec API. Kandev itself resolves GitHub tokens with `gh auth token --hostname <host> [--user <login>]` (Kandev `internal/github/gh_accounts.go:201-215`, external reference).
+- **Two methods.** `scm.Settings` (`internal/scm/store.go:42-50`, state key `scm.settings`, one document per workspace) holds per provider: `Source` (`""`/`token` or `cli`), `HasToken`, `Account` (display name), `AccountID` (GitHub login, from `GET /user` `login`, `internal/github/client.go:54-64`), `LastError`, `Mappings`.
+  - **Token**: `SetToken` (`internal/scm/service.go`) validates with `CurrentUser`, stores `Credential` JSON in secret `backlog.scm.<provider>.<workspace>`, sets `Source=""`.
+  - **CLI**: `UseCLI` (`service.go:250-271`) runs the CLI, validates with `CurrentUser`, deletes any stored token, sets `Source=cli` and the account. The CLI token is never persisted.
+- **One credential read path.** `credential(ctx, ws, p)` (`service.go:276-298`): for `Source=cli` it calls `cliToken(p)`; otherwise it reads the secret. Every provider call (Test, SearchRepos, SetMapping, ListPRs, Link, runWatch, refreshProvider on the 1-minute watcher tick) goes through it and gets a `redact.WithSecrets` context.
+- **CLI runner** (`internal/scm/cli_token.go`): `cliCommand` is fixed to `gh auth token --hostname github.com` and `glab config get token --host gitlab.com` — **no account selector**, so it returns the CLI's *active* account. `runCLI`: no shell, 10 s timeout, 4 KiB stdout cap, stderr discarded. `cliCache` keeps one token **per provider, server-wide** (not per workspace, not per account) for 5 minutes under one mutex. Every failure becomes `ErrCLIUnavailable` (`cli_unavailable`); CLI output is never echoed. `Service.CLI` is an injectable `CLIRunner` for tests.
+- **Identity drift.** In CLI mode `Test` (`service.go:310-335`) forgets the cache and rewrites `Account`/`AccountID` with whoever is active now. After `gh auth switch` on the server, every CLI-mode workspace silently changes identity, and the PR "me" filter (`prs.go:61`, `watcher.go:58`, compares `AccountID`) follows it.
+- **View.** `ProviderView` (`service.go:~101-130`) carries `state`, `account`, `method` (`token`/`cli`), `lastError`, `mappings`; never the token. Readable by all members (`scm.providers.list`).
 
-Change points for intent `261008-gh-cli-auth`: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-auth).
+Change shape for this intent: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile).
 
-## CI and Release Pipeline
+## Task Creation and the Worktree gh Environment
 
-```mermaid
-flowchart LR
-  PR[pull_request to main] --> CI
-  PM[push to main] --> CI
-  subgraph CI["ci.yml"]
-    CH[checks] --> PHC[packaged-host-contract]
-  end
-  CH -- make targets --> MK[Makefile]
-  PHC -- make verify-package contract-test --> MK
-  CH & PHC -- required status checks --> RS{{main ruleset 24580280}}
-  RS --> SQ[squash merge]
-  TAG[push tag v*] --> RL
-  subgraph RL["release.yml (concurrency: release)"]
-    VE[verify] --> CT[contract] --> PU[publish]
-  end
-  VE -- make targets + release-preflight --> MK
-  PU --> GR[(GitHub Release + attestation)]
-```
+How a task tied to a Backlog issue comes to exist, and who controls `gh` in its worktree:
 
-Text fallback: a pull request to `main` and a push to `main` both start `ci.yml`; job `checks` runs the Makefile quality and packaging targets, then `packaged-host-contract` installs the package on Kandev at the minimum version. The ruleset on `main` requires both job names as status checks before a squash merge. A `v*` tag push starts `release.yml`: `verify` (same checks plus `release-preflight`) -> `contract` -> `publish` (GitHub Release with attestation). Trigger and ruleset details as recorded by run 1: [api-documentation.md](api-documentation.md#github-actions-triggers-and-required-checks). The CI path filter (intent `261008-ci-path-filter`, PR #14) was not re-verified since.
-
-## UI Surfaces (Host Slots)
-
-All registrations happen once, in `initialize` (`ui/src/index.ts`). Kandev v0.96.0 stages registry calls only while `initialize` runs (`stagedGenerationRegistry`); later registration is ignored and there is no per-item unregister.
-
-| Registration (`ui/src/index.ts`, v0.5.0) | Kandev surface | Gated by the Backlog switch? |
+| Path | Code | Repositories / Launch passed |
 |---|---|---|
-| `registerIntegrationSettings` | Settings > Integrations card + per-workspace switch | Card always shown (needed to turn Backlog on) |
-| `registerNavItem({ id: "backlog", section: "integrations", path: "/backlog" })` + `registerRoute("/backlog")` | Home > Integrations entry and Backlog page (Issues and Pull requests lists) | Yes, at load only (FR3): registered only when Backlog is ON in some workspace when `initialize` runs; a toggle shows after a reload |
-| `registerComponent(slot, IssueBadge)` for `task-card-tags`, `task-row-metadata`, `chat-top-bar` | Kanban card, Home > Tasks and sidebar rows, task top bar | Indirectly: renders only when `issues.links.list` returns a link for the task |
-| `registerTaskAction(createPRLinkAction)` (`placement: "link"`) | Task Link menu: "Link Backlog pull request" -> host `openTaskLinkDialog` | Per handler |
-| `registerTaskMenuAction(createUnlinkMenuAction)` | Task menu: "Unlink Backlog issue", visible only for a linked task | Per handler |
-| `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider` | Task panel, repository picker, review | Per handler |
+| Start task from an issue (UI) | `ui/src/page/start-task.tsx:100-115` renders Kandev's own `TaskCreateDialog`; on success the plugin only calls `issues.link` | Decided by the user in Kandev's dialog |
+| Issue watch creates a task | `issueHost.CreateTask` (`internal/plugin/host_port.go:120-130`) | none (workspace, workflow, step, title, description, priority) |
+| PR watch creates a task | `scmHost.CreateTask` (`internal/plugin/scm_actions.go:268-275`) | none (adds metadata) |
 
-As scanned, no task-side "Link Backlog issue" action existed; issue-to-task linking was reachable only from the `/backlog` page issue row menu. Intent `261008-link-task-modal` has since added that action (`ui/src/issues/issue-link.ts`).
+The agent environment in the worktree (`GH_TOKEN` / `GITHUB_TOKEN`, host gh bridge) is set by Kandev's executor from Kandev's own workspace GitHub connection or the executor profile env (Kandev v0.96.0 `internal/orchestrator/executor/executor_credentials.go`, external reference). pluginsdk v0.96.0 gives the plugin **no way to inject environment**: `CreateTaskInput` has only `Repositories` and `Launch{AgentProfileID, ExecutorProfileID, Prompt, PlanMode}`; `ExecutorProfiles()` is read-only; the plugin Git credential handler serves only `nulab-backlog` repositories (`manifest.yaml` `repository_providers`). Options are listed in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile).
 
-Pre-v0.5.0 facts (run 3 / earlier, superseded where the table above differs): Kandev `NavItem` has no `requires`/visibility field, so plugin destinations are never availability-gated by the host; with Backlog OFF the `/backlog` page shows the OFF state (`integration_disabled`).
+## External Reference: Kandev gh Account Handling (v0.96.0, read-only)
 
-Host facts (Kandev v0.96.0 reference checkout): Home > Tasks (`apps/web/app/tasks/rich-task-list-row.tsx`) renders first-party PR/MR icons and then `TaskRowMetadata`, which mounts the plugin slot `task-row-metadata` with props `{ taskId, workspaceId, workflowStepId, surface }`. The host UI kit exposes `Tooltip*` and `Popover*` to plugins. The Kandev registry's `setIntegrationEnabled`/`isIntegrationEnabled` drive only the Settings sidebar badge, not navigation.
+Kandev's own GitHub integration already supports picking a gh account (`~/repo/kandev/apps/backend/internal/github/gh_accounts.go`):
 
-The Backlog settings page includes the **Source control** section (`ui/src/settings/source-control-section.tsx`, `createSourceControlSection`): one `ProviderCard` per provider with a token form (save/replace), Test, Remove, and the project-to-repository mappings (since v0.5.1 also a GitHub/GitLab CLI login control). The card treats a provider as configured when `state !== "not_configured"`; PR lists elsewhere use only providers with `state === "connected"` (`usableProviders`, `ui/src/git/git-state.ts`).
-
-### External reference: Kandev GitHub integration link UX (v0.96.0, read-only)
-
-Not plugin code; recorded because intent `261008-link-task-modal` asks to mimic it. Source: `~/repo/kandev` at `v0.96.0`.
-
-- The GitHub integration has **no issue-side "link to existing task" picker**. Issue rows (`apps/web/components/github/my-github/issue-list.tsx:79-90`) offer only the task indicator and "start task" (create, then auto-link).
-- Linking an existing task goes task -> issue: the task's **Link submenu** (`kanban-card-link-submenu.tsx:47-134`, also `task-switcher-link-menu.tsx`) lists "GitHub Pull Request", "GitHub Issue", then plugin `placement: "link"` actions.
-- **GitHub issue dialog** (`task-github-issue-dialog.tsx`): `DialogContent w-[calc(100vw-2rem)] sm:max-w-lg`, focus return via `onCloseAutoFocus`; title "Link GitHub issue" / "Change GitHub issue"; a `DialogDescription`; one `Label` "Issue" + `Input` (URL or number, prefilled when linked); inline error `text-xs text-destructive`; footer Unlink (only when linked) on the left, Cancel + "Save"/"Saving..." on the right; success toast and close.
-- **Shared host form** (`integrations/task-change-request-link-form.tsx`): `<form>` so Enter submits, `Input autoFocus`, `emptyError` check, `AbortController` per submit, success toast then close.
-- **Plugin access**: `host.openTaskLinkDialog(options)` (`apps/web/lib/plugins/host-api.ts:537, 561-586`) renders exactly that shared form with plugin copy; the plugin supplies `onSubmit(reference, signal)` and throws an `Error` whose message becomes the inline error. No Unlink button and no prefill through this API.
-
-Side-by-side comparison with the plugin dialog: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-link-task-modal).
+- `ListGHAccounts` parses `gh auth status --json hosts` into per-host logins with an active flag.
+- `ResolveGHAccountToken(host, login)` runs `gh auth token --hostname <host> --user <login>` when `gh auth token --help` lists `--user`; otherwise it accepts the login only if it is the active one.
+- It strips `GH_TOKEN` / `GITHUB_TOKEN` from the child environment (so the stored login is read, not an env override) and never runs `gh auth switch`.
+- `gh` 2.97.0 on the scan host supports `--user`.
 
 ## Data Flow
 
-- UI -> host -> plugin action (JSON, `max_body_bytes` 8-256 KiB; 16 KiB for `scm.*`) -> domain service -> gateway or client -> external API; responses mapped back to `pluginsdk` error codes only in `internal/plugin`.
-- Issue links: stored per workspace in host state (`Link`, `internal/issues/types.go`, now carrying `Summary`); the sync loop (`internal/issues/sync.go`) refreshes `LastKnownStatus`/`StatusUpdatedAt`. The UI reads them through one `issues.links.list` call per workspace, cached in `LinksStore` (`ui/src/issues/links-store.ts`, timed refresh every 60 s and on window focus while listened to) and shared by the badge, the page, the task panel and the Unlink menu action.
-- Link writes: `issues.link` (task scope, body `{issueKey}`) and `issues.unlink` (task scope). The Unlink menu action calls `store.refresh` afterwards; the issue-side Link dialog updates only the `/backlog` page row (`addTask`) and does not refresh `LinksStore`, so badges catch up on the next timed or focus refresh (as scanned; the restyled dialog from `261008-link-task-modal` refreshes badges).
-- SCM: provider settings and mappings in host state (`scm.Store`); provider tokens only in host secrets (`backlog.scm.<provider>.<workspace>`), read per call by `credential()` (since v0.5.1 a CLI-login provider resolves its token from `gh` / `glab` instead and never stores it).
-- State and secrets live in the host (`capabilities.state`, `secrets`); the plugin keeps no database.
-- Host events in: `task.deleted`; webhook in: `oauth-callback` (public GET).
-- CI: `checks` uploads the `plugin-package` artifact; `packaged-host-contract` downloads it and checks `sha256sum -c` before installing. Release does the same with `release-package`.
+- UI -> host -> plugin action (JSON, `max_body_bytes` 8-256 KiB; 16 KiB for `scm.*`) -> domain service -> client -> external API. Errors map to pluginsdk codes only in `internal/plugin` (`classify`, `classifySCM`).
+- SCM settings and mappings in host state; tokens only in host secrets; CLI tokens only in process memory (`cliCache`).
+- Issue links in host state, refreshed by the sync loop; the UI reads them via one `issues.links.list` per workspace (`LinksStore`).
+- Host events in: `task.deleted`; webhook in: `oauth-callback`.
 
 ## Interaction Diagrams
 
-### Connect GitHub with a token (current, the transaction intent 261008-gh-cli-auth extends)
+### Connect GitHub with the gh CLI login (current; the transaction this intent changes)
 
 ```mermaid
 sequenceDiagram
-  participant U as Admin (Source control card)
+  participant U as Admin (GitHub card)
   participant K as Kandev backend
   participant A as KandevAdapter (scm_actions.go)
   participant S as SCM Service
+  participant C as gh on the server
   participant G as GitHub Client
-  participant SS as Kandev secret store
-  participant ST as Kandev state (scm.Store)
-  U->>K: action scm.providers.set_token {provider: github, token}
-  K->>A: RPC HandleAction (access admin)
-  A->>S: SetToken(ctx, ws, TokenInput)
-  S->>S: ctx = redact.WithSecrets(token), validate
-  S->>G: CurrentUser(ctx, Credential{Token})
-  G->>G: GET https://api.github.com/user, Authorization Bearer
-  alt token accepted
-    G-->>S: User{Name, ID}
-    S->>SS: SetSecret(backlog.scm.github.<ws>, {"token": ...})
-    S->>ST: Settings{HasToken: true, Account, AccountID, LastError: ""}
-    S-->>A: ProviderView{state: connected, account}
-  else 401 / 403 / 429 / unreachable
-    G-->>S: HTTPError{Status}
-    S-->>A: error (nothing stored)
-    A->>A: classifySCM -> reconnect_required / rate_limited / unreachable
+  participant ST as Kandev state / secrets
+  U->>K: scm.providers.use_cli {provider: github}
+  K->>A: HandleAction (admin)
+  A->>S: UseCLI(ctx, ws, github)
+  S->>S: forgetCLI(github)
+  S->>C: gh auth token --hostname github.com (active account only)
+  alt token printed
+    C-->>S: token (<= 4 KiB, stderr dropped)
+    S->>G: CurrentUser(Credential{token})
+    G-->>S: User{Name, ID=login}
+    S->>ST: DeleteSecret(backlog.scm.github.<ws>)
+    S->>ST: Settings{Source: cli, HasToken, Account, AccountID}
+    S-->>U: ProviderView{connected, method: cli, account}
+  else gh missing / logged out / timeout
+    S-->>U: cli_unavailable (nothing changed)
   end
-  A-->>K: JSON or error code
-  K-->>U: card shows account or error
 ```
 
-Text fallback: the admin pastes a token in the GitHub card; the action reaches `SetToken`, which first proves the token with `GET /user`. Only an accepted token is written to the secret store, and the provider settings record the account. A refused token stores nothing and returns a mapped error code.
+Text fallback: the admin clicks "Use gh CLI login"; the service runs `gh auth token` for github.com with no `--user`, proves the token with `GET /user`, deletes any typed token and records `Source=cli` plus the account. A CLI failure changes nothing.
 
 ### Resolve the credential for any GitHub call (current)
 
 ```mermaid
 sequenceDiagram
-  participant C as Caller (Test, SearchRepos, SetMapping, ListPRs, Link, runWatch, refreshProvider)
-  participant S as SCM Service credential()
-  participant SS as Kandev secret store
-  participant G as GitHub Client
+  participant C as Caller (ListPRs, runWatch, refreshProvider, ...)
+  participant S as SCM credential()
+  participant CC as cliCache (per provider, 5 min)
+  participant X as gh on the server
+  participant SS as secret store
   C->>S: credential(ctx, ws, github)
-  S->>SS: GetSecret(backlog.scm.github.<ws>)
-  alt no secret
-    SS-->>S: not found
-    S-->>C: ErrNoToken (UI: validation, field token)
-  else secret present
-    SS-->>S: {"token": ...}
-    S->>S: decode, empty token -> ErrStore
-    S-->>C: redact.WithSecrets(ctx, token), Credential
-    C->>G: method(ctx, Credential, ...)
-    G-->>C: result or HTTPError
+  S->>S: settings(ws, github)
+  alt Source == cli
+    S->>CC: token for github
+    alt fresh
+      CC-->>S: token
+    else expired
+      S->>X: gh auth token --hostname github.com
+      X-->>S: token of the ACTIVE account
+    end
+  else token method
+    S->>SS: GetSecret(backlog.scm.github.<ws>)
   end
+  S-->>C: redact.WithSecrets(ctx, token), Credential
 ```
 
-Text fallback: every GitHub call, including the background watcher every minute, goes through `credential()`, which reads the secret, refuses a missing or empty token, and returns a redacting context plus the `Credential` for the client. This single function is where a second credential source (the `gh` CLI) would plug in (implemented in v0.5.1: `internal/scm/cli_token.go`).
+Text fallback: every call reads the workspace settings; CLI-mode workspaces share one cached token per provider, so two workspaces cannot use different gh accounts today.
 
-### Link an issue to an existing task (current, issue-side dialog)
-
-The transaction intent `261008-link-task-modal` changes.
+### Create a task from a Backlog issue (current)
 
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant P as Backlog page (issues-page.tsx)
-  participant D as LinkTaskDialog (link-task-dialog.tsx)
+  participant P as start-task.tsx
+  participant D as Kandev TaskCreateDialog
   participant K as Kandev backend
-  participant A as KandevAdapter (issue_actions.go)
-  participant I as Issues (service.go)
-  U->>P: issue row menu "Link to task"
-  P->>D: open {workspaceId, issueKey}
-  loop every keystroke (no debounce)
-    D->>K: issues.tasks.search {query}
-    K->>A: HandleAction
-    A->>I: SearchTasks(ctx, ws, query)
-    I-->>D: tasks[] (max 20, linkedIssueKey)
-  end
-  U->>D: choose task, click "Link"
-  D->>K: issues.link {taskId, body: {issueKey}}
-  K->>A: HandleAction
-  A->>I: Link (key checked by ParseIssueKey)
-  alt ok
-    I-->>D: Link
-    D->>P: onLinked(task) then onClose (no toast, LinksStore not refreshed)
-  else conflict / validation / not found
-    I-->>D: error -> <p role="alert"> below the list
-  end
+  participant E as Kandev executor
+  participant A as KandevAdapter
+  U->>P: issue "Start task"
+  P->>D: open (title, description from template)
+  U->>D: choose repo, agent, executor profile; create
+  D->>K: create task
+  K->>E: prepare worktree, env GH_TOKEN from Kandev GitHub connection / executor profile
+  D-->>P: onSuccess(task)
+  P->>K: issues.link {taskId, issueKey}
+  K->>A: HandleAction -> Issues.Link
 ```
 
-Text fallback: the user opens the dialog from the issue row menu; each keystroke calls `issues.tasks.search` (stale replies dropped by a sequence counter); the user picks a task (tasks linked to another issue are disabled) and clicks Link; `issues.link` stores the link; on success the page row updates and the dialog closes without a toast; errors show as an unstyled alert paragraph.
-
-### Link from the task side (existing PR pattern, the GitHub-style flow)
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant KW as Kandev web (task Link menu)
-  participant PA as createPRLinkAction (pr-link.ts)
-  participant HD as Host link dialog (openTaskLinkDialog)
-  participant K as Kandev backend
-  U->>KW: task Link menu "Link Backlog pull request"
-  KW->>PA: run(task)
-  PA->>HD: openTaskLinkDialog({title, description, inputLabel, placeholder, emptyError, ..., onSubmit})
-  U->>HD: type reference, Enter / Save
-  HD->>PA: onSubmit(reference, signal)
-  PA->>K: git.prs.link {taskId, body: {reference}}
-  alt ok
-    HD-->>U: success toast, close
-  else error
-    PA-->>HD: throw Error(mapped message) -> inline destructive error
-  end
-```
-
-Text fallback: the task's Link menu runs the plugin action, which opens the host dialog with plugin copy; the host owns input, Enter-to-submit, Save/Saving..., inline error and toast; the plugin's `onSubmit` calls the action and maps `not_found` / `validation` failures to messages. A "Link Backlog issue" action would follow the same shape against `issues.link`, but `issues.link` accepts only an issue key (no URL) and the plugin must refresh `LinksStore` itself. That action now exists (`ui/src/issues/issue-link.ts`, intent `261008-link-task-modal`).
-
-### Pull request to merge
-
-```mermaid
-sequenceDiagram
-  participant D as Maintainer
-  participant GH as GitHub
-  participant CI as ci.yml
-  participant R as main ruleset
-  D->>GH: open PR to main
-  GH->>CI: pull_request event
-  CI->>CI: checks: make check-format vet lint test coverage check-secrets build package verify-package
-  CI->>CI: packaged-host-contract: make verify-package contract-test
-  CI-->>R: status checks "checks", "packaged-host-contract"
-  alt both reported success
-    R-->>D: squash merge allowed
-    D->>GH: squash merge
-    GH->>CI: push to main, same two jobs run again
-  else a required check never reported
-    R-->>D: "Expected - waiting", merge blocked
-  end
-```
-
-Text fallback: the ruleset allows the squash merge only when `checks` and `packaged-host-contract` have reported. If a workflow does not start at all, the required checks never report and the PR stays blocked.
-
-### Release from a tag
-
-```mermaid
-sequenceDiagram
-  participant D as Maintainer
-  participant GH as GitHub
-  participant RL as release.yml
-  D->>GH: push tag vX.Y.Z (on main)
-  GH->>RL: push tags v*
-  RL->>RL: verify: checks + make release-preflight TAG (reads docs/manual-checks/)
-  RL->>RL: contract: install release-package on Kandev min version
-  RL->>GH: publish: attest, gh release create --verify-tag --generate-notes
-```
-
-Text fallback: a tag push runs verify, contract, publish in order; `release-preflight` checks tag format, tag equals manifest version, tag is on `origin/main`, no existing Release, and the first-release record in `docs/manual-checks/`.
-
-### Issue badge on a task
-
-```mermaid
-sequenceDiagram
-  participant KW as Kandev web (card, task row, top bar)
-  participant BD as IssueBadge
-  participant LS as LinksStore
-  participant K as Kandev backend
-  participant I as Issues
-  KW->>BD: render slot {taskId, workspaceId}
-  BD->>LS: link for taskId
-  alt workspace not loaded
-    LS->>K: action issues.links.list (workspace)
-    K->>I: Links(ctx, ws)
-    I-->>K: LinkView[] (key, summary, status, url, stale, unavailable)
-    K-->>LS: { links }
-  end
-  LS-->>BD: LinkView or none
-  BD-->>KW: key + status chip, hover summary; click opens https://space/view/KEY (new tab)
-```
-
-Text fallback: each slot mounts the badge, the badge asks the shared store, the store calls `issues.links.list` once per workspace, and the badge renders key, status and summary with a link to the issue.
-
-### Plugin startup and the Home > Integrations entry
-
-```mermaid
-sequenceDiagram
-  participant KW as Kandev web
-  participant IX as UI Bundle initialize()
-  participant R as Kandev plugin registry
-  KW->>IX: initialize(registry, host)
-  IX->>R: registerIntegrationSettings, registerTaskAction, registerComponent x3, registerTaskMenuAction, ...
-  IX->>IX: publishSwitches(workspaces)
-  opt Backlog ON in some workspace
-    IX->>R: registerNavItem("backlog"), registerRoute("/backlog")
-  end
-  IX-->>KW: return
-  Note over R: calls staged only until initialize returns
-```
-
-Text fallback: every registration happens inside `initialize`; after it returns the registry no longer accepts registrations. The nav entry and route are added only when Backlog is ON somewhere at load, and a toggle needs a reload to show in the menu.
-
-### Install the package (intent 261007-plugin-install-502, history)
-
-```mermaid
-sequenceDiagram
-  participant B as Browser (Kandev web UI)
-  participant T as tailscale serve (HTTPS proxy)
-  participant K as Kandev backend :38429
-  B->>T: POST /api/plugins/install multipart "package"
-  T->>K: forward body stream
-  alt body fully read within server.readTimeout (30 s)
-    K-->>T: 201 Created
-    T-->>B: 201
-  else upload slower than 30 s
-    K-->>T: 400 missing multipart field "package", connection closed
-    T-->>B: 502 Bad Gateway
-  end
-```
-
-Text fallback: an upload slower than the 30 s read timeout is cut and the proxy reports 502; v0.4.2 shrank the package by dropping Windows.
+Text fallback: the plugin hands task creation to Kandev's dialog and only links the issue afterwards; the worktree's gh environment is fully decided by Kandev.
 
 ### Plugin action (e.g. list issues)
 
@@ -362,36 +186,26 @@ sequenceDiagram
   participant A as KandevAdapter
   participant I as Issues
   participant G as BacklogGateway
-  UI->>K: call action issues.list
-  K->>A: RPC HandleAction
+  UI->>K: issues.list
+  K->>A: HandleAction
   A->>I: List(ctx, filter)
   I->>G: GET /api/v2/issues (credentials per call)
-  G-->>I: issues JSON (LimitReader)
-  I-->>A: result
-  A-->>K: JSON / pluginsdk error code
+  G-->>I: JSON (LimitReader)
+  I-->>K: result / pluginsdk error code
   K-->>UI: response
 ```
 
-Text fallback: UI -> host -> adapter -> domain service -> gateway -> Backlog, and back.
+Text fallback: UI -> host -> adapter -> service -> gateway -> Backlog, and back.
 
 ## Key Design Decisions
 
-- Only `internal/plugin` and `server` import `pluginsdk`; domain packages stay host-agnostic (`internal/scm/doc.go` states SCM never imports it).
-- BacklogGateway is stateless about credentials (passed per call) to avoid a Connection-Gateway cycle. SCM follows the same rule: `scm.Client` methods take a `Credential` per call, and only `credential()` decides where it comes from.
-- SCM tokens live only in the Kandev secret store; settings and views carry `HasToken` and the account, never the token (NFR1). A token is stored only after `CurrentUser` accepts it.
-- One package carries all supported platform binaries (`manifest.yaml` `runtime.executables`); since v0.4.2 the set is 4 (`linux-amd64 linux-arm64 darwin-amd64 darwin-arm64`). Kandev picks the host platform at install time.
-- React is supplied by the host; the bundle fails the build if React is bundled. `@kandev/plugin-sdk` is imported as types only.
-- Since v0.5.0 (FR3, superseding BR5.4/BR7.6/BR7.8) the nav entry and `/backlog` route are registered only when Backlog is ON somewhere at load; other UI registrations never depend on the switch. The plugin tracks the switch with its own event bus because Kandev v0.96.0 offers no way to read or observe it.
-- One `issues.links.list` per workspace, shared through `LinksStore`, instead of a call per card.
-- Task-side linking uses the host dialog (`openTaskLinkDialog`) for PRs, so Kandev owns the form, validation display, submit state and toast; issue-side task linking uses a plugin-built dialog because Kandev has no task picker.
-- Package verification is done by an in-repo verifier because Kandev v0.96.0 ships no verify CLI.
-- CI calls only `Makefile` targets, so local and CI results match; the workflows themselves are linted (`actionlint` plus `cmd/ci workflows` policy).
-- Merge gating is a repository ruleset (not classic branch protection) that requires the job names `checks` and `packaged-host-contract`.
+- Only `internal/plugin` and `server` import `pluginsdk`; domain packages stay host-agnostic.
+- Clients are stateless about credentials (`Credential` per call); only `credential()` decides the source. A per-account CLI token therefore needs no client change.
+- Tokens live only in the Kandev secret store or process memory; views carry account and method, never the token (NFR1).
+- The CLI is run with fixed arguments, no shell, bounded time and output (`//nolint:gosec // G204`).
+- Every manifest action key has a runtime handler and vice versa (`internal/plugin/manifest_test.go` parity test).
 
 ## Improvement Opportunities
 
-- Link Task modal (intent `261008-link-task-modal`): either add a task-side "Link Backlog issue" `placement: "link"` action modelled on `pr-link.ts`, or restyle the issue-side dialog to the GitHub dialog shell, or both; constraints in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-link-task-modal). Both were implemented in that intent.
-- Refresh `LinksStore` after any link write, not only after Unlink.
-- GitHub CLI login as a second SCM credential source (intent `261008-gh-cli-auth`, implemented in v0.5.1 with GitLab `glab` as well): a credential-source choice inside `credential()`, one new admin action, a source field in `Settings`/`ProviderView`, and a control on the card. Options and constraints: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-auth).
-- Install without a large browser upload: install by URL (`POST /api/plugins/install` JSON `{"url": ...}` to the GitHub Release asset), or document raising `KANDEV_SERVER_READTIMEOUT`.
-- Hiding the Home > Integrations entry while OFF beyond register-at-load needs a Kandev capability that v0.96.0 lacks. Details: [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-fix-uiux-backlog).
+- Per-workspace gh account: list accounts, store the chosen login, pass `--user`, key the cache by provider+login, and stop `Test` from drifting the identity ([code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-gh-cli-profile)).
+- Worktree `gh` alignment needs either Kandev configuration (its GitHub integration on the same account) or a Kandev SDK capability the plugin lacks today.

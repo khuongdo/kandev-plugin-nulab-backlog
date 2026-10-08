@@ -166,8 +166,16 @@ export interface ProviderView {
   /** How the provider is connected: a typed token or the server's CLI login. */
   method?: "token" | "cli";
   account?: string;
+  /** The chosen gh login of a GitHub CLI connection (intent 261008-gh-cli-profile). */
+  login?: string;
   lastError?: string;
   mappings: Mapping[];
+}
+
+/** One github.com login stored by gh on the Kandev server. */
+export interface CliAccount {
+  login: string;
+  active: boolean;
 }
 
 /** The notice of a failed scm.* action, in provider words (FR2.4, NFR5). */
@@ -184,6 +192,8 @@ export function scmNotice(error: unknown): Notice {
       return { key: "scmUnmapped" };
     case "cli_unavailable":
       return { key: "scmCliUnavailable", params: { cli: "gh / glab" } };
+    case "cli_account_missing":
+      return { key: "scmCliAccountMissingAny" };
     case "validation":
       if (f.field === "token") return { key: "scmNoToken" };
   }

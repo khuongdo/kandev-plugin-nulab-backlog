@@ -326,8 +326,12 @@ func (h *harness) settingsFor(t *testing.T, p Provider) Settings {
 func (h *harness) cliCached(p Provider) bool {
 	h.svc.cli.mu.Lock()
 	defer h.svc.cli.mu.Unlock()
-	_, ok := h.svc.cli.tokens[p]
-	return ok
+	for k := range h.svc.cli.tokens {
+		if k.p == p {
+			return true
+		}
+	}
+	return false
 }
 
 // lastCred is the credential of p's last provider call.
@@ -347,15 +351,19 @@ func TestUseCLI_ConnectsGitHubAndGitLab(t *testing.T) {
 			h.connect(t, p)
 			cliTok := testutil.Token(t)
 			cli := h.withCLI(cliTok)
-			v, err := h.svc.UseCLI(h.ctx, ws, p)
+			v, err := h.svc.UseCLI(h.ctx, ws, p, "")
 			require.NoError(t, err)
-			require.Equal(t, ProviderView{Provider: p, State: StateConnected, Method: MethodCLI, Account: "Lan",
-				Mappings: []Mapping{}}, v)
+			want := ProviderView{Provider: p, State: StateConnected, Method: MethodCLI, Account: "Lan", Mappings: []Mapping{}}
+			runs := 1
+			if p == GitHub {
+				want.Login, runs = "lan-id", 2 // the active login from the list, then its --user read
+			}
+			require.Equal(t, want, v)
 			require.Equal(t, cliTok, h.lastCred(p).Token, "checked with the current user call")
 			require.False(t, h.hasToken(p), "the typed token is deleted")
 			st := h.settingsFor(t, p)
 			require.Equal(t, Settings{Provider: p, Source: MethodCLI, HasToken: true, Account: "Lan", AccountID: "lan-id"}, st)
-			require.Equal(t, 1, cli.count())
+			require.Equal(t, runs, cli.count())
 			state, _ := json.Marshal(h.state.data)
 			testutil.AssertNoLeak(t, string(state)+h.logs.String(), cliTok)
 		})
@@ -366,9 +374,9 @@ func TestUseCLI_ConnectsGitHubAndGitLab(t *testing.T) {
 func TestUseCLI_BitbucketIsAFieldError(t *testing.T) {
 	h := newHarness(t)
 	h.withCLI("x")
-	_, err := h.svc.UseCLI(h.ctx, ws, Bitbucket)
+	_, err := h.svc.UseCLI(h.ctx, ws, Bitbucket, "")
 	require.Equal(t, FieldProvider, fieldOf(t, err))
-	_, err = h.svc.UseCLI(h.ctx, ws, "gitea")
+	_, err = h.svc.UseCLI(h.ctx, ws, "gitea", "")
 	require.Equal(t, FieldProvider, fieldOf(t, err))
 }
 
@@ -379,12 +387,12 @@ func TestUseCLI_FailuresChangeNothing(t *testing.T) {
 	before := h.settingsFor(t, GitHub)
 	cli := h.withCLI("")
 	cli.set("", errors.New("exit status 1"))
-	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.ErrorIs(t, err, ErrCLIUnavailable)
 
 	cli.set(testutil.Token(t), nil)
 	h.clients[GitHub].setErr("CurrentUser", &HTTPError{Provider: GitHub, Status: 401})
-	_, err = h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err = h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.True(t, IsStatus(err, 401))
 	require.False(t, h.cliCached(GitHub), "a refused token is not kept")
 
@@ -397,7 +405,7 @@ func TestCredential_CLIProviderNeverReadsTheSecretStore(t *testing.T) {
 	h := newHarness(t)
 	cliTok := testutil.Token(t)
 	h.withCLI(cliTok)
-	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
 	h.secrets.failGet = true
 	_, err = h.svc.SearchRepos(h.ctx, ws, GitHub, "web")
@@ -409,7 +417,7 @@ func TestCredential_CLIProviderNeverReadsTheSecretStore(t *testing.T) {
 func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
 	h := newHarness(t)
 	h.withCLI(testutil.Token(t))
-	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
 	_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitHub, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
 	require.NoError(t, err)
@@ -423,7 +431,7 @@ func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, h.tokens[GitHub], h.lastCred(GitHub).Token)
 
-	_, err = h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err = h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
 	v, err = h.svc.RemoveToken(h.ctx, ws, GitHub)
 	require.NoError(t, err)
@@ -440,7 +448,7 @@ func TestSetTokenAndRemove_SwitchAwayFromTheCLI(t *testing.T) {
 func TestTest_CLIProviderRecordsAndClearsCLIUnavailable(t *testing.T) {
 	h := newHarness(t)
 	cli := h.withCLI(testutil.Token(t))
-	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
 
 	cli.set("", errors.New("exit status 1"))
@@ -464,7 +472,7 @@ func TestCredential_NewCLITokenAfterExpiry(t *testing.T) {
 	h := newHarness(t)
 	first, second := testutil.Token(t), testutil.Token(t)
 	cli := h.withCLI(first)
-	_, err := h.svc.UseCLI(h.ctx, ws, GitLab)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitLab, "")
 	require.NoError(t, err)
 	cli.set(second, nil)
 	_, err = h.svc.SearchRepos(h.ctx, ws, GitLab, "")
@@ -480,7 +488,7 @@ func TestCredential_NewCLITokenAfterExpiry(t *testing.T) {
 func TestRefreshLinks_ForgetsARejectedCLIToken(t *testing.T) {
 	h := newHarness(t)
 	h.withCLI(testutil.Token(t))
-	_, err := h.svc.UseCLI(h.ctx, ws, GitHub)
+	_, err := h.svc.UseCLI(h.ctx, ws, GitHub, "")
 	require.NoError(t, err)
 	_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: GitHub, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
 	require.NoError(t, err)
@@ -500,7 +508,7 @@ func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
 	cli := h.withCLI(cliTok)
 	var texts []string
 	for _, p := range []Provider{GitHub, GitLab} {
-		_, err := h.svc.UseCLI(h.ctx, ws, p)
+		_, err := h.svc.UseCLI(h.ctx, ws, p, "")
 		require.NoError(t, err)
 		_, err = h.svc.SetMapping(h.ctx, ws, MappingInput{Provider: p, ProjectKey: "PROJ", Repos: []string{"acme/web"}})
 		require.NoError(t, err)
@@ -513,7 +521,7 @@ func TestRedaction_NoCLITokenInLogsErrorsOrReplies(t *testing.T) {
 	cli.set(cliTok, errors.New("exit status 1: "+cliTok))
 	_, err := h.svc.Test(h.ctx, ws, GitHub)
 	require.NoError(t, err)
-	_, err = h.svc.UseCLI(h.ctx, ws, GitLab)
+	_, err = h.svc.UseCLI(h.ctx, ws, GitLab, "")
 	require.Error(t, err)
 	texts = append(texts, err.Error(), fmt.Sprintf("%+v", err))
 	views, err := h.svc.Providers(h.ctx, ws)

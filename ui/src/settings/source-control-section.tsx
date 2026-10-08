@@ -1,6 +1,13 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
-import { noticeText, providerName, scmNotice, type ProviderView, type ScmProvider } from "../git/git-state";
+import {
+  noticeText,
+  providerName,
+  scmNotice,
+  type CliAccount,
+  type ProviderView,
+  type ScmProvider,
+} from "../git/git-state";
 import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, ROW, STACK } from "../layout";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
@@ -38,6 +45,12 @@ const TEST_ERRORS: Record<string, MessageKey> = {
 };
 
 type OnView = (view: ProviderView) => void;
+/** A card message; failures are alerts (AC1.1.3). */
+type Shown = { notice: Notice; alert?: boolean };
+
+/** The account-missing notice, naming the chosen login when there is one (AC3.1.1, AC3.2.4). */
+const missing = (login?: string): Notice =>
+  login ? { key: "scmCliAccountMissing", params: { login } } : { key: "scmCliPickAccount" };
 
 /**
  * The "Source control" settings section (FR2, FR3): Backlog Git with its
@@ -51,7 +64,18 @@ export function createSourceControlSection(
 ): Component<SourceControlProps> {
   const h = host.jsx;
   const { useCallback, useEffect, useState } = host.React;
-  const { Badge, Button, Input, Label, SettingsSection } = hostUi(host);
+  const {
+    Badge,
+    Button,
+    Input,
+    Label,
+    SettingsSection,
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem,
+  } = hostUi(host);
   const { ListError } = createSectionParts(host, messages);
   const t = (n: Notice) => noticeText(n, messages);
   const invoke = <T,>(key: string, workspaceId: string, body?: unknown) =>
@@ -198,21 +222,32 @@ export function createSourceControlSection(
     const [token, setToken] = useState("");
     const [username, setUsername] = useState("");
     const [busy, setBusy] = useState(false);
-    const [message, setMessage] = useState<Notice | undefined>(undefined);
     const hasToken = view.state !== "not_configured";
     const cli = CLIS[p];
+    /** GitHub connected through gh: it has a chosen login (intent 261008-gh-cli-profile). */
+    const viaGh = p === "github" && view.method === "cli" && hasToken;
+    const [shown, setShown] = useState<Shown | undefined>(() =>
+      viaGh && view.lastError === "cli_account_missing"
+        ? { notice: missing(view.login), alert: true }
+        : undefined,
+    );
+    /** The gh accounts of the open picker, and the picked login (FR2.2). */
+    const [accounts, setAccounts] = useState<CliAccount[] | undefined>(undefined);
+    const [pick, setPick] = useState("");
     const withCli = (n: Notice): Notice => (cli ? { ...n, params: { ...n.params, cli } } : n);
 
     const run = async (key: string, body: Record<string, string>, ok: (v: ProviderView) => Notice) => {
       if (busy) return;
       setBusy(true);
-      setMessage(undefined);
+      setShown(undefined);
       try {
         const v = await invoke<ProviderView>(key, workspaceId, body);
         onView(v);
-        setMessage(withCli(ok(v)));
+        setShown({ notice: withCli(ok(v)), alert: Boolean(v.lastError) });
       } catch (e) {
-        setMessage(withCli(scmNotice(e)));
+        const n =
+          readFailure(e).code === "cli_account_missing" ? missing(body.login ?? view.login) : scmNotice(e);
+        setShown({ notice: withCli(n), alert: true });
       }
       setToken(""); // the token never stays in the page (NFR1)
       setBusy(false);
@@ -226,24 +261,93 @@ export function createSourceControlSection(
         }),
       );
     const test = () =>
-      run("scm.providers.test", { provider: p }, (v) => ({
-        key: v.lastError ? (TEST_ERRORS[v.lastError] ?? "scmErrorUnreachable") : "scmTestOk",
-      }));
+      run("scm.providers.test", { provider: p }, (v) =>
+        v.lastError === "cli_account_missing"
+          ? missing(v.login)
+          : { key: v.lastError ? (TEST_ERRORS[v.lastError] ?? "scmErrorUnreachable") : "scmTestOk" },
+      );
     const remove = () => run("scm.providers.remove", { provider: p }, () => ({ key: "scmTokenRemoved" }));
-    const useCli = () => run("scm.providers.use_cli", { provider: p }, () => ({ key: "scmCliConnected" }));
-    const button = (suffix: string, label: string, onClick: () => void, variant = "outline") => (
+    const connect = (login?: string) => {
+      setAccounts(undefined);
+      return run("scm.providers.use_cli", login ? { provider: p, login } : { provider: p }, () => ({
+        key: "scmCliConnected",
+      }));
+    };
+    /**
+     * Loads gh's accounts into the picker (AC1.1.1). A first connect with one
+     * account connects at once (AC1.1.4); a change preselects the current
+     * login only while gh still has it (AC1.2.1, AC3.1.4).
+     */
+    const openPicker = async (changing: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      setShown({ notice: { key: "scmLoadingAccounts" } });
+      let list: CliAccount[] | undefined;
+      try {
+        list =
+          (await invoke<{ accounts?: CliAccount[] }>("scm.providers.cli_accounts", workspaceId))?.accounts ??
+          [];
+        setShown(undefined);
+      } catch (e) {
+        setShown({ notice: withCli(scmNotice(e)), alert: true });
+      }
+      setBusy(false);
+      if (!list) return;
+      if (!changing && list.length === 1) return void connect(list[0]!.login);
+      const current = changing ? view.login : list.find((a) => a.active)?.login;
+      setPick(list.some((a) => a.login === current) ? current! : "");
+      setAccounts(list);
+    };
+    const useCli = () => (p === "github" ? openPicker(false) : connect());
+    const button = (
+      suffix: string,
+      label: string,
+      onClick: () => void,
+      variant = "outline",
+      disabled = false,
+    ) => (
       <Button
         type="button"
         variant={variant}
         size="sm"
         className={BUTTON}
         data-testid={`${id}-${suffix}`}
-        disabled={busy}
+        disabled={busy || disabled}
         onClick={onClick}
       >
         {label}
       </Button>
     );
+    const accountLine = () => {
+      const name = view.account ?? "";
+      if (view.method !== "cli" || !cli) return format(messages.scmAccount, { name });
+      if (!view.login) return format(messages.scmAccountCli, { cli, name });
+      const login = view.login;
+      return name && name !== login
+        ? format(messages.scmAccountCliLoginName, { cli, login, name })
+        : format(messages.scmAccountCliLogin, { cli, login });
+    };
+    const picker = accounts ? (
+      <div className={FIELD} data-testid={`${id}-account-picker`}>
+        <Label htmlFor={`${id}-account-select`}>{messages.scmGhAccountLabel}</Label>
+        <Select value={pick} onValueChange={setPick}>
+          <SelectTrigger id={`${id}-account-select`} data-testid={`${id}-account-select`} autoFocus>
+            <SelectValue placeholder={messages.scmGhAccountPlaceholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts.map((a) => (
+              <SelectItem key={a.login} value={a.login} data-testid={`${id}-account-${a.login}`}>
+                {a.active ? format(messages.scmGhAccountActive, { login: a.login }) : a.login}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className={ROW}>
+          {button("account-connect", messages.connect, () => void connect(pick), "default", !pick)}
+          {button("account-cancel", messages.cancel, () => setAccounts(undefined))}
+        </div>
+      </div>
+    ) : null;
     const input = (suffix: string, label: string, value: string, set: (v: string) => void, extra = {}) => (
       <div className={FIELD}>
         <Label htmlFor={`${id}-${suffix}`}>{label}</Label>
@@ -265,11 +369,12 @@ export function createSourceControlSection(
             {messages[STATES[view.state] ?? "scmStateError"]}
           </Badge>
         </div>
-        {hasToken && view.account ? (
-          <p data-testid={`${id}-account`}>
-            {view.method === "cli" && cli
-              ? format(messages.scmAccountCli, { cli, name: view.account })
-              : format(messages.scmAccount, { name: view.account })}
+        {hasToken && (view.account || view.login) ? (
+          <p data-testid={`${id}-account`}>{accountLine()}</p>
+        ) : null}
+        {viaGh && view.login ? (
+          <p data-testid={`${id}-worktree-note`} className="text-sm text-muted-foreground">
+            {format(messages.scmWorktreeNote, { login: view.login })}
           </p>
         ) : null}
         <p data-testid={`${id}-scopes`} className="text-sm text-muted-foreground">
@@ -300,14 +405,18 @@ export function createSourceControlSection(
                 "default",
               )}
               {cli ? button("use-cli", format(messages.scmUseCli, { cli }), () => void useCli()) : null}
+              {viaGh
+                ? button("change-account", messages.scmChangeAccount, () => void openPicker(true))
+                : null}
               {hasToken ? button("test", messages.scmTest, () => void test()) : null}
               {hasToken ? button("remove", messages.scmRemoveToken, () => void remove()) : null}
             </div>
+            {picker}
           </div>
         )}
-        {message ? (
-          <p role="status" data-testid={`${id}-message`}>
-            {t(message)}
+        {shown ? (
+          <p role={shown.alert ? "alert" : "status"} data-testid={`${id}-message`}>
+            {t(shown.notice)}
           </p>
         ) : null}
         {hasToken || view.mappings.length > 0 ? (

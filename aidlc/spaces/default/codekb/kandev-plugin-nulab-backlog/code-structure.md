@@ -5,125 +5,56 @@
 | Path | Classification | Notes |
 |---|---|---|
 | `server/main.go` | entrypoint | `pluginsdk.Serve(plugin.NewRuntime())` only |
-| `internal/plugin/` | adapter | handlers map, webhook, events, host port, Backlog Git credential (`credential.go`); `issue_actions.go` holds the `issues.*` handlers (`issues.links.list`, `issues.tasks.search`, `issues.link`, `issues.unlink`, ...), `scm_actions.go` the `scm.*` handlers; `runtime.go` maps domain errors to SDK codes; `Version`/`SDKRef` set by ldflags |
+| `internal/plugin/` | adapter | action routing (`runtime.go` `HandleAction`), host adapters (`host_port.go`: `hostStores`, `hostPort`, `issueHost`; `scm_actions.go`: `scmHost`), Backlog Git credential (`credential.go`), webhooks, events; `*_actions.go` per area |
 | `internal/connection/`, `internal/issues/`, `internal/git/`, `internal/scm/` | domain services | see [component-inventory.md](component-inventory.md) |
-| `internal/backlog/`, `internal/github/`, `internal/gitlab/`, `internal/bitbucket/` | HTTP clients | stdlib `net/http`, `testdata/` JSON fixtures |
+| `internal/backlog/`, `internal/github/`, `internal/gitlab/`, `internal/bitbucket/` | HTTP clients | stdlib `net/http`, `testdata/` fixtures |
 | `internal/redact/`, `internal/testutil/` | utility / test helper | |
-| `internal/pkgverify/`, `cmd/verifypkg/` | build tooling | offline package verifier |
-| `internal/ci/`, `cmd/ci/` | build tooling | `secrets`, `workflows`, `contract`, `preflight`, `marketplace`; `changes.go` is the only `os/exec` use in the repo |
-| `ui/src/` | UI bundle source | see [UI source](#ui-source-uisrc) |
+| `internal/pkgverify/`, `cmd/verifypkg/`, `internal/ci/`, `cmd/ci/` | build tooling | package verifier; CI checks (workflows, secrets, contract, release preflight, marketplace) |
+| `ui/src/` | UI bundle source | `settings/`, `issues/`, `git/`, `page/`, `switch/`, `brand/`, `messages/`, `testing/`; registrations in `index.ts` |
 | `manifest.yaml` | plugin contract | see [api-documentation.md](api-documentation.md) |
-| `Makefile` | build | every CI step goes through it |
-| `.github/workflows/` | CI/CD | `ci.yml`, `release.yml`, `secrets.yml`; see [architecture.md](architecture.md#ci-and-release-pipeline) |
-| `docs/` | docs | `brand/`, `manual-checks/` |
-| `aidlc/`, `.claude/` | process records / framework | AI-DLC records, memory, codekb; AI-DLC shell |
+| `Makefile`, `.golangci.yml`, `.github/workflows/` | build / CI | every CI step is a Make target |
+| `aidlc/`, `.claude/`, `docs/` | records / framework / docs | non-app |
 
-## Top-Level Path Classification
-
-What each top-level path means for CI and release (run 1, 2026-10-08, `261008-ci-path-filter`; not re-read since):
-
-| Path | Class | Why |
-|---|---|---|
-| `server/`, `internal/` | app | Go code; `GO_PKGS := ./internal/... ./server/...` is tested, linted, covered; `./server` is built |
-| `cmd/` | app (tooling) | `cmd/ci` (workflow lint, secret scan, contract test, release preflight), `cmd/verifypkg` |
-| `ui/` | app | Prettier, tsc, ESLint, Vitest, esbuild bundle into the package |
-| `manifest.yaml` | app | copied into the package; `VERSION` and `MIN_KANDEV_VERSION` are read from it |
-| `go.mod`, `go.sum` | app | build inputs; CI checks `go mod tidy` |
-| `.kandev-sdk-ref` | app | SDK pin for `check-sdk`, ldflags `SDKRef`, CI checkout |
-| `.nvmrc` | app | Node version for CI |
-| `.golangci.yml` | app (lint config) | changes lint results |
-| `Makefile` | app (build) | every CI step |
-| `.github/workflows/` | app (CI) | `make lint` runs actionlint and `cmd/ci workflows` on these files |
-| `aidlc/`, `.claude/` | non-app | read by no target except the repo-wide `check-secrets` scan |
-| `docs/brand/` | non-app | brand note |
-| `docs/manual-checks/` | non-app for CI, **release input** | read by `release-preflight` (`internal/ci/release.go`); allow-listed in the secret scan |
-| `README.md`, `LICENSE`, `.gitignore` | non-app | read by no target |
-| `build/`, `dist/` | generated | local output, not inputs |
-
-## SCM Package (`internal/scm/`)
-
-Provider-neutral source control for GitHub, GitLab and Bitbucket (run 3, analyzed deeply). Never imports `pluginsdk` (`doc.go`).
+## SCM Package (`internal/scm/`) — intent area
 
 | File | Holds |
 |---|---|
-| `client.go` | `Credential{Token, Username}` (token hidden in every `fmt` verb), `Client` interface (`CurrentUser`, `SearchRepos`, `GetRepo`, `ListPRs`, `GetPR`, each taking `cred Credential`) |
-| `types.go` | `Provider` (`github`, `gitlab`, `bitbucket`), `ParseProvider`, `TokenInput` and its `validate`, other inputs and views |
-| `errors.go` | `ErrHostRefused`, `ErrNotFound`, `ErrConflict`, `ErrNoToken`; `HTTPError{Provider, Status, RetryAfter}` |
-| `service.go` | `Service` (fields `clients`, `conn`, `secrets`, `tasks`, `store`, injectable clock `Now`), `NewService`, `SecretKey`, `ProviderView`/`view`, `Providers`, `SetToken`, private `credential`, `Test`, `RemoveToken`, `SearchRepos`, `SetMapping`/`checkRepos` |
-| `store.go` | `Store` over host state (schema version 1; `load` checks only `schemaVersion`), `Settings`, `Mapping`, `Link`; `ponytail:` unbounded dismissed list |
-| `httpx.go` | shared `API` helper for the three clients: https host check, bounded read, `HTTPError` |
-| `prs.go`, `links.go`, `queries.go` | PR lists, PR links, saved queries (credential call sites only were re-read) |
-| `watcher.go` | `Watcher` (1-minute tick, single worker, `ponytail:`), `runWatch`, `refreshProvider` |
-| `harness_test.go`, `fakes_test.go` | `newHarness` (lines 232-250) builds the service with fake `Client`, `fakeSecrets`, `fakeState` |
+| `cli_token.go` | `CLIRunner` type, `cliCommand` (fixed `gh` / `glab` args, no `--user`), `runCLI` (no shell, 10 s, 4 KiB, stderr dropped), `cliCache` (per provider, 5 min TTL, one mutex), `cliToken`, `forgetCLI` |
+| `service.go` | `Service` (`clients`, `conn`, `secrets`, `tasks`, `store`, `Now`, `CLI`, `cli`), `MethodToken`/`MethodCLI`, error codes (`cli_unavailable`, ...), `ProviderView`/`view`, `Providers`, `SetToken`, `UseCLI`, `credential`, `Test`, `RemoveToken`, `SearchRepos`, `SetMapping` |
+| `store.go` | `Store` over host state (schema version 1), `Settings` (`Source`, `HasToken`, `Account`, `AccountID`, `LastError`, `Mappings`), `Link`, `Query`, `Watch` |
+| `types.go` | `Provider`, `ParseProvider`, inputs (`TokenInput`, ...) |
+| `client.go` | `Credential` (token hidden in `fmt`), `Client` interface (5 methods, credential per call), `User{ID, Name}` |
+| `errors.go` | `ErrNoToken`, `ErrCLIUnavailable`, `ErrNotFound`, `ErrConflict`, `HTTPError` |
+| `prs.go`, `links.go`, `queries.go`, `watcher.go`, `httpx.go` | PR lists ("me" filter on `AccountID`), links, saved queries, 1-minute watcher, shared HTTP helper (skimmed) |
 
-`internal/github/`: `client.go` (`New()`; Bearer auth at lines 20-23; `/user`, `/user/repos`, `/repos/{o}/{r}`, `/repos/{o}/{r}/pulls[/{n}]`), `doc.go`, `client_test.go` with `testdata/` fixtures (user, repo, pull, 401, 403 rate limit, 404, 429).
+`internal/github/client.go`: Bearer auth; `CurrentUser` maps `login` -> `User.ID`, `name` (or login) -> `User.Name`.
 
-Plugin wiring for SCM (`internal/plugin/`): `scm_actions.go` (action keys, `scmClients`, `wireSCM`, handlers, `classifySCM`, `taskPRs`), `runtime.go` (handler map, `Runtime` with `scm` and `scmWatcher`), `manifest_test.go` (action/handler parity, `TestU2_ManifestActionKeysMatchTheRuntime`, lines 136-142).
+`internal/plugin/scm_actions.go`: action key constants (incl. `scm.providers.use_cli`), `scmClients`, `wireSCM`, handlers, `classifySCM`, `scmHost.CreateTask`.
 
 ## Issues Package (`internal/issues/`)
 
-- `types.go`: persisted records, including `Link` (issue key/id, project, space host, task, task key, `Summary`, state, `LastKnownStatus`, `StatusUpdatedAt`, fail count, connection epoch) and `IssueURL`; `ParseIssueKey` with `issueKeyPattern` `^([A-Z][A-Z0-9_]*)-([1-9][0-9]{0,8})$` (lines 56-66).
-- `service.go`: `Service` — `SearchTasks` (case-insensitive title/key match, max 20 rows, `linkedIssueKey` per task; lines ~503-528), `Link`/`newLink` (key must parse, project selected, task already linked to another issue -> `ErrConflict`; lines ~542-583), `Unlink` (`ErrNotLinked`; lines ~600-609), `Links` -> `[]LinkView` (UI view with summary, status, stale, unavailable, `url`), `Detail` (live issue read).
-- `sync.go`: periodic status refresh of links (updates `LastKnownStatus`).
-- Others (watches, queries, quick actions, store, watcher, leak tests) not re-read by the `261008-link-task-modal` scan.
+`types.go` (records incl. `Link`, `ParseIssueKey`), `service.go` (issue list/detail, task creation via `HostPort.CreateTask`, `SearchTasks`, `Link`/`Unlink`, `Links`), plus sync, watches, quick actions, queries (skimmed).
 
-## UI Source (`ui/src/`)
+## UI Source (`ui/src/`) — intent area
 
 | Path | Role |
 |---|---|
-| `index.ts` | `initialize`: all host registrations (table in [architecture.md](architecture.md#ui-surfaces-host-slots)) |
-| `host-ui.ts` | typed access to the host UI kit (Dialog*, Input, Label, Button, Tooltip*, ...) |
-| `layout.ts` | shared host utility-class strings (`BUTTON`, `FIELD`, `STACK`); the plugin ships no CSS |
-| `issues/issues-page.tsx` | Issues list on `/backlog`; issue row menu "Link to task" opens `LinkTaskDialog` (wiring around lines 118, 395-418, 615-622); `addTask` updates the row after linking |
-| `issues/link-task-dialog.tsx` | `createLinkTaskDialog` — issue-side task picker: search field, task option buttons, Link/Cancel; test ids `backlog-link-task-*` |
-| `issues/task-menu.ts` | `createUnlinkMenuAction` — "Unlink Backlog issue" task-menu action; refreshes `LinksStore` |
-| `issues/issue-badge.tsx` | `createIssueBadge` — task badge (key + status chip, hover summary, link to issue) |
-| `issues/issue-panel.tsx` | task panel for the linked issue |
-| `issues/issues-state.ts` | `LinkView`/`TaskLink` TS types, `issueNotice` (error -> notice), `badgeHref` (https + Backlog host re-check), badge text helpers |
-| `issues/links-store.ts` | `LinksStore` — one `issues.links.list` per workspace, shared; `load`, `refresh`, timed refresh (60 s) and on focus |
-| `git/pr-link.ts` | `createPRLinkAction` — task-side "Link Backlog pull request" (`placement: "link"`) via host `openTaskLinkDialog`; maps `not_found`/`validation` to messages |
-| `issues/i18n.ts`, `messages/en.ts` | message catalogue (`messagesFor` falls back to English; only `en` exists): `linkToTask`, `linkTaskTitle`, `searchTasks`, `noTasksFound`, `linkedTo`, `linkPR*`, `unlinkIssue`, ...; `scm*` strings for the Source control section |
-| `switch/enabled-events.ts`, `switch/integration-switch.tsx` | plugin-owned bus and switch for the per-workspace Backlog ON/OFF |
-| `settings/SettingsScreen.tsx` | Backlog settings page and its section order |
-| `settings/source-control-section.tsx` | `createSourceControlSection`; `ProviderCard` per provider (token form: save/replace, Test, Remove; mappings; since v0.5.1 also the GitHub/GitLab CLI login control). `hasToken = view.state !== "not_configured"`; calls `scm.providers.list`, `set_token`, `test`, `remove` (and `use_cli` since v0.5.1) |
-| `settings/issue-watches-section.tsx`, `settings/pr-watches-section.tsx` | watch lists |
-| `settings/section-parts.tsx` | `SettingsSection`, `ListEmpty` |
-| `settings/*` (other) | other settings sections |
-| `git/git-state.ts` | `ProviderView` TS mirror, `scmNotice`, `usableProviders` (keeps `state === "connected"`) |
-| `page/` | `/backlog` page; `start-task.tsx` creates a task then calls `issues.link` |
-| `brand/` | brand assets |
-| `testing/harness.ts` | shared fake host for Vitest (`fakeHost`, `mount`, `expectOnlyCatalogueText`, `axeViolations`; stubs `openTaskLinkDialog`) |
+| `settings/source-control-section.tsx` | `ProviderCard` per provider: token form, Test, Remove, mappings; "Use gh / glab CLI login" button (`useCli`, line 233; rendered line 302) calling `scm.providers.use_cli` |
+| `page/start-task.tsx` | issue "Start task" menu: renders Kandev `TaskCreateDialog`, then calls `issues.link` (lines 100-115) |
+| `git/git-state.ts` | `ProviderView` TS mirror, `usableProviders` |
+| `messages/en.ts` | message catalogue (`scm*` strings) |
+| `testing/harness.ts` | fake host for Vitest |
 
 ## Build and Packaging
 
-`Makefile` (GNU Make, `SHELL := /bin/bash`, `-eu -o pipefail`). Every Go target first runs `check-sdk`: `../kandev` HEAD must equal `.kandev-sdk-ref`. (Not re-read in this run.)
-
-| Target | Does |
-|---|---|
-| `check-format` | `gofmt -l server internal`; `prettier --check` in `ui/` |
-| `vet` | `go vet ./...` |
-| `lint` | golangci-lint v2.14.0 (`./...`), `tsc --noEmit`, ESLint, actionlint v1.7.12, `go run ./cmd/ci workflows -dir .github/workflows` |
-| `test` | `go test -race ./internal/... ./server/...`; `vitest run` |
-| `coverage` | 80% floor (`COVERAGE_MIN := 80`), profile under `build/`, excludes only `server/main.go` |
-| `check-secrets` | `go run ./cmd/ci secrets -root .` over the whole repo |
-| `build` | `CGO_ENABLED=0` cross-build of `./server` for `PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64` |
-| `ui-build` | esbuild `ui/src/index.ts` -> `build/ui/bundle.js`; fails if React is bundled |
-| `package` | build + ui-build -> stage -> Kandev `cmd/plugin-pack` -> `dist/nulab-backlog-<version>.tar.gz` + `dist/checksums.txt` |
-| `verify-package` | `go run ./cmd/verifypkg` |
-| `contract-test` | builds Kandev at `v$(MIN_KANDEV_VERSION)` from `KANDEV_MIN_DIR`, installs the package, runs `cmd/ci contract` |
-| `release-preflight` | needs `TAG`; tag format, tag == manifest version, tag on `origin/main`, no existing Release, first-release record in `docs/manual-checks/` |
-| `marketplace-entry`, `clean`, `help` | not used by CI |
-
-The platform set lives in four places: `manifest.yaml` `runtime.executables`, `Makefile` `PLATFORMS`, `internal/pkgverify` `executables`, `internal/plugin/manifest_test.go` (`internal/plugin/testdata/v030/manifest.yaml` is a frozen 0.3.0 snapshot).
+`Makefile` targets: `check-format`, `vet`, `lint`, `test` (`-race`), `coverage` (80% floor over `./internal/... ./server/...`), `check-secrets`, `build` (4 platforms), `ui-build`, `package`, `verify-package`, `contract-test`, `release-preflight`. Every Go target first checks `../kandev` HEAD equals `.kandev-sdk-ref`. The platform set lives in `manifest.yaml`, `Makefile` `PLATFORMS`, `internal/pkgverify`, `internal/plugin/manifest_test.go`.
 
 ## Code Patterns
 
-- Ports-and-adapters: only `internal/plugin` maps domain errors to `pluginsdk` codes (`classify`, `classifySCM`).
-- Errors wrapped with `%w`; `context.Context` first on I/O; responses bounded by `io.LimitReader`.
-- Secrets: a token is registered with `redact.WithSecrets(ctx, token)` as soon as it is read or received, so logs and errors through that context mask it.
-- Injected dependencies for tests: SCM clock `Service.Now`; fakes for `Client`, secrets and state via `newHarness`.
-- `exec.CommandContext` with fixed arguments carries `//nolint:gosec // G204` (`internal/ci/changes.go:41`).
-- UI: factories `createXxx(host, ...)` return host-React components via the `h` JSX factory; test ids prefixed `backlog-`; components carry doc comments citing story/AC ids.
-- Task-side link actions: `registerTaskAction({placement: "link", singleTaskOnly: true, run})` -> `host.openTaskLinkDialog({..., onSubmit})`; `onSubmit` throws an `Error` with a catalogue message on failure (`git/pr-link.ts`).
-- Tests co-located (`_test.go`, `*.test.ts[x]`), fake servers via `httptest`, fake host via `ui/src/testing/harness.ts`. A `openTaskLinkDialog` action is tested by asserting the options object and calling `options.onSubmit` directly (`git/pr-link.test.ts`).
-- Package docs and Makefile targets carry traceability IDs (FR/NFR/US/AC; e.g. US7.4, AC7.5.2, R-01..R-03).
+- Ports and adapters; domain errors mapped to SDK codes only in `internal/plugin`.
+- Errors wrapped with `%w`; `context.Context` first on I/O; bounded reads.
+- A secret is registered with `redact.WithSecrets(ctx, token)` as soon as it is read.
+- Injected seams for tests: `Service.Now` (clock), `Service.CLI` (command runner), fake `Client`/secrets/state via `newHarness`.
+- `exec.CommandContext` with fixed arguments carries `//nolint:gosec // G204`.
+- UI factories `createXxx(host, ...)`, test ids prefixed `backlog-`, catalogue-only text.
+- Doc comments cite FR/NFR/AC ids of the intent that introduced them.

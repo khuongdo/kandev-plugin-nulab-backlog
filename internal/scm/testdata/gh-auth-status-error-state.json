@@ -1,0 +1,1 @@
+{"hosts":{"github.com":[{"active":true,"host":"github.com","login":"alice","state":"success"},{"active":false,"host":"github.com","login":"carol","state":"error","error":"failed to read token from keyring"},{"active":false,"host":"github.com","login":"-bad;login","state":"success"}],"ghe.example.com":[{"active":true,"host":"ghe.example.com","login":"dave","state":"success"}]}}
