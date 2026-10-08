@@ -10,7 +10,41 @@ permissions:
   contents: read
 
 jobs:
+  # Classify the changed files (cmd/ci changes). A change to records and docs
+  # only skips checks and packaged-host-contract, which GitHub then reports as
+  # passing; any doubt runs them (FR2).
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      app: ${{ steps.classify.outputs.app }}
+    steps:
+      - name: Check out the plugin with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: plugin
+          fetch-depth: 0
+
+      # cmd/ci never imports the Kandev SDK, so go run needs no Kandev checkout
+      # (NFR2).
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: plugin/go.mod
+          cache-dependency-path: plugin/go.sum
+
+      - name: Classify the changed files
+        id: classify
+        working-directory: plugin
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: go run ./cmd/ci changes -base "$BASE_SHA" -head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  # Runs unless changes said app=false, so a failed changes job still runs it.
   checks:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.app != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out the plugin
@@ -65,8 +99,11 @@ jobs:
 
   # Install the packaged plugin on a throwaway Kandev built at exactly the
   # manifest's min_kandev_version, and run it (US7.4, team Testing Posture).
+  # Skipped when checks is skipped. The explicit result check keeps it
+  # running after checks ran despite a failed changes job.
   packaged-host-contract:
     needs: checks
+    if: ${{ !cancelled() && needs.checks.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

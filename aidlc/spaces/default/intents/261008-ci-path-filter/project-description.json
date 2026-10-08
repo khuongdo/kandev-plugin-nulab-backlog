@@ -1,0 +1,1 @@
+"chỉ trigger ci và release đổi với những thư mục liên quan đến app, loại trừ aidlc và docs.. ra"

@@ -47,5 +47,12 @@
     "dirName": "261007-plugin-install-502",
     "scope": "bugfix",
     "status": "in-flight"
+  },
+  {
+    "uuid": "01a118d6-6f3a-712d-94c7-dd6bb477574b",
+    "slug": "ci-path-filter",
+    "dirName": "261008-ci-path-filter",
+    "scope": "express",
+    "status": "in-flight"
   }
 ]

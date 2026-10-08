@@ -1,0 +1,23 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": ["FR1.1", "FR1.2", "FR1.3", "FR2.1", "FR2.2", "FR2.3", "FR2.4", "FR3.1", "FR3.2", "FR3.3", "FR4.1", "FR5.1", "NFR1", "NFR2", "NFR3", "NFR4", "NFR5"],
+  "coverage": [
+    { "id": "FR1.1", "status": "OK", "target": "internal/ci/changes.go" },
+    { "id": "FR1.2", "status": "OK", "target": "internal/ci/changes.go" },
+    { "id": "FR1.3", "status": "OK", "target": "internal/ci/changes.go" },
+    { "id": "FR2.1", "status": "OK", "target": ".github/workflows/ci.yml" },
+    { "id": "FR2.2", "status": "OK", "target": ".github/workflows/ci.yml" },
+    { "id": "FR2.3", "status": "OK", "target": ".github/workflows/ci.yml" },
+    { "id": "FR2.4", "status": "OK", "target": "internal/ci/changes_test.go" },
+    { "id": "FR3.1", "status": "OK", "target": ".github/workflows/secrets.yml" },
+    { "id": "FR3.2", "status": "OK", "target": ".github/workflows/secrets.yml" },
+    { "id": "FR3.3", "status": "OK", "target": "internal/ci/workflows_test.go" },
+    { "id": "FR4.1", "status": "OK", "target": ".github/workflows/release.yml" },
+    { "id": "FR5.1", "status": "Deferred", "target": "Manual ruleset change outside the repo, after secret-scan has reported once; the gh api command is in code-summary.md" },
+    { "id": "NFR1", "status": "OK", "target": "internal/ci/workflows_test.go" },
+    { "id": "NFR2", "status": "OK", "target": ".github/workflows/ci.yml" },
+    { "id": "NFR3", "status": "OK", "target": "aidlc/spaces/default/intents/261008-ci-path-filter/construction/code-generation/code-summary.md" },
+    { "id": "NFR4", "status": "OK", "target": "internal/ci/changes_test.go" },
+    { "id": "NFR5", "status": "OK", "target": "internal/ci/changes_test.go" }
+  ]
+}

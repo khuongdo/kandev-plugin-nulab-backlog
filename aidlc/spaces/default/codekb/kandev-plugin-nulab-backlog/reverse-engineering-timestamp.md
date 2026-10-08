@@ -3,40 +3,34 @@
 ## Run Information
 
 - Date: 2026-10-08
-- Commit: `1819cc34dcd1fa89950d904d7f2c58c01b51cd95` (v0.4.1; branch `feature/plugin-install-faile-9qm`)
-- Intent: `261007-plugin-install-502` (scope bugfix, depth Minimal)
-- Type: FULL RESCAN by human decision (prior store verdict STALE). All 9 artifacts replaced wholesale; this block is built only from this run.
-- Pre-scan snapshot: paths `./`, store_generation `sha256:3839bc6a51780effeb3a33171e5151e517523a62e7a0383a5ccd104319cad241`, source_fingerprint `git:db8a8ceecd7a0f03e0662036d298e3a1a25be9cf`.
-- Depth note: build, packaging, manifest, verifier and CI paths were read deeply; domain packages and `ui/src/` were skimmed (listed under `shallow.paths`).
-- External evidence (outside the snapshot, not coverage): Kandev `v0.96.0` checkout `~/repo/kandev`, running Kandev v0.97.0 logs and config, `gh release view v0.4.1`, throttled upload reproduction.
-- Baselines: not recorded (no Go toolchain, no `../kandev` link). See [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines).
+- Commit: `f5a7529baaa685e2d02e30cf879a247ef0dd106b` (v0.4.2; branch `feature/plugin-install-faile-9qm`)
+- Intent: `261008-ci-path-filter` (depth Minimal)
+- Type: FOCUSED SCAN merged into the existing store (prior verdict STALE; prior store built by `261007-plugin-install-502` as `kind: full`). Prior prose is preserved; sections on CI/release workflows, the Makefile, required checks and the app vs non-app path classification were updated. Per the STALE rule, this block records only this run; the prior `./` deep coverage is demoted to `shallow.paths`.
+- Pre-scan snapshot: paths `.github/,Makefile`, store_generation `sha256:e0c900e8059aba039141269d61ddd08641452607633ea5d17ad9323c99832e87`, source_fingerprint `git:0a67930243050497755920e35d45db5302fb220f`.
+- External evidence (outside the snapshot, not coverage): GitHub repository ruleset `24580280` and PR check history, read with `gh api` / `gh pr` on 2026-10-08.
+- Baselines: not recorded (CI-configuration-only intent). See [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines).
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
-kind: full
-intent: 261007-plugin-install-502
-fingerprint: db8a8ceecd7a0f03e0662036d298e3a1a25be9cf
+kind: partial
+intent: 261008-ci-path-filter
+fingerprint: 0a67930243050497755920e35d45db5302fb220f
 analyzed:
   paths:
-    - ./
+    - .github/
+    - Makefile
   components:
-    - Server Entrypoint
-    - KandevAdapter
-    - BacklogGateway
-    - Connection
-    - Issues
-    - Git
-    - SCM
-    - SCM Clients
-    - Redact
-    - PackageVerify
-    - CI Tooling
-    - TestUtil
-    - UI Bundle
+    - CI Workflows
+    - Build Makefile
 shallow:
   paths:
+    - ./
+    - aidlc/
+    - docs/
+    - .claude/
+    - internal/
     - internal/plugin/
     - internal/backlog/
     - internal/connection/
@@ -48,10 +42,22 @@ shallow:
     - internal/bitbucket/
     - internal/redact/
     - internal/testutil/
+    - server/
+    - cmd/
     - cmd/ci/
+    - ui/
     - ui/src/
     - ui/tsconfig.json
     - ui/eslint.config.js
-    - docs/
+    - build/
+    - dist/
+    - manifest.yaml
+    - go.mod
+    - go.sum
+    - README.md
     - LICENSE
+    - .golangci.yml
+    - .kandev-sdk-ref
+    - .nvmrc
+    - .gitignore
 ```

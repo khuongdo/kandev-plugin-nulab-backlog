@@ -170,7 +170,11 @@ Connecting again with another key replaces the connection only after Backlog acc
 
 ## CI checks
 
-Every pull request and every push to `main` runs two jobs in `.github/workflows/ci.yml`:
+Every pull request and every push to `main` runs `.github/workflows/ci.yml`. Its first job,
+`changes`, lists the changed files (`go run ./cmd/ci changes -base <sha> -head <sha>`). When every
+changed file is under `aidlc/`, `.claude/` or `docs/`, or is `README.md`, `LICENSE` or `.gitignore`,
+the two app jobs below are skipped, and GitHub reports a skipped job as passing. Any other file, or
+a change set that cannot be listed, runs them in full. The list lives only in `internal/ci/changes.go`.
 
 - `checks` runs `make check-format vet lint test coverage check-secrets build package verify-package`.
   `lint` also runs `actionlint` and the workflow policy (every action pinned to a full commit SHA,
@@ -182,8 +186,11 @@ Every pull request and every push to `main` runs two jobs in `.github/workflows/
   (`make contract-test`). Locally: `git -C ../kandev worktree add ../kandev-min v<min_kandev_version>`,
   then `make package contract-test` (needs gcc; uses ports 38529 and 39529).
 
+`.github/workflows/secrets.yml` runs the job `secret-scan` (`make check-secrets`) on every pull
+request and every push to `main`, with no path filter, so records and docs are scanned too.
+
 In the repository settings, protect `main`: require a pull request, block force-pushes and
-deletion, and require **both** `checks` and `packaged-host-contract` to pass before merging.
+deletion, and require `checks`, `packaged-host-contract` and `secret-scan` to pass before merging.
 Also add a tag rule so `v*` tags cannot be moved or deleted.
 
 ## Releasing
