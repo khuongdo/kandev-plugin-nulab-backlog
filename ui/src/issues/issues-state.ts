@@ -35,6 +35,8 @@ export interface LinkView {
   taskId: string;
   taskKey?: string;
   issueKey: string;
+  /** The issue title; absent on links stored before it was kept (FR2). */
+  summary?: string;
   spaceHost?: string;
   state: string;
   status?: string;
@@ -112,6 +114,11 @@ export function badgeText(l: LinkView, messages: Messages = en): string {
   if (l.state === "not_connected") return format(messages.issueBadgeNotConnected, { key: l.issueKey });
   if (l.unavailable) return format(messages.issueBadgeUnavailable, { key: l.issueKey });
   return format(messages.issueBadge, { key: l.issueKey, status: l.status ?? "" });
+}
+
+/** The hover card lines: key, summary when known, status (FR1.4, FR5.2). */
+export function badgeHover(l: LinkView): string[] {
+  return [l.issueKey, l.summary, l.status].filter((v): v is string => Boolean(v));
 }
 
 /** The badge detail shown on focus or tap. */

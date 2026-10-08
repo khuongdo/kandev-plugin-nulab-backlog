@@ -453,6 +453,44 @@ function IntegrationListToolbar(props: Props) {
   );
 }
 
+const TooltipCtx = React.createContext<{ open: boolean; setOpen: (o: boolean) => void }>({
+  open: false,
+  setOpen: () => undefined,
+});
+
+/** The host Tooltip (Radix): opens on hover or keyboard focus of its trigger. */
+function Tooltip({ children }: Props) {
+  const [open, setOpen] = React.useState(false);
+  return React.createElement(TooltipCtx.Provider, { value: { open, setOpen } }, children as React.ReactNode);
+}
+
+/** asChild: composes the open/close handlers with the child's own, like Radix Slot. */
+function TooltipTrigger({ children }: Props) {
+  const ctx = React.useContext(TooltipCtx);
+  const child = children as React.ReactElement<Props>;
+  const both = (name: string, open: boolean) => (e: unknown) => {
+    (child.props[name] as ((e: unknown) => void) | undefined)?.(e);
+    ctx.setOpen(open);
+  };
+  return React.cloneElement(child, {
+    "data-tooltip-trigger": "",
+    onMouseEnter: both("onMouseEnter", true),
+    onMouseLeave: both("onMouseLeave", false),
+    onFocus: both("onFocus", true),
+    onBlur: both("onBlur", false),
+  });
+}
+
+function TooltipContent({ children, ...props }: Props) {
+  const ctx = React.useContext(TooltipCtx);
+  if (!ctx.open) return null;
+  return React.createElement(
+    "div",
+    { role: "tooltip", "data-host": "TooltipContent", ...props },
+    children as React.ReactNode,
+  );
+}
+
 const PopoverCtx = React.createContext<{ open: boolean; setOpen: (o: boolean) => void }>({
   open: false,
   setOpen: () => undefined,
@@ -756,6 +794,9 @@ export const fakeUi = {
   IntegrationRepositoryFilter,
   IntegrationListToolbar,
   TaskRowIndicator,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
   Popover,
   PopoverTrigger,
   PopoverContent,

@@ -124,6 +124,7 @@ export const en = {
   // U4: PR watches (M4, US6.1, US6.2)
   watchesTitle: "PR watches",
   watchesEmpty: "No PR watches yet",
+  issueWatchesEmpty: "No issue watches yet",
   watchActive: "Active",
   watchPaused: "Paused",
   watchNotConnected: "Not connected",
@@ -222,6 +223,7 @@ export const en = {
   issueBadgeNotConnected: "{key} – not connected",
   issueBadgeUnavailable: "{key} · Issue unavailable",
   issueBadgeSr: "Backlog issue {label}",
+  issueBadgeSrSummary: "Backlog issue {label}, {summary}",
   issueUpdatedAt: "updated at {time}",
   mayBeOutOfDate: "may be out of date",
   reconnectToRestore: "Reconnect {host} to restore this link",

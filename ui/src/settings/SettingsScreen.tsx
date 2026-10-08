@@ -384,10 +384,27 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
 
     // BR1.1, BR1.2: eight sections while connected; members keep the watch,
     // query, quick action, sync and (read-only) source control sections, admins
-    // also Projects.
+    // also Projects, right after Connection (FR4.1).
     return (
       <div data-testid="backlog-settings" className={SECTIONS}>
         {section("connection", messages.sectionConnection, connection)}
+        {/* FR4.1: the project picker right after the sign-in method. */}
+        {connectedOn && !state.isMember
+          ? section(
+              "projects",
+              messages.projectsLegend,
+              // A new space (a change or a restore) or a new account on the same space
+              // remounts the picker so it reloads and keeps no list or checkbox of the old one
+              // (R-02, R-12). Not the epoch: a project save bumps it. The view carries no user
+              // id, so the account is told apart by its display name.
+              <ProjectPicker
+                key={`${state.view?.spaceHost ?? ""}:${state.view?.connectedUserName ?? ""}`}
+                workspaceId={workspaceId!}
+                onView={onView}
+                announce={announce}
+              />,
+            )
+          : null}
         {connectedOn ? (
           <PrWatches workspaceId={workspaceId!} selectedProjects={state.view?.selectedProjects ?? []} />
         ) : null}
@@ -421,22 +438,6 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
             }
           />
         ) : null}
-        {connectedOn && !state.isMember
-          ? section(
-              "projects",
-              messages.projectsLegend,
-              // A new space (a change or a restore) or a new account on the same space
-              // remounts the picker so it reloads and keeps no list or checkbox of the old one
-              // (R-02, R-12). Not the epoch: a project save bumps it. The view carries no user
-              // id, so the account is told apart by its display name.
-              <ProjectPicker
-                key={`${state.view?.spaceHost ?? ""}:${state.view?.connectedUserName ?? ""}`}
-                workspaceId={workspaceId!}
-                onView={onView}
-                announce={announce}
-              />,
-            )
-          : null}
         {confirm ? (
           <ConfirmDialog
             testId={confirm.kind === "replace" ? "backlog-replace-dialog" : "backlog-change-space-dialog"}

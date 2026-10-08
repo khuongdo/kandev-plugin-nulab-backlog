@@ -281,3 +281,14 @@ func TestU3_Sync_ListIsNotBlockedByACycle(t *testing.T) {
 		close(block)
 	})
 }
+
+func TestFR2_Sync_RefreshStoresTheCurrentSummary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, _ := syncRig(t)
+		r.gw.set(func(g *fakeGateway) { g.issues[1].Summary = "Login page v2" })
+		after(time.Minute)
+		ls := r.links(t)
+		require.Equal(t, "Fix login timeout", byTask(ls, "task-17").Summary, "FR2.2: an old link gains its summary")
+		require.Equal(t, "Login page v2", byTask(ls, "task-18").Summary, "FR2.2: a renamed issue updates it")
+	})
+}

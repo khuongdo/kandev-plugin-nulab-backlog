@@ -21,15 +21,16 @@ import {
   type View,
 } from "../testing/harness";
 
+// FR4.1: Projects right after Connection, then the rest in their order.
 const SECTIONS = [
   "backlog-section-connection",
+  "backlog-section-projects",
   "backlog-section-pr-watches",
   "backlog-section-issue-watches",
   "backlog-section-saved-queries",
   "backlog-section-quick-actions",
   "backlog-section-issue-sync",
   "backlog-section-source-control",
-  "backlog-section-projects",
 ];
 
 const DEFAULT_ACTIONS = {
@@ -353,6 +354,31 @@ describe("PR watches section (FR1.2)", () => {
   });
 });
 
+describe("Empty watch lists (FR4.2, FR4.3)", () => {
+  it("says No issue watches yet and has only the header Add watch button", async () => {
+    const c = await render(scripted(connected, {}, { issueWatches: [] }));
+    expect(byTestId(c, "backlog-issue-watches-empty")!.textContent).toContain("No issue watches yet");
+    expect(byTestId(c, "backlog-issue-watches-empty")!.textContent).not.toContain(en.watchesEmpty);
+    const section = byTestId(c, "backlog-section-issue-watches")!;
+    expect([...section.querySelectorAll("button")].filter((b) => b.textContent === en.addWatch)).toHaveLength(
+      1,
+    );
+    expect(byTestId(c, "backlog-issue-watches-add")).not.toBeNull();
+    expect(byTestId(c, "backlog-issue-watches-empty-add")).toBeNull();
+  });
+
+  it("says No PR watches yet and has only the header Add watch button", async () => {
+    const c = await render(scripted(connected, {}, { prWatches: [] }));
+    expect(byTestId(c, "backlog-pr-watches-empty")!.textContent).toContain(en.watchesEmpty);
+    const section = byTestId(c, "backlog-section-pr-watches")!;
+    expect([...section.querySelectorAll("button")].filter((b) => b.textContent === en.addWatch)).toHaveLength(
+      1,
+    );
+    expect(byTestId(c, "backlog-pr-watches-add")).not.toBeNull();
+    expect(byTestId(c, "backlog-pr-watches-empty-add")).toBeNull();
+  });
+});
+
 describe("Issue watches section (FR1.3, FR3)", () => {
   it("lists watches with their last error", async () => {
     const c = await render(scripted(connected));
@@ -371,7 +397,7 @@ describe("Issue watches section (FR1.3, FR3)", () => {
     });
     const host = scripted(connected, { "issues.watches.save": save }, { issueWatches: [] });
     const c = await render(host);
-    expect(byTestId(c, "backlog-issue-watches-empty")!.textContent).toContain(en.watchesEmpty);
+    expect(byTestId(c, "backlog-issue-watches-empty")!.textContent).toContain(en.issueWatchesEmpty);
     await act(async () => byTestId(c, "backlog-issue-watches-add")!.click());
     expect(byTestId(c, "backlog-issue-watch-dialog")!.getAttribute("role")).toBe("dialog");
     expect((byTestId(c, "backlog-issue-watch-interval") as HTMLInputElement).value).toBe("5");

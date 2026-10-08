@@ -70,3 +70,32 @@ func TestU3_Leak_CycleLogHasNoSecret(t *testing.T) {
 		testutil.AssertNoLeak(t, r.logs.String(), r.conn.apiKey)
 	})
 }
+
+// TestNFR1_Leak_SummaryNeverInErrorsOrLogs keeps the stored issue summary (Backlog
+// content) out of every error message and log line.
+func TestNFR1_Leak_SummaryNeverInErrorsOrLogs(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, _ := syncRig(t)
+		after(time.Minute)
+		summary := byTask(r.links(t), "task-17").Summary
+		require.Equal(t, "Fix login timeout", summary)
+		failing := &backlog.Error{Kind: backlog.KindUnreachable, Status: 500, Class: "http"}
+		r.gw.set(func(g *fakeGateway) {
+			for _, op := range []string{"issues", "issue", "comments", "attachments", "projects"} {
+				g.errs[op] = failing
+			}
+		})
+		var errs []string
+		keep := func(_ any, err error) {
+			if err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+		keep(r.svc.Detail(r.ctx, "ws-1", "task-17"))
+		keep(r.svc.Comments(r.ctx, "ws-1", "task-17", 0))
+		keep(r.svc.Link(r.ctx, "ws-1", "task-19", "PROJ-118"))
+		after(5 * time.Minute)
+		require.NotEmpty(t, errs)
+		testutil.AssertNoLeak(t, fmt.Sprint(errs)+r.logs.String(), "", summary)
+	})
+}
