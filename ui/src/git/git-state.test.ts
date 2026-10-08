@@ -83,6 +83,9 @@ describe("source control states and notices (A3, FR2.4, NFR5)", () => {
       retry: true,
     });
     expect(scmNotice(actionError(409, { code: "conflict" }))).toEqual({ key: "scmUnmapped" });
+    expect(noticeText(scmNotice(actionError(503, { code: "cli_unavailable" })))).toBe(
+      "The gh / glab CLI is not available or not logged in on the Kandev server.",
+    );
     expect(scmNotice(actionError(404, { code: "not_found" }))).toEqual({ key: "gitNotFound" });
   });
 

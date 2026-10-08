@@ -2,8 +2,10 @@ package scm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -134,4 +136,25 @@ func TestStore_ConcurrentUpdatesDoNotLoseWrites(t *testing.T) {
 	q, err := s.Queries(ctx, "ws")
 	require.NoError(t, err)
 	require.Len(t, q, 20)
+}
+
+// FR6.1, FR5.1: v0.5.0 settings (no source) read as the token method.
+func TestSettings_WithoutSourceReadAsTokenMethod(t *testing.T) {
+	var st Settings
+	require.NoError(t, json.Unmarshal([]byte(`{"provider":"github","hasToken":true,"account":"Lan","mappings":[]}`), &st))
+	v := view(st)
+	require.Equal(t, MethodToken, v.Method)
+	require.Equal(t, StateConnected, v.State)
+	require.Empty(t, view(Settings{Provider: GitHub}).Method, "no method while not configured")
+}
+
+// FR5.1, NFR1: a CLI connection shows method cli and never a token field.
+func TestSettings_CLISourceShowsMethodCLI(t *testing.T) {
+	v := view(Settings{Provider: GitHub, Source: MethodCLI, HasToken: true, Account: "Lan"})
+	require.Equal(t, MethodCLI, v.Method)
+	require.Equal(t, StateConnected, v.State)
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	require.NotContains(t, strings.ToLower(string(b)), "token\"")
+	require.Contains(t, string(b), `"method":"cli"`)
 }

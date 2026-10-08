@@ -33,6 +33,23 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.5.1: connect GitHub or GitLab with the gh / glab CLI login
+
+- Settings > Source control: the GitHub card has a "Use gh CLI login" button and the GitLab card
+  a "Use glab CLI login" button, next to the token field. The plugin then reads the token from
+  the CLI that is logged in on the Kandev server (`gh auth token`, `glab config get token`),
+  checks it, and never stores it. It follows `gh auth login` / `refresh` / `switch` within
+  5 minutes.
+- The CLI runs on the machine that runs Kandev, as the Kandev server user. It needs `gh` 2.17 or
+  later / `glab`, logged in for that user; it does not work when Kandev runs where the CLI is not
+  installed (for example a Docker image without it). If the CLI stops working, the card shows
+  "The gh CLI is not available or not logged in on the Kandev server."; there is no fallback to a
+  typed token.
+- Saving a typed token switches back to the token method; Remove clears either method.
+- GitLab requests now send the token as `Authorization: Bearer`. Existing GitLab personal access
+  tokens keep working; nothing to do.
+- Nothing to do after upgrading: existing connections stay on the token method.
+
 ### 0.5.0: Backlog issue on task rows and the task top bar
 
 - The Backlog issue badge now shows on Home > Tasks rows, in the sidebar task list and in the
@@ -336,6 +353,8 @@ merges or comments on pull requests or hands out clone or push credentials for t
   - Bitbucket: an API token with `read:repository:bitbucket` and `read:pullrequest:bitbucket`, or an
     app password with **Repositories: Read** and **Pull requests: Read**, together with your
     Bitbucket user name or email.
+- **CLI login instead of a token (GitHub and GitLab).** See
+  [Connect GitHub or GitLab with the CLI login](#connect-github-or-gitlab-with-the-cli-login).
 - **Repositories per Backlog project.** For each selected Backlog project, an admin maps the
   repositories of each service: search the repositories the token can read, or type
   `owner/name` (GitHub), `group/project` (GitLab) or `workspace/repo` (Bitbucket). Each repository
@@ -363,6 +382,31 @@ merges or comments on pull requests or hands out clone or push credentials for t
   tokens, mappings, links, queries and watches of these services stay after a Backlog disconnect,
   a space change or a project deselection; items of a project that is no longer selected are
   only hidden from project-based views.
+
+### Connect GitHub or GitLab with the CLI login
+
+Instead of pasting a token, a workspace admin can press **Use gh CLI login** (GitHub) or **Use
+glab CLI login** (GitLab) on the service's card. Bitbucket has no CLI option.
+
+- The plugin runs the CLI **on the machine that runs the Kandev server, as the server's user and
+  with its environment** — not on the admin's own computer. Log in there first: `gh auth login`
+  (gh 2.17 or later, which has `gh auth token`) or `glab auth login`.
+- The plugin reads the token with `gh auth token --hostname github.com` or
+  `glab config get token --host gitlab.com`, checks it with the service's current-user call, and
+  stores only the method and the account name. The token is never saved, logged or shown; any
+  typed token of that service is deleted. The card then shows **Connected via gh CLI as …**.
+- The token is read again at most every **5 minutes**, so `gh auth refresh`, `gh auth switch` or
+  a new `glab auth login` on the server takes effect within 5 minutes without any action in
+  Kandev. **Test** always reads it again.
+- If the CLI is missing, not logged in, slow (10 s limit) or its token is refused, actions fail
+  with "The gh CLI is not available or not logged in on the Kandev server" (glab respectively).
+  There is no fallback to a typed token. This is the case when Kandev runs in Docker or on a
+  machine without the CLI: use a token there.
+- glab: only the login glab stores is read; a token given to glab only through the
+  `GITLAB_TOKEN` environment variable is not seen.
+- Saving a token switches the service back to the token method; **Remove token** disconnects
+  either method and keeps the mappings. GitLab requests now send the token as
+  `Authorization: Bearer`, which works for personal access tokens and glab's login.
 
 ## Backlog issues
 

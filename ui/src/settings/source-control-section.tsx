@@ -27,7 +27,10 @@ const STATES: Record<string, MessageKey> = {
   connected: "scmStateConnected",
   error: "scmStateError",
 };
+/** The CLI whose login a provider can use (FR1.1, FR2.1); Bitbucket has none. */
+const CLIS: Partial<Record<ScmProvider, string>> = { github: "gh", gitlab: "glab" };
 const TEST_ERRORS: Record<string, MessageKey> = {
+  cli_unavailable: "scmCliUnavailable",
   invalid_token: "scmErrorInvalidToken",
   missing_scope: "scmErrorMissingScope",
   rate_limited: "scmErrorRateLimited",
@@ -197,6 +200,8 @@ export function createSourceControlSection(
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<Notice | undefined>(undefined);
     const hasToken = view.state !== "not_configured";
+    const cli = CLIS[p];
+    const withCli = (n: Notice): Notice => (cli ? { ...n, params: { ...n.params, cli } } : n);
 
     const run = async (key: string, body: Record<string, string>, ok: (v: ProviderView) => Notice) => {
       if (busy) return;
@@ -205,9 +210,9 @@ export function createSourceControlSection(
       try {
         const v = await invoke<ProviderView>(key, workspaceId, body);
         onView(v);
-        setMessage(ok(v));
+        setMessage(withCli(ok(v)));
       } catch (e) {
-        setMessage(scmNotice(e));
+        setMessage(withCli(scmNotice(e)));
       }
       setToken(""); // the token never stays in the page (NFR1)
       setBusy(false);
@@ -225,6 +230,7 @@ export function createSourceControlSection(
         key: v.lastError ? (TEST_ERRORS[v.lastError] ?? "scmErrorUnreachable") : "scmTestOk",
       }));
     const remove = () => run("scm.providers.remove", { provider: p }, () => ({ key: "scmTokenRemoved" }));
+    const useCli = () => run("scm.providers.use_cli", { provider: p }, () => ({ key: "scmCliConnected" }));
     const button = (suffix: string, label: string, onClick: () => void, variant = "outline") => (
       <Button
         type="button"
@@ -260,7 +266,11 @@ export function createSourceControlSection(
           </Badge>
         </div>
         {hasToken && view.account ? (
-          <p data-testid={`${id}-account`}>{format(messages.scmAccount, { name: view.account })}</p>
+          <p data-testid={`${id}-account`}>
+            {view.method === "cli" && cli
+              ? format(messages.scmAccountCli, { cli, name: view.account })
+              : format(messages.scmAccount, { name: view.account })}
+          </p>
         ) : null}
         <p data-testid={`${id}-scopes`} className="text-sm text-muted-foreground">
           {messages[SCOPES[p]]}
@@ -289,6 +299,7 @@ export function createSourceControlSection(
                 () => void saveToken(),
                 "default",
               )}
+              {cli ? button("use-cli", format(messages.scmUseCli, { cli }), () => void useCli()) : null}
               {hasToken ? button("test", messages.scmTest, () => void test()) : null}
               {hasToken ? button("remove", messages.scmRemoveToken, () => void remove()) : null}
             </div>

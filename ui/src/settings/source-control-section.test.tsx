@@ -221,6 +221,65 @@ describe("Source control settings (FR2, FR3)", () => {
     expect(byTestId(c, "fake-git-access"), "members do not see Git access").toBeNull();
   });
 
+  it("offers the CLI login on GitHub and GitLab only, to admins only (FR1.1, FR1.4, FR2.1, FR2.3)", async () => {
+    const c = await render(setup());
+    expect(byTestId(c, "backlog-scm-github-use-cli")!.textContent).toBe("Use gh CLI login");
+    expect(byTestId(c, "backlog-scm-gitlab-use-cli")!.textContent).toBe("Use glab CLI login");
+    expect(byTestId(c, "backlog-scm-bitbucket-use-cli")).toBeNull();
+    expect(byTestId(c, "backlog-scm-github-token"), "the token field stays").not.toBeNull();
+    unmount();
+    const m = await render(setup(), { readOnly: true });
+    expect(byTestId(m, "backlog-scm-github-use-cli")).toBeNull();
+    expect(byTestId(m, "backlog-scm-gitlab-use-cli")).toBeNull();
+  });
+
+  it("connects with the CLI login and shows the method (FR1.2, FR5.2)", async () => {
+    const viaCli = { provider: "gitlab", state: "connected", method: "cli", account: "Minh", mappings: [] };
+    const host = setup({ "scm.providers.use_cli": async () => viaCli });
+    const c = await render(host);
+    await act(async () => byTestId(c, "backlog-scm-gitlab-use-cli")!.click());
+    expect(calls(host, "scm.providers.use_cli")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { provider: "gitlab" },
+    });
+    expect(byTestId(c, "backlog-scm-gitlab-state")!.textContent).toBe(en.scmStateConnected);
+    expect(byTestId(c, "backlog-scm-gitlab-account")!.textContent).toBe("Connected via glab CLI as Minh");
+    expect(byTestId(c, "backlog-scm-gitlab-message")!.textContent).toBe("Connected with the glab CLI login.");
+    expect(byTestId(c, "backlog-scm-gitlab-save")!.textContent, "a typed token can replace it").toBe(
+      en.scmReplaceToken,
+    );
+  });
+
+  it("shows a typed token connection as before (FR5.2, FR6.1)", async () => {
+    const c = await render(setup({}, [{ ...GITHUB, method: "token" }]));
+    expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe("Connected as Lan");
+  });
+
+  it("explains an unusable CLI, from the action and from Test (FR4.2)", async () => {
+    const cliError = "The gh CLI is not available or not logged in on the Kandev server.";
+    const host = setup(
+      {
+        "scm.providers.use_cli": async () => {
+          throw actionError(503, { code: "cli_unavailable" });
+        },
+        "scm.providers.test": async () => ({
+          ...GITHUB,
+          method: "cli",
+          state: "error",
+          lastError: "cli_unavailable",
+        }),
+      },
+      [{ ...GITHUB, method: "cli" }],
+    );
+    const c = await render(host);
+    expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe("Connected via gh CLI as Lan");
+    await act(async () => byTestId(c, "backlog-scm-github-use-cli")!.click());
+    expect(byTestId(c, "backlog-scm-github-message")!.textContent).toBe(cliError);
+    await act(async () => byTestId(c, "backlog-scm-github-test")!.click());
+    expect(byTestId(c, "backlog-scm-github-state")!.textContent).toBe(en.scmStateError);
+    expect(byTestId(c, "backlog-scm-github-message")!.textContent).toBe(cliError);
+  });
+
   it("shows a load failure with Retry", async () => {
     let fail = true;
     const host = setup({

@@ -332,6 +332,10 @@ export const en = {
   scmStateConnected: "Connected",
   scmStateError: "Error",
   scmAccount: "Connected as {name}",
+  scmAccountCli: "Connected via {cli} CLI as {name}",
+  scmUseCli: "Use {cli} CLI login",
+  scmCliConnected: "Connected with the {cli} CLI login.",
+  scmCliUnavailable: "The {cli} CLI is not available or not logged in on the Kandev server.",
   scmScopesGithub:
     "Needs a fine-grained token with Metadata: read and Pull requests: read, or a classic token with repo (public_repo for public repositories only).",
   scmScopesGitlab: "Needs a personal access token with the read_api scope.",

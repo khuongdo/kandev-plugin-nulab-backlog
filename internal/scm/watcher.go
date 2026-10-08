@@ -178,6 +178,9 @@ func (s *Service) refreshProvider(ctx context.Context, ws string, p Provider, li
 		pr, err := s.clients[p].GetPR(ctx, cred, ref.Repo, ref.Number)
 		if err != nil {
 			s.logRefresh(ctx, ws, p, err)
+			if IsStatus(err, 401) {
+				s.forgetCLI(p) // the CLI may hold a new token by the next cycle (FR3.2)
+			}
 			if IsStatus(err, 429) || ctx.Err() != nil {
 				return
 			}

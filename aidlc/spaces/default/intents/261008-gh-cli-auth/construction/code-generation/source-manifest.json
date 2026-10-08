@@ -1,0 +1,26 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "manifest.yaml" },
+    { "path": "internal/scm/cli_token.go" },
+    { "path": "internal/scm/cli_token_test.go" },
+    { "path": "internal/scm/errors.go" },
+    { "path": "internal/scm/service.go" },
+    { "path": "internal/scm/service_test.go" },
+    { "path": "internal/scm/store.go" },
+    { "path": "internal/scm/store_test.go" },
+    { "path": "internal/scm/watcher.go" },
+    { "path": "internal/gitlab/client.go" },
+    { "path": "internal/gitlab/client_test.go" },
+    { "path": "internal/plugin/scm_actions.go" },
+    { "path": "internal/plugin/runtime.go" },
+    { "path": "internal/plugin/actions_scm_test.go" },
+    { "path": "ui/src/git/git-state.ts" },
+    { "path": "ui/src/git/git-state.test.ts" },
+    { "path": "ui/src/messages/en.ts" },
+    { "path": "ui/src/settings/source-control-section.tsx" },
+    { "path": "ui/src/settings/source-control-section.test.tsx" }
+  ]
+}

@@ -57,12 +57,20 @@ const (
 	StateError         = "error"
 )
 
+// Credential methods shown in Settings (FR5.1).
+const (
+	MethodToken = "token" // a token typed in Settings, kept in the secret store
+	MethodCLI   = "cli"   // read from gh / glab on the Kandev server
+)
+
 // Last test errors, shown as plain text in Settings (FR2.4).
 const (
 	ErrorInvalidToken = "invalid_token"
 	ErrorMissingScope = "missing_scope"
 	ErrorRateLimited  = "rate_limited"
 	ErrorUnreachable  = "unreachable"
+	// ErrorCLIUnavailable: gh / glab is missing or not logged in (FR4.2).
+	ErrorCLIUnavailable = "cli_unavailable"
 )
 
 const (
@@ -87,12 +95,15 @@ type Service struct {
 	secrets Secrets
 	tasks   Tasks
 	store   *Store
-	Now     func() time.Time // clock for watch runs
+	Now     func() time.Time // clock for watch runs and the CLI token cache
+	CLI     CLIRunner        // runs gh / glab (FR3.1)
+	cli     cliCache
 }
 
 // NewService wires the component; clients has one Client per provider.
 func NewService(clients map[Provider]Client, conn Connection, secrets Secrets, tasks Tasks, store *Store) *Service {
-	return &Service{clients: clients, conn: conn, secrets: secrets, tasks: tasks, store: store, Now: time.Now}
+	return &Service{clients: clients, conn: conn, secrets: secrets, tasks: tasks, store: store, Now: time.Now,
+		CLI: runCLI, cli: cliCache{tokens: map[Provider]cachedToken{}}}
 }
 
 // SecretKey is where a provider's token is stored: backlog.scm.<provider>.<workspace>.
@@ -102,6 +113,7 @@ func SecretKey(p Provider, ws string) string { return "backlog.scm." + string(p)
 type ProviderView struct {
 	Provider  Provider  `json:"provider"`
 	State     string    `json:"state"`
+	Method    string    `json:"method,omitempty"` // MethodToken or MethodCLI; empty when not configured
 	Account   string    `json:"account,omitempty"`
 	LastError string    `json:"lastError,omitempty"`
 	Mappings  []Mapping `json:"mappings"`
@@ -110,6 +122,13 @@ type ProviderView struct {
 func view(s Settings) ProviderView {
 	v := ProviderView{Provider: s.Provider, State: StateNotConfigured, Account: s.Account, LastError: s.LastError,
 		Mappings: s.Mappings}
+	switch {
+	case !s.HasToken:
+	case s.Source == MethodCLI:
+		v.Method = MethodCLI
+	default:
+		v.Method = MethodToken
+	}
 	switch {
 	case !s.HasToken:
 	case s.LastError != "":
@@ -176,8 +195,7 @@ func (in *TokenInput) validate() error {
 	if _, err := ParseProvider(string(in.Provider)); err != nil {
 		return err
 	}
-	if in.Token == "" || len(in.Token) > maxToken || strings.IndexFunc(in.Token, unicode.IsSpace) >= 0 ||
-		strings.IndexFunc(in.Token, unicode.IsControl) >= 0 {
+	if !validToken(in.Token) {
 		return &connection.FieldError{Field: FieldToken, Err: errToken}
 	}
 	in.Username = strings.TrimSpace(in.Username)
@@ -189,6 +207,12 @@ func (in *TokenInput) validate() error {
 		return &connection.FieldError{Field: FieldUsername, Err: errUsername}
 	}
 	return nil
+}
+
+// validToken is 1-1024 characters without spaces or control characters.
+func validToken(tok string) bool {
+	return tok != "" && len(tok) <= maxToken && strings.IndexFunc(tok, unicode.IsSpace) < 0 &&
+		strings.IndexFunc(tok, unicode.IsControl) < 0
 }
 
 // SetToken checks the token with the provider's current user call and only
@@ -210,15 +234,57 @@ func (s *Service) SetToken(ctx context.Context, ws string, in TokenInput) (Provi
 	if err != nil {
 		return ProviderView{}, storeErr(ctx, "save token", err)
 	}
+	s.forgetCLI(in.Provider)
 	redact.Logger(ctx).InfoContext(ctx, "scm token saved", "event", "scm_token_saved", "provider", string(in.Provider))
 	return s.updateProvider(ctx, ws, in.Provider, func(st *Settings) error {
-		st.HasToken, st.Account, st.AccountID, st.LastError = true, user.Name, user.ID, ""
+		st.Source, st.HasToken, st.Account, st.AccountID, st.LastError = "", true, user.Name, user.ID, ""
 		return nil
 	})
 }
 
-// credential reads p's token and returns a context that redacts it.
+// UseCLI connects p with the gh / glab login of the Kandev server (FR1.2,
+// FR2.1): the CLI token is read, checked with the current user call, and
+// only the method and account are stored. A typed token is deleted (FR1.3).
+// A failure changes nothing (FR4.1).
+func (s *Service) UseCLI(ctx context.Context, ws string, p Provider) (ProviderView, error) {
+	if _, err := ParseProvider(string(p)); err != nil {
+		return ProviderView{}, err
+	}
+	s.forgetCLI(p)
+	tok, err := s.cliToken(ctx, p)
+	if err != nil {
+		return ProviderView{}, err
+	}
+	ctx = redact.WithSecrets(ctx, tok)
+	user, err := s.clients[p].CurrentUser(ctx, Credential{Token: tok})
+	if err != nil {
+		s.forgetCLI(p)
+		return ProviderView{}, err
+	}
+	if err := s.secrets.DeleteSecret(ctx, SecretKey(p, ws)); err != nil {
+		return ProviderView{}, storeErr(ctx, "delete token", err)
+	}
+	redact.Logger(ctx).InfoContext(ctx, "scm cli login used", "event", "scm_cli_used", "provider", string(p))
+	return s.updateProvider(ctx, ws, p, func(st *Settings) error {
+		st.Source, st.HasToken, st.Account, st.AccountID, st.LastError = MethodCLI, true, user.Name, user.ID, ""
+		return nil
+	})
+}
+
+// credential reads p's token, from the CLI when that is p's method (FR3.1),
+// and returns a context that redacts it.
 func (s *Service) credential(ctx context.Context, ws string, p Provider) (context.Context, Credential, error) {
+	st, err := s.settings(ctx, ws, p)
+	if err != nil {
+		return ctx, Credential{}, err
+	}
+	if st.Source == MethodCLI && st.HasToken {
+		tok, err := s.cliToken(ctx, p)
+		if err != nil {
+			return ctx, Credential{}, err
+		}
+		return redact.WithSecrets(ctx, tok), Credential{Token: tok}, nil
+	}
 	raw, ok, err := s.secrets.GetSecret(ctx, SecretKey(p, ws))
 	if err != nil {
 		return ctx, Credential{}, storeErr(ctx, "read token", err)
@@ -239,13 +305,21 @@ func (s *Service) Test(ctx context.Context, ws string, p Provider) (ProviderView
 	if _, err := ParseProvider(string(p)); err != nil {
 		return ProviderView{}, err
 	}
+	s.forgetCLI(p) // a test always asks the CLI again (FR4.3)
 	ctx, cred, err := s.credential(ctx, ws, p)
-	if err != nil {
+	var user User
+	switch {
+	case errors.Is(err, ErrCLIUnavailable): // recorded below (FR4.2)
+	case err != nil:
 		return ProviderView{}, err
-	}
-	user, err := s.clients[p].CurrentUser(ctx, cred)
-	if err != nil && ctx.Err() != nil {
-		return ProviderView{}, ctx.Err()
+	default:
+		user, err = s.clients[p].CurrentUser(ctx, cred)
+		if err != nil && ctx.Err() != nil {
+			return ProviderView{}, ctx.Err()
+		}
+		if err != nil {
+			s.forgetCLI(p)
+		}
 	}
 	return s.updateProvider(ctx, ws, p, func(st *Settings) error {
 		if err != nil {
@@ -260,6 +334,8 @@ func (s *Service) Test(ctx context.Context, ws string, p Provider) (ProviderView
 // errorCode is the plain reason of a failed provider call.
 func errorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrCLIUnavailable):
+		return ErrorCLIUnavailable
 	case IsStatus(err, 401):
 		return ErrorInvalidToken
 	case IsStatus(err, 403):
@@ -280,8 +356,9 @@ func (s *Service) RemoveToken(ctx context.Context, ws string, p Provider) (Provi
 	if err := s.secrets.DeleteSecret(ctx, SecretKey(p, ws)); err != nil {
 		return ProviderView{}, storeErr(ctx, "delete token", err)
 	}
+	s.forgetCLI(p)
 	return s.updateProvider(ctx, ws, p, func(st *Settings) error {
-		st.HasToken, st.Account, st.AccountID, st.LastError = false, "", "", ""
+		st.Source, st.HasToken, st.Account, st.AccountID, st.LastError = "", false, "", "", ""
 		return nil
 	})
 }
