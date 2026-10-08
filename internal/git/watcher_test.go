@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -239,5 +240,23 @@ func TestU4_Watcher_SwitchOffMidCycleStops(t *testing.T) {
 		require.Zero(t, r.host.taskCount(), "no task is created after the switch turns off")
 		ledger, _ := r.store.Ledger(r.ctx, ws)
 		require.Empty(t, ledger)
+	})
+}
+
+// FR1.6: while another source control service is active the watcher
+// creates no task; Backlog Git active again, it resumes.
+func TestWatcher_InactiveServiceSkipsWorkspace(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.gw.setPRs("PROJ/web-app", prs(2))
+		r.saveWatch(t, nil)
+		var on atomic.Bool
+		r.svc.Active = func(context.Context, string) bool { return on.Load() }
+		watcher := r.startWatcher(t)
+		cycle(watcher)
+		require.Zero(t, r.host.taskCount())
+		on.Store(true)
+		cycle(watcher)
+		require.Equal(t, 2, r.host.taskCount())
 	})
 }

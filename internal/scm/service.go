@@ -89,6 +89,7 @@ var (
 	errLogin    = errors.New("must be a GitHub login, and only for GitHub")
 	errProject  = errors.New("must be a selected Backlog project")
 	errRepos    = errors.New("must be at most 20 readable repositories")
+	errService  = errors.New("must be backlog_git, github, gitlab or bitbucket")
 )
 
 // Service is the source control component.
@@ -156,9 +157,82 @@ func settingsOf(list []Settings, p Provider) Settings {
 	return Settings{Provider: p}
 }
 
+// settings returns p's settings, refusing p when it is not the active
+// service: the guard every provider call goes through (FR1.4).
 func (s *Service) settings(ctx context.Context, ws string, p Provider) (Settings, error) {
-	list, err := s.store.Settings(ctx, ws)
+	list, active, err := s.settingsDoc(ctx, ws)
+	if err == nil {
+		err = allowed(active, p)
+	}
 	return settingsOf(list, p), err
+}
+
+// settingsDoc returns every provider's settings and the effective active service.
+func (s *Service) settingsDoc(ctx context.Context, ws string) ([]Settings, Provider, error) {
+	d, err := loadDoc[Settings](ctx, s.store, "workspace", ws, keySettings)
+	if err != nil {
+		return nil, "", err
+	}
+	return d.Items, activeOf(d.Items, d.Active), nil
+}
+
+// activeOf is the effective active service: the stored one, else derived
+// from the connected providers (FR1.2, FR3.1-FR3.3): none is Backlog Git,
+// one is that provider, several is "" (pending: all keep working until an
+// admin picks one).
+func activeOf(list []Settings, stored Provider) Provider {
+	if stored != "" {
+		return stored
+	}
+	var connected []Provider
+	for _, st := range list {
+		if st.HasToken && slices.Contains(Providers, st.Provider) {
+			connected = append(connected, st.Provider)
+		}
+	}
+	switch len(connected) {
+	case 0:
+		return BacklogGit
+	case 1:
+		return connected[0]
+	}
+	return ""
+}
+
+// allowed refuses p unless it is the active service or the pick is pending.
+func allowed(active, p Provider) error {
+	if active == "" || active == p {
+		return nil
+	}
+	return &InactiveError{Active: active}
+}
+
+// Active returns the workspace's effective source control service: one of
+// Services, or "" while an upgraded workspace with several connected
+// providers waits for an admin to pick one (FR3.3).
+func (s *Service) Active(ctx context.Context, ws string) (Provider, error) {
+	_, active, err := s.settingsDoc(ctx, ws)
+	return active, err
+}
+
+// Allow refuses an action of p (a provider, or BacklogGit) when p is not the
+// active service (FR1.4, FR1.6), with an InactiveError.
+func (s *Service) Allow(ctx context.Context, ws string, p Provider) error {
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return err
+	}
+	return allowed(active, p)
+}
+
+// SetActive makes a the workspace's source control service (FR2.1). The other
+// services keep their tokens and items, ignored until they are active again
+// (FR2.4).
+func (s *Service) SetActive(ctx context.Context, ws string, a Provider) error {
+	if !slices.Contains(Services, a) {
+		return &connection.FieldError{Field: FieldService, Err: errService}
+	}
+	return s.store.SetActive(ctx, ws, a)
 }
 
 // Providers lists the three providers with their state (FR2.1).
@@ -229,6 +303,9 @@ func (s *Service) SetToken(ctx context.Context, ws string, in TokenInput) (Provi
 	if err := in.validate(); err != nil {
 		return ProviderView{}, err
 	}
+	if err := s.Allow(ctx, ws, in.Provider); err != nil {
+		return ProviderView{}, err
+	}
 	cred := Credential{Token: in.Token, Username: in.Username}
 	user, err := s.clients[in.Provider].CurrentUser(ctx, cred)
 	if err != nil {
@@ -261,6 +338,9 @@ func (s *Service) UseCLI(ctx context.Context, ws string, p Provider, login strin
 	}
 	if login != "" && (p != GitHub || !validLogin(login)) {
 		return ProviderView{}, &connection.FieldError{Field: FieldLogin, Err: errLogin}
+	}
+	if err := s.Allow(ctx, ws, p); err != nil {
+		return ProviderView{}, err
 	}
 	if p == GitHub && login == "" {
 		active, err := s.activeLogin(ctx)
@@ -390,9 +470,18 @@ func errorCode(err error) string {
 }
 
 // RemoveToken deletes the secret. Mappings, links, queries and watches stay,
-// disabled until a token exists again (FR2.2).
+// disabled until a token exists again (FR2.2). It is allowed for a non-active
+// provider (FR1.4). A provider active only by derivation is stored as active
+// first, so the workspace does not silently switch service (FR2.4).
 func (s *Service) RemoveToken(ctx context.Context, ws string, p Provider) (ProviderView, error) {
 	if _, err := ParseProvider(string(p)); err != nil {
+		return ProviderView{}, err
+	}
+	d, err := loadDoc[Settings](ctx, s.store, "workspace", ws, keySettings)
+	if err == nil && d.Active == "" && activeOf(d.Items, "") == p {
+		err = s.store.SetActive(ctx, ws, p)
+	}
+	if err != nil {
 		return ProviderView{}, err
 	}
 	if err := s.secrets.DeleteSecret(ctx, SecretKey(p, ws)); err != nil {
@@ -430,6 +519,9 @@ type MappingInput struct {
 // watches of a removed repository are disabled, not deleted (FR3.4).
 func (s *Service) SetMapping(ctx context.Context, ws string, in MappingInput) (ProviderView, error) {
 	if _, err := ParseProvider(string(in.Provider)); err != nil {
+		return ProviderView{}, err
+	}
+	if err := s.Allow(ctx, ws, in.Provider); err != nil {
 		return ProviderView{}, err
 	}
 	snap, err := s.conn.Current(ctx, ws)

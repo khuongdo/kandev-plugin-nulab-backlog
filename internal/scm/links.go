@@ -58,6 +58,11 @@ func (s *Service) putLink(ctx context.Context, ws string, l Link) error {
 // Unlink removes the task's manual link to key (no issueKey), or the
 // auto-link of key to issueKey; never both. A removed auto-link is dismissed and never created again (FR5.3).
 func (s *Service) Unlink(ctx context.Context, ws, taskID, key, issueKey string) error {
+	if p, _, _ := strings.Cut(key, "|"); slices.Contains(Providers, Provider(p)) {
+		if err := s.Allow(ctx, ws, Provider(p)); err != nil {
+			return err
+		}
+	}
 	removedAuto := false
 	err := s.store.UpdateLinks(ctx, ws, func(links []Link) ([]Link, error) {
 		n := len(links)
@@ -82,14 +87,22 @@ func (s *Service) Unlink(ctx context.Context, ws, taskID, key, issueKey string) 
 	})
 }
 
-// Links returns the task's links and the issue's auto-links (the issue panel).
+// Links returns the task's links and the issue's auto-links (the issue
+// panel), of the active service only (FR1.5).
 func (s *Service) Links(ctx context.Context, ws, taskID, issueKey string) ([]Link, error) {
+	active, err := s.Active(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
 	links, err := s.store.Links(ctx, ws)
 	if err != nil {
 		return nil, err
 	}
 	out := []Link{}
 	for _, l := range links {
+		if allowed(active, l.Provider) != nil {
+			continue
+		}
 		if (taskID != "" && l.TaskID == taskID) || (issueKey != "" && l.IssueKey == issueKey) {
 			out = append(out, l)
 		}

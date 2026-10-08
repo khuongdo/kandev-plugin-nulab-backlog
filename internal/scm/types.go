@@ -27,9 +27,18 @@ const (
 // Providers lists every provider in display order.
 var Providers = []Provider{GitHub, GitLab, Bitbucket}
 
+// BacklogGit is Backlog Git as a source control service: a value of the
+// workspace's active service only, never a provider of this package.
+const BacklogGit Provider = "backlog_git"
+
+// Services lists the four source control services a workspace can make
+// active (FR1.1), in display order. There is no "none".
+var Services = []Provider{BacklogGit, GitHub, GitLab, Bitbucket}
+
 // Input fields reported with connection.FieldError (validation).
 const (
 	FieldProvider   = "provider"
+	FieldService    = "service"
 	FieldToken      = "token"
 	FieldUsername   = "username"
 	FieldLogin      = "login"

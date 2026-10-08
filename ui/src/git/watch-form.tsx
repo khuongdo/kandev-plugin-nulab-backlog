@@ -11,8 +11,8 @@ import {
   noticeText,
   providerName,
   splitRepo,
-  usableProviders,
-  type ProviderView,
+  prChoices,
+  type ScmSettings,
   type RepoOption,
 } from "./git-state";
 import { createScmWatchForm, type ScmWatch } from "./scm-watch-form";
@@ -89,7 +89,7 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
     const scmWatch = anyWatch && "provider" in anyWatch ? (anyWatch as Partial<ScmWatch>) : undefined;
     const watch = scmWatch ? undefined : (anyWatch as Partial<Watch> | undefined);
     const [provider, setProvider] = useState<string>(scmWatch?.provider ?? "backlog");
-    const [providers, setProviders] = useState<ProviderView[]>([]);
+    const [scm, setScm] = useState<ScmSettings>({ providers: [], active: "" });
     const [repos, setRepos] = useState<RepoOption[]>([]);
     const [name, setName] = useState(watch?.name ?? "");
     const [repo, setRepo] = useState(watch?.projectKey ? `${watch.projectKey}/${watch.repoName}` : "");
@@ -103,20 +103,19 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
 
     useEffect(() => {
       loadRepoOptions(host, workspaceId, messages).then(setRepos, (e: unknown) => setNotice(gitNotice(e)));
-      void loadProviders(host, workspaceId).then((v) => setProviders(usableProviders(v)));
+      void loadProviders(host, workspaceId).then((s) => {
+        setScm(s);
+        // A new watch starts on the active service (FR1.5); a saved one keeps its own.
+        if (!anyWatch) setProvider(prChoices(s)[0]!);
+      });
     }, [workspaceId]);
     useEffect(() => {
       if (error) document.getElementById(error === "statuses" ? `${IDS.statuses}-open` : IDS[error])?.focus();
     }, [error]);
 
-    // Intent 261007-source-control-agnostic (FR4.3): the provider, fixed once saved.
-    const choices = [
-      ...new Set([
-        "backlog",
-        ...providers.map((v) => v.provider),
-        ...(scmWatch?.provider ? [scmWatch.provider] : []),
-      ]),
-    ];
+    // Intent 261007-source-control-agnostic (FR4.3): the provider, fixed once saved;
+    // intent 261008-source-control-settings (FR1.5): of the active service only.
+    const choices = [...new Set([...prChoices(scm), ...(scmWatch?.provider ? [scmWatch.provider] : [])])];
     const providerControl =
       choices.length > 1 ? (
         <div className={FIELD}>
@@ -141,7 +140,7 @@ export function createWatchForm(host: PluginHostApi, messages: Messages = en): C
           key={provider}
           workspaceId={workspaceId}
           provider={provider as ScmWatch["provider"]}
-          view={providers.find((v) => v.provider === provider)}
+          view={scm.providers.find((v) => v.provider === provider)}
           selectedProjects={selectedProjects}
           watch={scmWatch}
           providerControl={providerControl}

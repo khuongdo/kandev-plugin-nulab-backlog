@@ -1,15 +1,17 @@
 import { act, createElement as h } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { en } from "../messages/en";
+import { en, format } from "../messages/en";
 import {
   actionError,
   axeViolations,
   byTestId,
+  choose,
   expectOnlyCatalogueText,
   expectTestIds,
   fakeHost,
   mount,
+  optionValues,
   pseudoCatalogue,
   rawControls,
   setValue,
@@ -30,14 +32,19 @@ const GITHUB = {
 
 type Handler = (body: Record<string, unknown>) => Promise<unknown>;
 
-function setup(handlers: Record<string, Handler> = {}, providers: unknown[] = [GITHUB]) {
+/**
+ * A host whose scm.providers.list returns the providers and the active
+ * service; "" (pending, FR3.3) shows every card, as before the upgrade.
+ */
+function setup(handlers: Record<string, Handler> = {}, providers: unknown[] = [GITHUB], active = "") {
   const list = [GITHUB, NOT_CONFIGURED("gitlab"), NOT_CONFIGURED("bitbucket")].map(
     (d) => (providers as { provider: string }[]).find((p) => p.provider === d.provider) ?? d,
   );
   return fakeHost(async (key, input) => {
     const body = (input?.body ?? {}) as Record<string, unknown>;
     if (handlers[key]) return handlers[key](body);
-    if (key === "scm.providers.list") return { providers: list };
+    if (key === "scm.providers.list") return { providers: list, active };
+    if (key === "scm.active.set") return { providers: list, active: body.service };
     throw new Error(`unexpected ${key}`);
   });
 }
@@ -497,5 +504,130 @@ describe("Source control settings (FR2, FR3)", () => {
     unmount();
     const p = await render(setup(), { readOnly: true }, pseudoCatalogue(en));
     expectOnlyCatalogueText(p, (ok, msg) => expect(ok, msg).toBe(true));
+  });
+});
+
+describe("One active source control service (intent 261008-source-control-settings)", () => {
+  const SERVICES = ["backlog_git", "github", "gitlab", "bitbucket"];
+  const cards = (c: HTMLElement) =>
+    ["backlog", "github", "gitlab", "bitbucket"].filter((p) => byTestId(c, `backlog-scm-${p}`) !== null);
+
+  it("shows a labelled Service selector and only the active service's card (FR2.1, FR1.1)", async () => {
+    const c = await render(setup({}, [GITHUB], "github"));
+    expect(optionValues(c, "backlog-scm-service")).toEqual(SERVICES);
+    expect(c.querySelector('label[for="backlog-scm-service"]')!.textContent).toBe(en.scmServiceLabel);
+    expect(
+      byTestId(c, "backlog-scm-service")!.closest("[data-host=Select]")!.getAttribute("data-value"),
+    ).toBe("github");
+    expect(cards(c)).toEqual(["github"]);
+    expect(byTestId(c, "backlog-scm-pick-notice")).toBeNull();
+    unmount();
+    const g = await render(setup({}, [GITHUB], "backlog_git"));
+    expect(cards(g)).toEqual(["backlog"]);
+    expect(byTestId(g, "fake-git-access"), "Backlog Git keeps its Git access form").not.toBeNull();
+  });
+
+  it("shows members the active service read-only, with no selector (FR2.2)", async () => {
+    const c = await render(setup({}, [GITHUB], "gitlab"), { readOnly: true });
+    expect(byTestId(c, "backlog-scm-service")).toBeNull();
+    expect(byTestId(c, "backlog-scm-service-readonly")!.textContent).toBe(
+      format(en.scmServiceReadOnly, { service: "GitLab" }),
+    );
+    expect(cards(c)).toEqual(["gitlab"]);
+  });
+
+  it("confirms a switch naming both services; Cancel sends nothing (FR2.3, FR2.4)", async () => {
+    const host = setup({}, [GITHUB], "github");
+    const c = await render(host);
+    await act(async () => choose(c, "backlog-scm-service", "gitlab"));
+    const dialog = byTestId(c, "backlog-scm-switch-dialog")!;
+    expect(dialog.textContent).toContain(format(en.scmSwitchTitle, { service: "GitLab" }));
+    expect(dialog.textContent).toContain(format(en.scmSwitchBody, { from: "GitHub", to: "GitLab" }));
+    expect(en.scmSwitchBody).toContain("kept");
+    await act(async () => byTestId(c, "backlog-scm-switch-dialog-cancel")!.click());
+    expect(byTestId(c, "backlog-scm-switch-dialog")).toBeNull();
+    expect(calls(host, "scm.active.set")).toHaveLength(0);
+    expect(cards(c)).toEqual(["github"]);
+
+    await act(async () => choose(c, "backlog-scm-service", "gitlab"));
+    await act(async () => byTestId(c, "backlog-scm-switch-dialog-confirm")!.click());
+    expect(calls(host, "scm.active.set")[0]![1]).toEqual({
+      workspaceId: "ws-1",
+      body: { service: "gitlab" },
+    });
+    expect(byTestId(c, "backlog-scm-switch-dialog")).toBeNull();
+    expect(cards(c)).toEqual(["gitlab"]);
+  });
+
+  it("asks to pick one service while several are connected, and keeps them all working (FR3.3)", async () => {
+    const BITBUCKET = { provider: "bitbucket", state: "connected", account: "Lan", mappings: [] };
+    const c = await render(setup({}, [GITHUB, BITBUCKET], ""));
+    expect(byTestId(c, "backlog-scm-pick-notice")!.textContent).toBe(en.scmPickNotice);
+    expect(cards(c)).toEqual(["backlog", "github", "gitlab", "bitbucket"]);
+    expect(
+      byTestId(c, "backlog-scm-service")!.closest("[data-host=Select]")!.getAttribute("data-value"),
+    ).toBe("");
+  });
+
+  it("frames the active service: logo, a heading above its sub-headings, a state badge (FR4.1, FR4.2)", async () => {
+    const c = await render(setup({}, [GITHUB], "github"));
+    const card = byTestId(c, "backlog-scm-github")!;
+    expect(card.className).toContain("border");
+    expect(card.className).toContain("rounded");
+    expect(card.querySelector("svg")).not.toBeNull();
+    const heading = card.querySelector("h3")!;
+    expect(heading.textContent).toBe(en.providerGithub);
+    expect(heading.className).toContain("text-base");
+    expect(card.querySelector("h4")!.className).toContain("text-sm");
+    expect(byTestId(c, "backlog-scm-github-state")!.textContent).toBe(en.scmStateConnected);
+    unmount();
+    const g = await render(setup({}, [GITHUB], "gitlab"));
+    expect(byTestId(g, "backlog-scm-gitlab-state")!.textContent).toBe("Not connected");
+    expect(byTestId(g, "backlog-scm-gitlab")!.querySelector("h3")!.textContent).toBe(en.providerGitlab);
+    unmount();
+    const b = await render(setup({}, [GITHUB], "backlog_git"));
+    expect(byTestId(b, "backlog-scm-backlog")!.className).toContain("border");
+    expect(byTestId(b, "backlog-scm-backlog")!.querySelector("h3")!.textContent).toBe(en.providerBacklog);
+  });
+
+  it("names the service in every repository label and line (FR5.1-FR5.3)", async () => {
+    const c = await render(setup({}, [GITHUB], "github"));
+    const card = byTestId(c, "backlog-scm-github")!;
+    expect(card.querySelector("h4")!.textContent).toBe("GitHub repositories linked to Backlog projects");
+    expect(c.querySelector('label[for="backlog-scm-github-PROJ-search"]')!.textContent).toBe(
+      "Search GitHub repositories for PROJ",
+    );
+    expect(c.querySelector('label[for="backlog-scm-github-PROJ-manual"]')!.textContent).toBe(
+      "GitHub repository for PROJ",
+    );
+    expect(byTestId(c, "backlog-scm-github-map-PROJ")!.textContent).toContain("PROJ: [GitHub] acme/web");
+    expect(byTestId(c, "backlog-scm-github-map-DEMO")!.textContent).toContain("DEMO: no GitHub repositories");
+    for (const key of [
+      "scmMappingsHeading",
+      "scmSearchLabel",
+      "scmManualLabel",
+      "scmNoRepos",
+      "scmRepoName",
+      "scmServiceLabel",
+      "scmServiceReadOnly",
+      "scmSwitchTitle",
+      "scmSwitchBody",
+      "scmPickNotice",
+      "scmServiceInactive",
+    ] as const) {
+      expect(en[key].toLowerCase(), key).not.toContain("scope");
+    }
+  });
+
+  it("passes axe with host controls, catalogue text and test ids, dialog open (NFR3, NFR4)", async () => {
+    const c = await render(setup({}, [GITHUB], "github"), {}, pseudoCatalogue(en));
+    expect(rawControls(c)).toEqual([]);
+    expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+    expect(await axeViolations(c)).toEqual([]);
+    await act(async () => choose(c, "backlog-scm-service", "bitbucket"));
+    expect(await axeViolations(c)).toEqual([]);
+    unmount();
+    const m = await render(setup({}, [GITHUB], "github"), { readOnly: true }, pseudoCatalogue(en));
+    expectOnlyCatalogueText(m, (ok, msg) => expect(ok, msg).toBe(true));
   });
 });

@@ -206,6 +206,9 @@ func (s *Service) cycleWatch(ctx context.Context, ws, id string) (int, error) {
 		}
 		return 0, err
 	}
+	if s.Active != nil && !s.Active(ctx, ws) {
+		return 0, nil // another source control service is active (FR1.6)
+	}
 	watch, err := s.findWatch(ctx, ws, id)
 	if err != nil || watch.State != StatusActive {
 		return 0, nil // deleted or paused meanwhile

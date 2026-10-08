@@ -427,7 +427,7 @@ export function createSettingsScreen(host: PluginHostApi, messages: Messages = e
             readOnly={state.isMember}
             backlogGit={
               <div className={STACK}>
-                <h5 className="text-sm font-medium">{messages.gitAccessHeading}</h5>
+                <h4 className="text-sm font-medium">{messages.gitAccessHeading}</h4>
                 <GitAccess
                   workspaceId={workspaceId!}
                   hasGitCredential={Boolean(state.view?.hasGitCredential)}

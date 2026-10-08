@@ -3,51 +3,57 @@
 ## Run Information
 
 - Date: 2026-10-08
-- Commit: `ca8146ca529f0bf6caa4604cf44239c3f555eda5` (v0.5.2 records on `main`; branch `feature/gh-cli-profile-scope-q1o`)
-- Intent: `261008-gh-cli-profile` (scope express, depth Minimal)
-- Type: **FULL RESCAN** of `./` at Minimal depth. All 9 artifacts were replaced; the scope block below records only this run. Prior focused-run history lives in the earlier intent records.
-- Pre-scan snapshot: paths `./`, store_generation `sha256:36ae6e8147b7ca6e24623d66b33daf14aeb8910cc6c15d9f4c94478df2376e4a`, source_fingerprint `git:f9ee5e321fa96ae433d8f38544b5034c3b896c33`.
-- Depth note: the whole repo was in the snapshot, but only the files listed under `analyzed.paths` were read deeply (intent area: gh CLI credential, per-workspace SCM settings, task creation from Backlog issues). Everything else was skimmed, so the block is `kind: partial`.
-- External evidence (not coverage): Kandev checkout `~/repo/kandev` at `v0.96.0` (`f099a46dc`): `internal/github/gh_accounts.go`, `internal/github/auth_resolver.go`, `internal/orchestrator/executor/executor_credentials.go`, `pkg/pluginsdk/{host.go,data_types.go,plugin.go,types.go}`.
-- Baseline: **recorded** — 1383 Go test results passing, 0 failures (see [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines)).
+- Commit: `3d6a080eafc466772c6640799ac42167963ea517` (branch `feature/refactor-source-cont-c9o`, after the v0.5.3 records on `main`)
+- Intent: `261008-source-control-settings` (scope express, depth Minimal)
+- Type: **FOCUSED scan, merged into a STALE store**. Sections covering the Source Control settings page and the SCM provider model were updated; prior prose outside that area was kept (and the shipped v0.5.3 gh-account facts were refreshed). The scope block records only this run's deep coverage; the previous run's deep paths (intent `261008-gh-cli-profile`, commit `ca8146c`) that were not re-read are demoted to `shallow`.
+- Pre-scan snapshot: paths `ui/src/settings/`, `internal/scm/`, `internal/github/`, `internal/gitlab/`, `internal/bitbucket/`, `internal/plugin/`; store_generation `sha256:519bb55ef508a1dfff86b9d862f36c10aee826c3708fb11f25bb362050c44fc5`; source_fingerprint `git:3d6a080eafc466772c6640799ac42167963ea517`.
+- Shallow reads outside the snapshot (evidence, not deep coverage): `ui/src/git/` provider-list consumers, `ui/src/issues/issue-prs.tsx`, `ui/src/page/start-task.tsx`, `ui/src/messages/en.ts` (`scm*` keys), `manifest.yaml`, `Makefile`, `ui/package.json`, `.github/workflows/`.
+- Baseline: **recorded** — targeted Go packages `ok` with `-race`, Vitest `src/settings` 121 passing (see [code-quality-assessment.md](code-quality-assessment.md#test-coverage-and-baselines)).
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
 kind: partial
-intent: 261008-gh-cli-profile
-fingerprint: 0579d12edc9ff08dd841a3b17d4aac2f68a48f5e
+intent: 261008-source-control-settings
+fingerprint: ba46bb96ee325ea30a4c75cc66cebbe2b3b4a9cc
 analyzed:
   paths:
-    - internal/scm/cli_token.go
+    - ui/src/settings/source-control-section.tsx
+    - ui/src/settings/source-control-section.test.tsx
+    - ui/src/settings/SettingsScreen.tsx
+    - ui/src/settings/section-parts.tsx
+    - ui/src/settings/state.ts
     - internal/scm/service.go
-    - internal/scm/types.go
     - internal/scm/store.go
+    - internal/scm/types.go
     - internal/scm/client.go
-    - internal/github/client.go
+    - internal/scm/prs.go
+    - internal/scm/queries.go
+    - internal/scm/watcher.go
+    - internal/scm/links.go
     - internal/plugin/scm_actions.go
+  components:
+    - SCM
+    - KandevAdapter
+    - UI Bundle
+shallow:
+  paths:
+    - internal/scm/cli_token.go
+    - internal/github/client.go
     - internal/plugin/runtime.go
     - internal/plugin/host_port.go
     - internal/plugin/credential.go
     - internal/issues/service.go
     - internal/issues/types.go
-    - ui/src/settings/source-control-section.tsx
     - ui/src/page/start-task.tsx
     - manifest.yaml
     - go.mod
     - .kandev-sdk-ref
-  components:
-    - SCM
-    - GitHub Client
-    - KandevAdapter
-    - Issues
-    - UI Bundle
-shallow:
-  paths:
     - internal/backlog/
     - internal/bitbucket/
     - internal/gitlab/
+    - internal/github/
     - internal/ci/
     - cmd/ci/
     - cmd/verifypkg/
@@ -61,6 +67,10 @@ shallow:
     - internal/testutil/
     - server/
     - ui/src/
+    - ui/src/git/
+    - ui/src/settings/
+    - ui/src/messages/en.ts
+    - ui/package.json
     - .github/workflows/
     - Makefile
     - .golangci.yml

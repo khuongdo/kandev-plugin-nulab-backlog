@@ -98,9 +98,21 @@ func newSCMRig(t *testing.T) *scmRig {
 	return r
 }
 
+// setToken connects p: it makes p active for the call, then clears the
+// stored service, so it is derived like an upgraded workspace's (p alone, or
+// pending when several are connected).
 func (r *scmRig) setToken(t *testing.T, p scm.Provider) {
 	t.Helper()
+	r.use(t, string(p))
 	resp, out := r.call(t, actionSCMSetToken, map[string]string{"provider": string(p), "token": r.token, "username": "lan"})
+	require.Equal(t, 200, resp.Status, out)
+	require.NoError(t, scm.NewStore(r.host).SetActive(context.Background(), "ws-1", ""))
+}
+
+// use makes service the active source control service.
+func (r *scmRig) use(t *testing.T, service string) {
+	t.Helper()
+	resp, out := r.call(t, actionSCMActiveSet, map[string]string{"service": service})
 	require.Equal(t, 200, resp.Status, out)
 }
 
@@ -180,6 +192,7 @@ func TestSCM_Actions_ErrorMapping(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := newSCMRig(t)
+		r.use(t, "github")
 		r.fakes[scm.GitHub].err = c.err
 		resp, out := r.call(t, actionSCMSetToken, map[string]string{"provider": "github", "token": r.token})
 		require.Equal(t, c.status, resp.Status, c.err.Error())
@@ -190,6 +203,7 @@ func TestSCM_Actions_ErrorMapping(t *testing.T) {
 		testutil.AssertNoLeak(t, string(resp.Body)+r.logs.String(), r.token)
 	}
 	r := newSCMRig(t)
+	r.use(t, "gitlab")
 	resp, out := r.call(t, actionSCMRepos, map[string]string{"provider": "gitlab"})
 	require.Equal(t, 400, resp.Status)
 	require.Equal(t, "token", errorOf(t, out)["field"], "no token says where to add one")
@@ -289,6 +303,8 @@ func TestSCM_Actions_TaskPRsFromKandev(t *testing.T) {
 		{ID: "task-3", PullRequests: []pluginsdk.TaskPullRequest{{Number: 1, Provider: "github", URL: "https://github.com/x/y/pull/1"}}},
 	}
 	r.data.mu.Unlock()
+	r.setToken(t, scm.GitHub)
+	r.setToken(t, scm.GitLab) // two connected: pending, both shown (FR3.3)
 	require.NoError(t, issues.NewStore(r.host).UpdateLinks(context.Background(), "ws-1", func([]issues.Link) ([]issues.Link, error) {
 		return []issues.Link{
 			{IssueKey: "PROJ-1", TaskID: "task-17", SpaceHost: spaceHost, State: "active"},
@@ -304,6 +320,14 @@ func TestSCM_Actions_TaskPRsFromKandev(t *testing.T) {
 	require.Equal(t, map[string]any{"taskId": "task-17", "number": float64(5), "url": "https://github.com/acme/web/pull/5",
 		"title": "Fix", "state": "open", "provider": "github", "headBranch": "fix", "baseBranch": "main"}, got[0])
 	require.Equal(t, true, got[1].(map[string]any)["isDraft"])
+
+	r.use(t, "github")
+	_, out = r.taskCall(t, actionSCMTaskPRs, nil)
+	require.Len(t, out["pullRequests"], 1, "FR1.5: only the active service's pull requests")
+	require.Equal(t, "github", out["pullRequests"].([]any)[0].(map[string]any)["provider"])
+	r.use(t, "backlog_git")
+	_, out = r.taskCall(t, actionSCMTaskPRs, nil)
+	require.Empty(t, out["pullRequests"], "FR1.6: Backlog Git active, no GitHub or GitLab pull request")
 
 	r2 := newSCMRig(t)
 	resp, out = r2.taskCall(t, actionSCMTaskPRs, nil)
@@ -348,7 +372,7 @@ var scmActions = []string{
 	actionSCMPRList, actionSCMLink, actionSCMUnlink, actionSCMLinks, actionSCMTaskPRs,
 	actionSCMQueriesList, actionSCMQueriesSave, actionSCMQueriesDelete, actionSCMQueriesRun, actionSCMQueriesDefault,
 	actionSCMWatchesList, actionSCMWatchesSave, actionSCMWatchesDelete, actionSCMWatchesRun, actionSCMWatchesPause,
-	actionSCMWatchesResume, actionSCMUseCLI, actionSCMCLIAccounts,
+	actionSCMWatchesResume, actionSCMUseCLI, actionSCMCLIAccounts, actionSCMActiveSet,
 }
 
 // FR2.6, FR4, FR5: every scm action is declared; settings changes are admin.
@@ -366,14 +390,14 @@ func TestSCM_Manifest_Actions(t *testing.T) {
 		want[k] = "workspace/authenticated"
 	}
 	for _, k := range []string{actionSCMSetToken, actionSCMTest, actionSCMRemove, actionSCMRepos, actionSCMMapping,
-		actionSCMUseCLI, actionSCMCLIAccounts} {
+		actionSCMUseCLI, actionSCMCLIAccounts, actionSCMActiveSet} {
 		want[k] = "workspace/admin"
 	}
 	for _, k := range []string{actionSCMLink, actionSCMUnlink, actionSCMTaskPRs} {
 		want[k] = "task/authenticated"
 	}
 	require.Equal(t, want, got)
-	require.Len(t, scmActions, 24)
+	require.Len(t, scmActions, 25)
 }
 
 // FR1.2, FR1.4, FR4.1, NFR1 (intent 261008-gh-cli-auth): scm.providers.use_cli
@@ -387,6 +411,7 @@ func TestSCM_Actions_UseCLI(t *testing.T) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
 		return []byte(cliTok + "\n"), nil
 	}
+	r.use(t, "github")
 	resp, out := r.call(t, actionSCMUseCLI, map[string]string{"provider": "github"})
 	require.Equal(t, 200, resp.Status, out)
 	require.Equal(t, "cli", out["method"])
@@ -402,11 +427,13 @@ func TestSCM_Actions_UseCLI(t *testing.T) {
 	r.rt.scm.CLI = func(context.Context, int, string, ...string) ([]byte, error) {
 		return nil, errors.New("exit status 1: glab not logged in " + cliTok)
 	}
+	r.use(t, "gitlab")
 	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "gitlab"})
 	require.Equal(t, 503, resp.Status)
 	require.Equal(t, "cli_unavailable", errorOf(t, out)["code"])
 	replies = append(replies, string(resp.Body))
 
+	r.use(t, "bitbucket")
 	resp, out = r.call(t, actionSCMUseCLI, map[string]string{"provider": "bitbucket"})
 	require.Equal(t, 400, resp.Status)
 	require.Equal(t, "provider", errorOf(t, out)["field"])
@@ -471,6 +498,7 @@ func TestSCM_Actions_UseCLIWithLogin(t *testing.T) {
 	r := newSCMRig(t)
 	tok := testutil.Token(t)
 	r.rt.scm.CLI = ghCLI(tok)
+	r.use(t, "github")
 	r.fakes[scm.GitHub].user = &scm.User{ID: "bob", Name: "Bob"}
 	resp, out := r.call(t, actionSCMUseCLI, map[string]string{"provider": "github", "login": "bob"})
 	require.Equal(t, 200, resp.Status, out)
@@ -499,4 +527,85 @@ func TestSCM_ClassifyCLIAccountMissing(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, codeCLIAccountMissing, out.Code)
 	require.Equal(t, 409, statusFor(out.Code))
+}
+
+// FR1.1, FR1.3, FR2.2 (intent 261008-source-control-settings): scm.active.set
+// switches the service and answers with the providers; scm.providers.list
+// returns the active service; there is no "none".
+func TestSCM_Actions_ActiveServiceIsSetAndListed(t *testing.T) {
+	r := newSCMRig(t)
+	resp, out := r.call(t, actionSCMProviders, nil)
+	require.Equal(t, 200, resp.Status)
+	require.Equal(t, "backlog_git", out["active"], "FR1.2: nothing connected is Backlog Git")
+	resp, out = r.call(t, actionSCMActiveSet, map[string]string{"service": "gitlab"})
+	require.Equal(t, 200, resp.Status, out)
+	require.Equal(t, "gitlab", out["active"])
+	require.Len(t, out["providers"], 3)
+	for _, bad := range []string{"", "none", "svn"} {
+		resp, out = r.call(t, actionSCMActiveSet, map[string]string{"service": bad})
+		require.Equal(t, 400, resp.Status, bad)
+		require.Equal(t, "service", errorOf(t, out)["field"])
+	}
+	_, out = r.call(t, actionSCMProviders, nil)
+	require.Equal(t, "gitlab", out["active"])
+
+	r.setToken(t, scm.GitHub)
+	r.setToken(t, scm.Bitbucket)
+	_, out = r.call(t, actionSCMProviders, nil)
+	require.Equal(t, "", out["active"], "FR3.3: several connected and none picked is pending")
+}
+
+// FR1.4, NFR1: an action of a non-active provider is service_inactive (409)
+// naming the active service, with no token in the reply or the logs.
+func TestSCM_Actions_InactiveProviderIsRefused(t *testing.T) {
+	r := newSCMRig(t)
+	r.use(t, "github")
+	for key, body := range map[string]map[string]any{
+		actionSCMSetToken: {"provider": "gitlab", "token": r.token},
+		actionSCMTest:     {"provider": "bitbucket"},
+		actionSCMPRList: {"provider": "gitlab", "projectKey": "PROJ", "repo": "acme/web",
+			"statuses": []string{"open"}},
+	} {
+		resp, out := r.call(t, key, body)
+		require.Equal(t, 409, resp.Status, key)
+		e := errorOf(t, out)
+		require.Equal(t, "service_inactive", e["code"], key)
+		require.Equal(t, "github", e["activeService"], key)
+		testutil.AssertNoLeak(t, string(resp.Body)+r.logs.String(), r.token)
+	}
+	resp, _ := r.call(t, actionSCMRemove, map[string]string{"provider": "gitlab"})
+	require.Equal(t, 200, resp.Status, "removing a token stays allowed")
+}
+
+// FR1.6: while an external service is active, every Backlog Git feature is
+// off: actions are refused or list nothing, and the Git credential is refused.
+func TestSCM_Actions_BacklogGitIsOffWhileAnotherServiceIsActive(t *testing.T) {
+	r := newSCMRig(t)
+	pw := r.gitPassword(t)
+	r.use(t, "github")
+	for _, key := range []string{actionPRList, actionSetGitCredential, actionWatchesSave, actionQueriesRun} {
+		resp, out := r.call(t, key, map[string]any{})
+		require.Equal(t, 409, resp.Status, key)
+		require.Equal(t, "service_inactive", errorOf(t, out)["code"], key)
+		require.Equal(t, "github", errorOf(t, out)["activeService"], key)
+	}
+	for key, field := range map[string]string{actionWatchesList: "watches", actionQueriesList: "queries",
+		actionLinksList: "associations", actionPRStatus: "summaries"} {
+		resp, out := r.taskCall(t, key, nil)
+		require.Equal(t, 200, resp.Status, key)
+		require.Equal(t, []any{}, out[field], key)
+	}
+	_, err := r.rt.ResolveGitCredential(context.Background(), credRequest())
+	require.Error(t, err)
+	testutil.AssertNoLeak(t, err.Error()+r.logs.String(), pw)
+	b, err := r.rt.GetGitCredentialBinding(context.Background(), &pluginsdk.GitCredentialBindingRequest{
+		ProviderID: "nulab-backlog", WorkspaceID: "ws-1", TaskID: "task-17", Host: spaceHost, Path: "/git/PROJ/web-app.git"})
+	require.NoError(t, err)
+	require.Empty(t, b.Binding, "revoked while Backlog Git is off")
+
+	r.use(t, "backlog_git")
+	_, err = r.rt.ResolveGitCredential(context.Background(), credRequest())
+	require.NoError(t, err, "Backlog Git active again: the credential works")
+	resp, _ := r.call(t, actionPRList, map[string]any{})
+	require.NotEqual(t, 409, resp.Status)
 }

@@ -41,6 +41,19 @@ const (
 
 func init() { maps.Copy(handlers, gitHandlers) }
 
+// gitOffReplies answer the Backlog Git reads with nothing, rather than an
+// error, while another source control service is active (FR1.6), so the
+// task panels and pickers just show no Backlog Git item.
+var gitOffReplies = map[string]any{
+	actionWatchesList:  map[string]any{"watches": []any{}},
+	actionQueriesList:  map[string]any{"queries": []any{}},
+	actionLinksList:    map[string]any{"associations": []any{}},
+	actionPRStatus:     map[string]any{"summaries": []any{}},
+	actionReposInspect: map[string]bool{"matched": false},
+	actionReposList:    map[string]any{"repositories": []any{}},
+	actionImpact:       git.Impact{},
+}
+
 // verifiedKey carries the verified action context to the U4 handlers, which
 // take the task, repository and head branch from it, never from the body.
 type verifiedKey struct{}

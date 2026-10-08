@@ -15,8 +15,9 @@ import {
   providerName,
   splitRepo,
   stateText,
-  usableProviders,
+  prChoices,
   type ProviderView,
+  type ScmSettings,
   type RepoOption,
 } from "./git-state";
 import { createPrToolbar } from "./pr-toolbar";
@@ -124,12 +125,17 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
     const latest = useRef(0);
     const applied = useRef("");
     // Intent 261007-source-control-agnostic (FR4.1): Backlog Git or a connected provider.
+    // Intent 261008-source-control-settings (FR1.5): only the active service.
     const [provider, setProvider] = useState("backlog");
-    const [providers, setProviders] = useState<ProviderView[]>([]);
+    const [scm, setScm] = useState<ScmSettings>({ providers: [], active: "" });
+    const choices = prChoices(scm);
 
     useEffect(() => {
       loadRepoOptions(host, workspaceId, messages).then(setRepos, () => setRepos([]));
-      void loadProviders(host, workspaceId).then((v) => setProviders(usableProviders(v)));
+      void loadProviders(host, workspaceId).then((s) => {
+        setScm(s);
+        setProvider(prChoices(s)[0]!);
+      });
     }, [workspaceId]);
 
     // FR3.1, FR3.2: apply the selected saved query, or the preset once the repositories are known.
@@ -203,8 +209,9 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
           : [...filters.statuses, s],
       });
 
-    // The provider selector: label-less like the other filters, named for screen readers (NFR3).
-    const providerControl = (
+    // The provider selector: label-less like the other filters, named for screen readers (NFR3);
+    // only while an upgraded workspace has not picked its one service (FR3.3).
+    const providerControl = scm.active ? null : (
       <Select value={provider} onValueChange={setProvider}>
         <SelectTrigger
           data-testid="backlog-prs-provider"
@@ -214,7 +221,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {["backlog", ...providers.map((v) => v.provider)].map((p) => (
+          {choices.map((p) => (
             <SelectItem key={p} value={p} data-testid={`backlog-prs-provider-${p}`}>
               {providerName(p, messages)}
             </SelectItem>
@@ -230,7 +237,7 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
             key={provider}
             workspaceId={workspaceId}
             provider={provider as ProviderView["provider"]}
-            view={providers.find((v) => v.provider === provider)}
+            view={scm.providers.find((v) => v.provider === provider)}
             selectedProjects={selectedProjects}
             quickActions={quickActions}
             providerControl={providerControl}

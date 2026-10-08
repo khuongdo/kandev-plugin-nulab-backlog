@@ -4,13 +4,17 @@ import {
   noticeText,
   providerName,
   scmNotice,
+  SERVICES,
   type CliAccount,
   type ProviderView,
   type ScmProvider,
+  type ScmSettings,
 } from "../git/git-state";
 import { hostUi } from "../host-ui";
-import { BUTTON, FIELD, ROW, STACK } from "../layout";
+import { icon } from "../icons";
+import { BUTTON, CARD, FIELD, ROW, STACK } from "../layout";
 import { en, format, type MessageKey, type Messages } from "../messages/en";
+import { createConfirmDialog } from "./confirm-dialog";
 import { createSectionParts } from "./section-parts";
 import { readFailure, type Notice } from "./state";
 
@@ -53,10 +57,14 @@ const missing = (login?: string): Notice =>
   login ? { key: "scmCliAccountMissing", params: { login } } : { key: "scmCliPickAccount" };
 
 /**
- * The "Source control" settings section (FR2, FR3): Backlog Git with its
- * Git access form, then GitHub, GitLab and Bitbucket, each with its state,
+ * The "Source control" settings section (FR2, FR3): the workspace's one
+ * source control service (intent 261008-source-control-settings), chosen by
+ * admins with a confirmation, and that service's framed card: Backlog Git
+ * with its Git access form, or GitHub, GitLab or Bitbucket with its state,
  * the read scopes it needs, a token form (admins) and the repositories of
- * each selected Backlog project. A token is never shown or refilled (NFR1).
+ * each selected Backlog project. While an upgraded workspace with several
+ * connected providers has not picked one, every card shows as before
+ * (FR3.3). A token is never shown or refilled (NFR1).
  */
 export function createSourceControlSection(
   host: PluginHostApi,
@@ -77,6 +85,18 @@ export function createSourceControlSection(
     SelectItem,
   } = hostUi(host);
   const { ListError } = createSectionParts(host, messages);
+  const ConfirmDialog = createConfirmDialog(host, messages);
+  const name = (service: string) => providerName(service, messages);
+  /** A card's title row: the service mark, its name and its state (FR4.1). */
+  const cardHeader = (id: string, title: string, state: string) => (
+    <div className={ROW}>
+      {icon(host, "repo", "h-5 w-5")}
+      <h3 className="text-base font-semibold">{title}</h3>
+      <Badge variant="outline" data-testid={`${id}-state`}>
+        {state}
+      </Badge>
+    </div>
+  );
   const t = (n: Notice) => noticeText(n, messages);
   const invoke = <T,>(key: string, workspaceId: string, body?: unknown) =>
     host.api.invokeAction<T>(key, body === undefined ? { workspaceId } : { workspaceId, body });
@@ -131,9 +151,12 @@ export function createSourceControlSection(
       if (manual.trim() && (await save([...repos, manual.trim()]))) setManual("");
     };
 
+    // FR5.1, FR5.2: every label and line names the service.
+    const provider = name(p);
+    const repoName = (repo: string) => format(messages.scmRepoName, { provider, repo });
     const line = repos.length
-      ? format(messages.scmMappingLine, { project, repos: repos.join(", ") })
-      : format(messages.scmNoRepos, { project });
+      ? format(messages.scmMappingLine, { project, repos: repos.map(repoName).join(", ") })
+      : format(messages.scmNoRepos, { project, provider });
     if (readOnly) return <p data-testid={`backlog-scm-${p}-map-${project}`}>{line}</p>;
     const field = (suffix: string, label: string, value: string, set: (v: string) => void, extra = {}) => (
       <div className={FIELD}>
@@ -166,7 +189,7 @@ export function createSourceControlSection(
         <ul className={STACK}>
           {repos.map((repo) => (
             <li key={repo} className={ROW}>
-              <span>{format(messages.scmRepoName, { repo })}</span>
+              <span>{repoName(repo)}</span>
               {button(
                 `${id}-remove-${repo}`,
                 format(messages.scmRemoveRepo, { repo }),
@@ -176,7 +199,7 @@ export function createSourceControlSection(
           ))}
         </ul>
         <div className={ROW}>
-          {field("search", format(messages.scmSearchLabel, { project }), query, setQuery)}
+          {field("search", format(messages.scmSearchLabel, { project, provider }), query, setQuery)}
           {button(`${id}-search-go`, messages.scmSearch, () => void search())}
         </div>
         {results ? (
@@ -194,7 +217,7 @@ export function createSourceControlSection(
           </ul>
         ) : null}
         <div className={ROW}>
-          {field("manual", format(messages.scmManualLabel, { project }), manual, setManual, {
+          {field("manual", format(messages.scmManualLabel, { project, provider }), manual, setManual, {
             placeholder: messages.scmManualPlaceholder,
           })}
           {button(`${id}-manual-add`, messages.scmAdd, () => void addManual())}
@@ -362,13 +385,8 @@ export function createSourceControlSection(
     );
 
     return (
-      <section data-testid={id} className={STACK}>
-        <div className={ROW}>
-          <h4 className="text-sm font-medium">{providerName(p, messages)}</h4>
-          <Badge variant="outline" data-testid={`${id}-state`}>
-            {messages[STATES[view.state] ?? "scmStateError"]}
-          </Badge>
-        </div>
+      <section data-testid={id} className={CARD}>
+        {cardHeader(id, name(p), messages[STATES[view.state] ?? "scmStateError"])}
         {hasToken && (view.account || view.login) ? (
           <p data-testid={`${id}-account`}>{accountLine()}</p>
         ) : null}
@@ -387,16 +405,10 @@ export function createSourceControlSection(
                   autoComplete: "username",
                 })
               : null}
-            {input(
-              "token",
-              format(messages.scmTokenLabel, { provider: providerName(p, messages) }),
-              token,
-              setToken,
-              {
-                type: "password",
-                autoComplete: "off",
-              },
-            )}
+            {input("token", format(messages.scmTokenLabel, { provider: name(p) }), token, setToken, {
+              type: "password",
+              autoComplete: "off",
+            })}
             <div className={ROW}>
               {button(
                 "save",
@@ -421,7 +433,9 @@ export function createSourceControlSection(
         ) : null}
         {hasToken || view.mappings.length > 0 ? (
           <div className={STACK}>
-            <h5 className="text-sm font-medium">{messages.scmMappingsHeading}</h5>
+            <h4 className="text-sm font-medium">
+              {format(messages.scmMappingsHeading, { provider: name(p) })}
+            </h4>
             {selectedProjects.map((project) => (
               <ProjectRepos
                 key={project}
@@ -445,17 +459,55 @@ export function createSourceControlSection(
     backlogGit,
   }: SourceControlProps) {
     const [views, setViews] = useState<ProviderView[] | undefined>(undefined);
+    /** The active service; "" while an upgraded workspace waits for a pick (FR3.3). */
+    const [active, setActive] = useState("");
+    /** The service the admin picked, waiting for the confirmation (FR2.3). */
+    const [switchTo, setSwitchTo] = useState<string | undefined>(undefined);
     const [error, setError] = useState<Notice | undefined>(undefined);
+    const apply = (r: Partial<ScmSettings> | undefined) => {
+      setViews(r?.providers ?? []);
+      setActive(r?.active ?? "");
+    };
     const load = useCallback(() => {
       setError(undefined);
-      invoke<{ providers?: ProviderView[] }>("scm.providers.list", workspaceId).then(
-        (r) => setViews(r?.providers ?? []),
-        (e: unknown) => setError(scmNotice(e)),
+      invoke<Partial<ScmSettings>>("scm.providers.list", workspaceId).then(apply, (e: unknown) =>
+        setError(scmNotice(e)),
       );
     }, [workspaceId]);
     useEffect(load, [load]);
     const onView = (v: ProviderView) =>
       setViews((list) => list?.map((x) => (x.provider === v.provider ? v : x)));
+    const confirmSwitch = async () =>
+      apply(await invoke<Partial<ScmSettings>>("scm.active.set", workspaceId, { service: switchTo }));
+    const shown = (service: string) => !active || active === service;
+
+    const service = readOnly ? (
+      active ? (
+        <p data-testid="backlog-scm-service-readonly">
+          {format(messages.scmServiceReadOnly, { service: name(active) })}
+        </p>
+      ) : null
+    ) : (
+      <div className={FIELD}>
+        <Label htmlFor="backlog-scm-service">{messages.scmServiceLabel}</Label>
+        <Select value={active} onValueChange={(v: string) => v !== active && setSwitchTo(v)}>
+          <SelectTrigger
+            id="backlog-scm-service"
+            data-testid="backlog-scm-service"
+            className="w-full md:w-[260px]"
+          >
+            <SelectValue placeholder={messages.scmPickPlaceholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {SERVICES.map((s) => (
+              <SelectItem key={s} value={s} data-testid={`backlog-scm-service-${s}`}>
+                {name(s)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
 
     return (
       <div data-testid="backlog-section-source-control">
@@ -464,24 +516,49 @@ export function createSourceControlSection(
           description={messages.sourceControlDescription}
         >
           <div className="flex flex-col gap-6">
-            <section data-testid="backlog-scm-backlog" className={STACK}>
-              <h4 className="text-sm font-medium">{messages.providerBacklog}</h4>
-              <p className="text-sm text-muted-foreground">{messages.scmBacklogGitHelp}</p>
-              {readOnly ? null : backlogGit}
-            </section>
             {error ? <ListError testId="backlog-scm" notice={error} onRetry={load} /> : null}
-            {(views ?? []).map((v) => (
-              <ProviderCard
-                key={v.provider}
-                workspaceId={workspaceId}
-                view={v}
-                selectedProjects={selectedProjects}
-                readOnly={readOnly}
-                onView={onView}
-              />
-            ))}
+            {views ? service : null}
+            {views && !active ? (
+              <p role="status" data-testid="backlog-scm-pick-notice">
+                {messages.scmPickNotice}
+              </p>
+            ) : null}
+            {/* Backlog Git's Git access needs no scm data, so it stays usable when that fails to load. */}
+            {(views || error) && shown("backlog_git") ? (
+              <section data-testid="backlog-scm-backlog" className={CARD}>
+                {cardHeader("backlog-scm-backlog", messages.providerBacklog, messages.scmStateConnected)}
+                <p className="text-sm text-muted-foreground">{messages.scmBacklogGitHelp}</p>
+                {readOnly ? null : backlogGit}
+              </section>
+            ) : null}
+            {(views ?? [])
+              .filter((v) => shown(v.provider))
+              .map((v) => (
+                <ProviderCard
+                  key={v.provider}
+                  workspaceId={workspaceId}
+                  view={v}
+                  selectedProjects={selectedProjects}
+                  readOnly={readOnly}
+                  onView={onView}
+                />
+              ))}
           </div>
         </SettingsSection>
+        {switchTo ? (
+          <ConfirmDialog
+            testId="backlog-scm-switch-dialog"
+            title={format(messages.scmSwitchTitle, { service: name(switchTo) })}
+            body={
+              active
+                ? format(messages.scmSwitchBody, { from: name(active), to: name(switchTo) })
+                : format(messages.scmPickBody, { to: name(switchTo) })
+            }
+            confirmLabel={messages.scmSwitchConfirm}
+            onConfirm={confirmSwitch}
+            onClose={() => setSwitchTo(undefined)}
+          />
+        ) : null}
       </div>
     );
   };
