@@ -1,6 +1,6 @@
 id: "nulab-backlog"
 api_version: 2
-version: "0.5.2"
+version: "0.5.3"
 display_name: "Nulab Backlog"
 description: "Connect a Kandev workspace to a Nulab Backlog space."
 author: "khuongdo"
@@ -288,6 +288,11 @@ actions:
     access: admin
     max_body_bytes: 16384
   - key: "scm.providers.use_cli"
+    scope: "workspace"
+    access: admin
+    max_body_bytes: 16384
+  # Intent 261008-gh-cli-profile: the gh logins a workspace can choose from.
+  - key: "scm.providers.cli_accounts"
     scope: "workspace"
     access: admin
     max_body_bytes: 16384

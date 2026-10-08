@@ -86,6 +86,9 @@ describe("source control states and notices (A3, FR2.4, NFR5)", () => {
     expect(noticeText(scmNotice(actionError(503, { code: "cli_unavailable" })))).toBe(
       "The gh / glab CLI is not available or not logged in on the Kandev server.",
     );
+    expect(noticeText(scmNotice(actionError(409, { code: "cli_account_missing" })))).toBe(
+      "The chosen gh account is not logged in on the Kandev server. Log in again or pick another account under Source control.",
+    );
     expect(scmNotice(actionError(404, { code: "not_found" }))).toEqual({ key: "gitNotFound" });
   });
 

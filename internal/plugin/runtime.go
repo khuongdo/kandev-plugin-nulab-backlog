@@ -304,7 +304,7 @@ func statusFor(code string) int {
 		return 401
 	case codeNotFound:
 		return 404
-	case connection.CodeConflict, connection.CodeIntegrationDisabled:
+	case connection.CodeConflict, connection.CodeIntegrationDisabled, codeCLIAccountMissing:
 		return 409
 	case connection.CodeRateLimited:
 		return 429

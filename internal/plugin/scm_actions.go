@@ -47,10 +47,17 @@ const (
 	// actionSCMUseCLI connects GitHub or GitLab with the gh / glab login of
 	// the Kandev server (intent 261008-gh-cli-auth, FR1.2, FR2.1).
 	actionSCMUseCLI = "scm.providers.use_cli"
+	// actionSCMCLIAccounts lists gh's github.com logins (intent
+	// 261008-gh-cli-profile, FR1.1).
+	actionSCMCLIAccounts = "scm.providers.cli_accounts"
 )
 
-// codeCLIUnavailable: gh / glab is missing or not logged in on the Kandev server (FR4.1).
-const codeCLIUnavailable = "cli_unavailable"
+const (
+	// codeCLIUnavailable: gh / glab is missing or not logged in on the Kandev server (FR4.1).
+	codeCLIUnavailable = "cli_unavailable"
+	// codeCLIAccountMissing: gh has no login for the workspace's chosen account (FR5.1).
+	codeCLIAccountMissing = "cli_account_missing"
+)
 
 func init() { maps.Copy(handlers, scmHandlers) }
 
@@ -68,6 +75,7 @@ func (r *Runtime) wireSCM(clients map[scm.Provider]scm.Client) {
 type providerBody struct {
 	Provider scm.Provider `json:"provider"`
 	Query    string       `json:"query"`
+	Login    string       `json:"login"` // use_cli only: the gh account (FR2.1)
 }
 
 // withProvider decodes {"provider", "query"} for the provider actions.
@@ -107,8 +115,12 @@ var scmHandlers = map[string]handler{
 		return r.scm.RemoveToken(ctx, ws, in.Provider)
 	}),
 	actionSCMUseCLI: withProvider(func(r *Runtime, ctx context.Context, ws string, in providerBody) (any, error) {
-		return r.scm.UseCLI(ctx, ws, in.Provider)
+		return r.scm.UseCLI(ctx, ws, in.Provider, in.Login)
 	}),
+	actionSCMCLIAccounts: func(r *Runtime, ctx context.Context, _ string, _ []byte) (any, error) {
+		a, err := r.scm.ListCLIAccounts(ctx)
+		return map[string]any{"accounts": a}, err
+	},
 	actionSCMRepos: withProvider(func(r *Runtime, ctx context.Context, ws string, in providerBody) (any, error) {
 		repos, err := r.scm.SearchRepos(ctx, ws, in.Provider, in.Query)
 		return map[string]any{"repos": repos}, err
@@ -201,6 +213,8 @@ func classifySCM(err error) (out outcome, ok bool) {
 		return code(connection.CodeConflict)
 	case errors.Is(err, scm.ErrCLIUnavailable):
 		return code(codeCLIUnavailable)
+	case errors.Is(err, scm.ErrCLIAccountMissing):
+		return code(codeCLIAccountMissing)
 	case errors.Is(err, scm.ErrNoToken):
 		return outcome{Outcome: connection.Outcome{Code: connection.CodeValidation, Field: scm.FieldToken}}, true
 	}

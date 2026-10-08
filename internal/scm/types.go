@@ -32,6 +32,7 @@ const (
 	FieldProvider   = "provider"
 	FieldToken      = "token"
 	FieldUsername   = "username"
+	FieldLogin      = "login"
 	FieldRepository = "repository"
 	FieldRepos      = "repos"
 	FieldProjectKey = "projectKey"

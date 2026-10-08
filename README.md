@@ -33,6 +33,22 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.5.3: choose the gh account per workspace
+
+- Settings > Source control: "Use gh CLI login" on the GitHub card now lists the accounts logged
+  in to gh on the Kandev server and lets you pick one (the active one is preselected; with only one
+  account it connects at once). A connected card shows **Connected via gh CLI as @login** and has a
+  **Change account** button. Two workspaces can use two gh accounts at the same time.
+- The plugin reads the chosen account's token with `gh auth token --user <login>` and never runs
+  `gh auth switch`, so `gh auth switch` on the server no longer changes which account a workspace
+  uses.
+- Nothing to do after upgrading: a workspace already connected with gh keeps the GitHub account it
+  was connected with. If that account is later logged out of gh, the card says
+  "<login> is not logged in to gh on the Kandev server — log in again or pick another account".
+- Agents in task worktrees get their GitHub login from Kandev's own GitHub integration (or the
+  executor profile), not from this plugin; set it to the same account. The account list needs gh
+  2.81.0 or later; older gh shows only the active account (`--user` needs gh 2.40).
+
 ### 0.5.2: link a Backlog issue from the task, GitHub-style
 
 - The task's Link menu (Kanban card menu, task switcher) has a new "Link Backlog issue" item, next
@@ -404,14 +420,33 @@ glab CLI login** (GitLab) on the service's card. Bitbucket has no CLI option.
 
 - The plugin runs the CLI **on the machine that runs the Kandev server, as the server's user and
   with its environment** — not on the admin's own computer. Log in there first: `gh auth login`
-  (gh 2.17 or later, which has `gh auth token`) or `glab auth login`.
-- The plugin reads the token with `gh auth token --hostname github.com` or
-  `glab config get token --host gitlab.com`, checks it with the service's current-user call, and
-  stores only the method and the account name. The token is never saved, logged or shown; any
-  typed token of that service is deleted. The card then shows **Connected via gh CLI as …**.
-- The token is read again at most every **5 minutes**, so `gh auth refresh`, `gh auth switch` or
-  a new `glab auth login` on the server takes effect within 5 minutes without any action in
-  Kandev. **Test** always reads it again.
+  (repeat it for each GitHub account you want to offer) or `glab auth login`. `GH_TOKEN`,
+  `GITHUB_TOKEN` and their enterprise variants are removed from gh's environment, so gh always
+  uses its stored logins.
+- **GitHub: one gh account per workspace.** Pressing **Use gh CLI login** lists the github.com
+  accounts gh has (`gh auth status --json hosts`, gh 2.81.0 or later) and lets you pick one; the
+  account active in gh is preselected, and with a single account it connects at once. **Change
+  account** on a connected card picks another one and keeps the mappings, queries and watches.
+  The plugin reads the chosen account's token with
+  `gh auth token --hostname github.com --user <login>` (gh 2.40 or later) and never runs
+  `gh auth switch`, so every GitHub call of the workspace — Test, repository search, pull request
+  lists and the "mine" filter, links, watches and tasks created from Backlog issues — runs as that
+  account whatever account is active in gh. With a gh older than 2.81.0 only the active account is
+  offered; with a gh older than 2.40 the workspace works only while its account is the active one.
+- GitLab: the plugin reads the token with `glab config get token --host gitlab.com`.
+- Each token is checked with the service's current-user call; only the method and the account
+  (for GitHub, its login) are stored. The token is never saved, logged or shown; any typed token
+  of that service is deleted. The card then shows **Connected via gh CLI as @login** (GitHub) or
+  **Connected via glab CLI as …** (GitLab).
+- The token is read again at most every **5 minutes** (per GitHub account), so `gh auth refresh`
+  or a new `glab auth login` on the server takes effect within 5 minutes without any action in
+  Kandev. **Test** always reads it again and never replaces the chosen GitHub account: if gh no
+  longer has it, the card says "<login> is not logged in to gh on the Kandev server — log in again
+  or pick another account" and the plugin does not fall back to another account.
+- **Agents in task worktrees.** The agent's own shell in a task worktree gets its GitHub login from
+  Kandev's own GitHub integration (or the executor profile), not from this plugin; the plugin
+  cannot change it. Set it to the same account as the workspace's gh account here. The GitHub card
+  shows this note with the chosen login.
 - If the CLI is missing, not logged in, slow (10 s limit) or its token is refused, actions fail
   with "The gh CLI is not available or not logged in on the Kandev server" (glab respectively).
   There is no fallback to a typed token. This is the case when Kandev runs in Docker or on a

@@ -21,6 +21,9 @@ var (
 	// or printed no usable token on the Kandev server (FR4.1). It never holds
 	// the CLI's output (NFR1).
 	ErrCLIUnavailable = errors.New("the gh or glab CLI is not available or not logged in on the Kandev server")
+	// ErrCLIAccountMissing means gh has no login for the workspace's chosen
+	// GitHub account; the plugin never falls back to another one (FR5.1).
+	ErrCLIAccountMissing = errors.New("the chosen GitHub account is not logged in to gh on the Kandev server")
 )
 
 // HTTPError is a failed provider call (NFR5), shared by the three clients.

@@ -259,7 +259,7 @@ describe("Source control settings (FR2, FR3)", () => {
     const cliError = "The gh CLI is not available or not logged in on the Kandev server.";
     const host = setup(
       {
-        "scm.providers.use_cli": async () => {
+        "scm.providers.cli_accounts": async () => {
           throw actionError(503, { code: "cli_unavailable" });
         },
         "scm.providers.test": async () => ({
@@ -278,6 +278,200 @@ describe("Source control settings (FR2, FR3)", () => {
     await act(async () => byTestId(c, "backlog-scm-github-test")!.click());
     expect(byTestId(c, "backlog-scm-github-state")!.textContent).toBe(en.scmStateError);
     expect(byTestId(c, "backlog-scm-github-message")!.textContent).toBe(cliError);
+  });
+
+  describe("gh account per workspace (intent 261008-gh-cli-profile)", () => {
+    const TWO = {
+      accounts: [
+        { login: "alice", active: true },
+        { login: "bob", active: false },
+      ],
+    };
+    const VIA_GH = { ...GITHUB, method: "cli", account: "bob", login: "bob" };
+    const MISSING = "bob is not logged in to gh on the Kandev server — log in again or pick another account";
+    const NOTE =
+      "Agents working in task worktrees get their GitHub login from Kandev's own GitHub integration (or the executor profile), not from this plugin. Set it to the same account (@bob) for this workspace.";
+    const pending = () => {
+      let release: (v: unknown) => void = () => {};
+      const promise = new Promise((r) => (release = r));
+      return { promise, release };
+    };
+
+    it("loads the gh accounts, then shows a labelled picker with the active one preselected (AC1.1.1)", async () => {
+      const wait = pending();
+      const host = setup({
+        "scm.providers.cli_accounts": () => wait.promise,
+        "scm.providers.use_cli": async () => VIA_GH,
+      });
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-use-cli")!.click());
+      expect((byTestId(c, "backlog-scm-github-use-cli") as HTMLButtonElement).disabled).toBe(true);
+      expect(byTestId(c, "backlog-scm-github-message")!.textContent).toBe("Loading gh accounts…");
+      expect(byTestId(c, "backlog-scm-github-message")!.getAttribute("role")).toBe("status");
+      await act(async () => wait.release(TWO));
+      const select = byTestId(c, "backlog-scm-github-account-select")!;
+      expect(c.querySelector('label[for="backlog-scm-github-account-select"]')!.textContent).toBe(
+        "GitHub account (gh)",
+      );
+      expect(select.closest("[data-host=Select]")!.getAttribute("data-value")).toBe("alice");
+      expect(byTestId(c, "backlog-scm-github-account-alice")!.textContent).toBe("alice (active in gh)");
+      expect(byTestId(c, "backlog-scm-github-account-bob")!.textContent).toBe("bob");
+      expect(document.activeElement).toBe(select);
+      expect(byTestId(c, "backlog-scm-github-account-connect")).not.toBeNull();
+      expect(byTestId(c, "backlog-scm-github-account-cancel")).not.toBeNull();
+      expect(calls(host, "scm.providers.use_cli")).toHaveLength(0);
+    });
+
+    it("connects the picked account and shows its login (AC1.1.2, AC3.2.2)", async () => {
+      const host = setup({
+        "scm.providers.cli_accounts": async () => TWO,
+        "scm.providers.use_cli": async () => VIA_GH,
+      });
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-use-cli")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-bob")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-connect")!.click());
+      expect(calls(host, "scm.providers.use_cli")[0]![1]).toEqual({
+        workspaceId: "ws-1",
+        body: { provider: "github", login: "bob" },
+      });
+      expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe("Connected via gh CLI as @bob");
+      expect(byTestId(c, "backlog-scm-github-account-select")).toBeNull();
+      unmount();
+      const named = await render(setup({}, [{ ...VIA_GH, account: "Bob Smith" }]));
+      expect(byTestId(named, "backlog-scm-github-account")!.textContent).toBe(
+        "Connected via gh CLI as @bob (Bob Smith)",
+      );
+    });
+
+    it("connects at once when gh has one account, also for a gh without --json (AC1.1.4, AC1.1.9)", async () => {
+      const host = setup({
+        "scm.providers.cli_accounts": async () => ({ accounts: [{ login: "alice", active: true }] }),
+        "scm.providers.use_cli": async () => ({ ...VIA_GH, login: "alice", account: "alice" }),
+      });
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-use-cli")!.click());
+      expect(byTestId(c, "backlog-scm-github-account-select")).toBeNull();
+      expect(calls(host, "scm.providers.use_cli")[0]![1]).toMatchObject({
+        body: { provider: "github", login: "alice" },
+      });
+      expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe("Connected via gh CLI as @alice");
+    });
+
+    it("shows an unusable gh as an alert and saves nothing (AC1.1.3)", async () => {
+      const host = setup({
+        "scm.providers.cli_accounts": async () => {
+          throw actionError(503, { code: "cli_unavailable" });
+        },
+      });
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-use-cli")!.click());
+      const msg = byTestId(c, "backlog-scm-github-message")!;
+      expect(msg.textContent).toBe("The gh CLI is not available or not logged in on the Kandev server.");
+      expect(msg.getAttribute("role")).toBe("alert");
+      expect(calls(host, "scm.providers.use_cli")).toHaveLength(0);
+    });
+
+    it("changes the account with the current login preselected; Cancel saves nothing (AC1.2.1, AC1.2.4)", async () => {
+      const host = setup(
+        {
+          "scm.providers.cli_accounts": async () => TWO,
+          "scm.providers.use_cli": async () => ({ ...VIA_GH, login: "alice", account: "Alice" }),
+        },
+        [VIA_GH],
+      );
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-change-account")!.click());
+      const select = byTestId(c, "backlog-scm-github-account-select")!;
+      expect(select.closest("[data-host=Select]")!.getAttribute("data-value")).toBe("bob");
+      await act(async () => byTestId(c, "backlog-scm-github-account-cancel")!.click());
+      expect(byTestId(c, "backlog-scm-github-account-select")).toBeNull();
+      expect(calls(host, "scm.providers.use_cli")).toHaveLength(0);
+      expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe("Connected via gh CLI as @bob");
+
+      await act(async () => byTestId(c, "backlog-scm-github-change-account")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-alice")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-connect")!.click());
+      expect(calls(host, "scm.providers.use_cli")[0]![1]).toMatchObject({
+        body: { provider: "github", login: "alice" },
+      });
+      expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe(
+        "Connected via gh CLI as @alice (Alice)",
+      );
+    });
+
+    it("names the missing account in an alert and offers only gh's accounts (AC3.1.1, AC3.1.4)", async () => {
+      const host = setup(
+        {
+          "scm.providers.test": async () => ({ ...VIA_GH, state: "error", lastError: "cli_account_missing" }),
+          "scm.providers.cli_accounts": async () => ({ accounts: [{ login: "alice", active: true }] }),
+        },
+        [VIA_GH],
+      );
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-test")!.click());
+      const msg = byTestId(c, "backlog-scm-github-message")!;
+      expect(msg.textContent).toBe(MISSING);
+      expect(msg.getAttribute("role")).toBe("alert");
+      await act(async () => byTestId(c, "backlog-scm-github-change-account")!.click());
+      const select = byTestId(c, "backlog-scm-github-account-select")!;
+      expect(select.closest("[data-host=Select]")!.getAttribute("data-value")).toBe("");
+      expect(byTestId(c, "backlog-scm-github-account-bob")).toBeNull();
+      expect((byTestId(c, "backlog-scm-github-account-connect") as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("shows a refused change as the account-missing alert (AC1.2.3, AC3.1.1)", async () => {
+      const host = setup(
+        {
+          "scm.providers.cli_accounts": async () => TWO,
+          "scm.providers.use_cli": async () => {
+            throw actionError(409, { code: "cli_account_missing" });
+          },
+        },
+        [{ ...VIA_GH, login: "alice", account: "Alice" }],
+      );
+      const c = await render(host);
+      await act(async () => byTestId(c, "backlog-scm-github-change-account")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-bob")!.click());
+      await act(async () => byTestId(c, "backlog-scm-github-account-connect")!.click());
+      expect(byTestId(c, "backlog-scm-github-message")!.textContent).toBe(MISSING);
+      expect(byTestId(c, "backlog-scm-github-account")!.textContent).toBe(
+        "Connected via gh CLI as @alice (Alice)",
+      );
+    });
+
+    it("asks to pick an account when a gh connection has no login (AC3.2.4)", async () => {
+      const c = await render(
+        setup({}, [{ ...GITHUB, method: "cli", state: "error", lastError: "cli_account_missing" }]),
+      );
+      const msg = byTestId(c, "backlog-scm-github-message")!;
+      expect(msg.textContent).toBe("Pick the gh account this workspace uses.");
+      expect(msg.getAttribute("role")).toBe("alert");
+      expect(byTestId(c, "backlog-scm-github-change-account")).not.toBeNull();
+    });
+
+    it("explains where agents in task worktrees get their GitHub login (AC4.1.1)", async () => {
+      const c = await render(setup({}, [VIA_GH]));
+      expect(byTestId(c, "backlog-scm-github-worktree-note")!.textContent).toBe(NOTE);
+      unmount();
+      const token = await render(setup({}, [{ ...GITHUB, method: "token" }]));
+      expect(byTestId(token, "backlog-scm-github-worktree-note")).toBeNull();
+      unmount();
+      const member = await render(setup({}, [VIA_GH]), { readOnly: true });
+      expect(byTestId(member, "backlog-scm-github-worktree-note")!.textContent).toBe(NOTE);
+      expect(byTestId(member, "backlog-scm-github-account")!.textContent).toBe(
+        "Connected via gh CLI as @bob",
+      );
+      expect(byTestId(member, "backlog-scm-github-change-account")).toBeNull();
+    });
+
+    it("keeps host controls, test ids and axe with the picker open", async () => {
+      const c = await render(setup({ "scm.providers.cli_accounts": async () => TWO }, [VIA_GH]));
+      await act(async () => byTestId(c, "backlog-scm-github-change-account")!.click());
+      expect(rawControls(c)).toEqual([]);
+      expectTestIds(c, (ok, msg) => expect(ok, msg).toBe(true));
+      expect(await axeViolations(c)).toEqual([]);
+    });
   });
 
   it("shows a load failure with Retry", async () => {

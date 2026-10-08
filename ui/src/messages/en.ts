@@ -348,6 +348,20 @@ export const en = {
   scmUseCli: "Use {cli} CLI login",
   scmCliConnected: "Connected with the {cli} CLI login.",
   scmCliUnavailable: "The {cli} CLI is not available or not logged in on the Kandev server.",
+  scmAccountCliLogin: "Connected via {cli} CLI as @{login}",
+  scmAccountCliLoginName: "Connected via {cli} CLI as @{login} ({name})",
+  scmChangeAccount: "Change account",
+  scmLoadingAccounts: "Loading gh accounts…",
+  scmGhAccountLabel: "GitHub account (gh)",
+  scmGhAccountPlaceholder: "Pick an account",
+  scmGhAccountActive: "{login} (active in gh)",
+  scmCliAccountMissing:
+    "{login} is not logged in to gh on the Kandev server — log in again or pick another account",
+  scmCliPickAccount: "Pick the gh account this workspace uses.",
+  scmCliAccountMissingAny:
+    "The chosen gh account is not logged in on the Kandev server. Log in again or pick another account under Source control.",
+  scmWorktreeNote:
+    "Agents working in task worktrees get their GitHub login from Kandev's own GitHub integration (or the executor profile), not from this plugin. Set it to the same account (@{login}) for this workspace.",
   scmScopesGithub:
     "Needs a fine-grained token with Metadata: read and Pull requests: read, or a classic token with repo (public_repo for public repositories only).",
   scmScopesGitlab: "Needs a personal access token with the read_api scope.",

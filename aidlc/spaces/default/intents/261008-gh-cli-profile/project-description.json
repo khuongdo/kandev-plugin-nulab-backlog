@@ -1,0 +1,1 @@
+"Hiện tại khi kết nối với github thông qua gh cli chỉ có thể dùng credential của active user. Cho phép chọn profile theo workspace giống có github integration làm. Khi tạo task worktree từ backlog task đảm bảo gh cli sẽ hoạt động bằng profile đã chọn."
