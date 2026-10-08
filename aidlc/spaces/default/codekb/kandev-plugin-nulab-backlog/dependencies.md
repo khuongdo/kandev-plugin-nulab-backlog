@@ -11,11 +11,19 @@
 
 esbuild, typescript, vitest, jsdom, eslint + typescript-eslint, prettier, react/react-dom (types and tests only, never bundled), axe-core. Versions: [technology-stack.md](technology-stack.md).
 
+## External (CI)
+
+- GitHub Actions listed with SHAs in [technology-stack.md](technology-stack.md#github-actions-pinned-by-full-sha). No third-party (non-`actions/`) action is used today; any new one must be SHA-pinned or `make lint` fails.
+- Tools fetched by `go run` in `Makefile`: golangci-lint v2.14.0, actionlint v1.7.12.
+- CI checks out `kandev/kandev` twice: at `.kandev-sdk-ref` (build) and at `v<min_kandev_version>` (contract test).
+- `gh` CLI with `GH_TOKEN` in `release-preflight` and `publish`.
+
 ## External Services
 
 - Kandev host (install API, plugin RPC, state, secrets): [api-documentation.md](api-documentation.md).
 - Backlog REST v2, GitHub, GitLab, Bitbucket REST.
 - Packaging tool: Kandev `cmd/plugin-pack` from the sibling checkout.
+- GitHub repository ruleset `24580280` (required checks): [api-documentation.md](api-documentation.md#required-status-checks-main-ruleset).
 
 ## Internal (cross-package)
 
@@ -32,3 +40,5 @@ cmd/ci -> ci
 ```
 
 The graph is acyclic; only `plugin` and `server` import `pluginsdk`.
+
+Build-time chain: `ci.yml` / `release.yml` -> `Makefile` targets -> `cmd/ci`, `cmd/verifypkg`, Kandev `plugin-pack`.

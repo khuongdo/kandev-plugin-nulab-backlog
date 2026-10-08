@@ -1,0 +1,13 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "internal/ci/changes.go" },
+    { "path": "internal/ci/changes_test.go" },
+    { "path": "internal/ci/run.go" },
+    { "path": "internal/ci/workflows_test.go" },
+    { "path": ".github/workflows/ci.yml" },
+    { "path": ".github/workflows/secrets.yml" },
+    { "path": "README.md" }
+  ]
+}

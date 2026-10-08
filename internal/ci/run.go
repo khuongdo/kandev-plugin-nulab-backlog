@@ -14,7 +14,7 @@ import (
 // refusals and 2 for usage errors, like pkgverify.Run.
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stderr, "ci: subcommand required: secrets, preflight, marketplace, workflows or contract")
+		_, _ = fmt.Fprintln(stderr, "ci: subcommand required: secrets, preflight, marketplace, workflows, contract or changes")
 		return 2
 	}
 	cmd, ok := commands[args[0]]
@@ -40,6 +40,7 @@ var commands = map[string]command{
 	"marketplace": marketplaceCommand,
 	"workflows":   workflowsCommand,
 	"contract":    contractCommand,
+	"changes":     changesCommand,
 }
 
 func usage(stderr io.Writer, name, flags string) int {

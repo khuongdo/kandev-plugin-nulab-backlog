@@ -99,3 +99,83 @@ func TestRepositoryWorkflowsFollowThePolicy(t *testing.T) {
 	require.Equal(t, "write", publish.Permissions["id-token"])
 	require.Equal(t, "write", publish.Permissions["attestations"])
 }
+
+// repoWorkflow is the part of a repository workflow the path-filter tests read.
+type repoWorkflow struct {
+	On map[string]struct {
+		Branches    []string `yaml:"branches"`
+		Paths       []string `yaml:"paths"`
+		PathsIgnore []string `yaml:"paths-ignore"`
+	} `yaml:"on"`
+	Jobs map[string]struct {
+		Needs   any               `yaml:"needs"`
+		If      string            `yaml:"if"`
+		Outputs map[string]string `yaml:"outputs"`
+		Steps   []struct {
+			Run  string            `yaml:"run"`
+			With map[string]string `yaml:"with"`
+		} `yaml:"steps"`
+	} `yaml:"jobs"`
+}
+
+func readRepoWorkflow(t *testing.T, name string) repoWorkflow {
+	t.Helper()
+	raw, err := os.ReadFile("../../.github/workflows/" + name) //nolint:gosec // G304: the repository's own workflow files
+	require.NoError(t, err, "%s must exist", name)
+	var wf repoWorkflow
+	require.NoError(t, yaml.Unmarshal(raw, &wf))
+	return wf
+}
+
+// requireEveryChangeOnMain checks FR2.1/FR3.1: pull requests to and pushes on
+// main, with no path filter.
+func requireEveryChangeOnMain(t *testing.T, name string, wf repoWorkflow) {
+	t.Helper()
+	for _, event := range []string{"pull_request", "push"} {
+		on, ok := wf.On[event]
+		require.True(t, ok, "%s must run on %s", name, event)
+		require.Equal(t, []string{"main"}, on.Branches, "%s %s branches", name, event)
+		require.Empty(t, on.Paths, "%s %s must not filter paths", name, event)
+		require.Empty(t, on.PathsIgnore, "%s %s must not filter paths", name, event)
+	}
+}
+
+func TestRepositoryWorkflowsSkipAppJobsOnlyForNonAppChanges(t *testing.T) {
+	ci := readRepoWorkflow(t, "ci.yml")
+	requireEveryChangeOnMain(t, "ci.yml", ci)
+	changes, ok := ci.Jobs["changes"]
+	require.True(t, ok, "ci.yml needs a changes job")
+	require.Contains(t, changes.Outputs, "app")
+	checks, ok := ci.Jobs["checks"]
+	require.True(t, ok, "the required check checks must keep its name")
+	require.Equal(t, "changes", checks.Needs)
+	// Skipped only on an explicit app=false; a failed changes job runs it (FR2.4).
+	require.Equal(t, "${{ !cancelled() && needs.changes.outputs.app != 'false' }}", checks.If)
+	contract, ok := ci.Jobs["packaged-host-contract"]
+	require.True(t, ok, "the required check packaged-host-contract must keep its name")
+	require.Equal(t, "checks", contract.Needs, "skipped with checks")
+	require.Equal(t, "${{ !cancelled() && needs.checks.result == 'success' }}", contract.If)
+	for _, s := range changes.Steps {
+		require.NotEqual(t, "kdlbs/kandev", s.With["repository"], "NFR2: changes must not check out Kandev")
+	}
+}
+
+func TestRepositoryWorkflowsScanEveryChangeForSecrets(t *testing.T) {
+	wf := readRepoWorkflow(t, "secrets.yml")
+	requireEveryChangeOnMain(t, "secrets.yml", wf)
+	require.Len(t, wf.Jobs, 1)
+	job, ok := wf.Jobs["secret-scan"]
+	require.True(t, ok, "secrets.yml needs the secret-scan job")
+	var runs []string
+	for _, s := range job.Steps {
+		runs = append(runs, s.Run)
+	}
+	all := strings.Join(runs, "\n")
+	require.Contains(t, all, "make -o check-sdk check-secrets")
+	for _, s := range job.Steps {
+		require.NotEqual(t, "kdlbs/kandev", s.With["repository"], "NFR2: the scan must not check out Kandev")
+	}
+	for _, heavy := range []string{"contract-test", "package", "build"} {
+		require.NotContains(t, all, heavy, "FR3.3: no Kandev build, packaging or contract test")
+	}
+}

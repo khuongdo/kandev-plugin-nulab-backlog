@@ -10,8 +10,21 @@
 | UI bundler | esbuild | ^0.28.2 |
 | Node | `.nvmrc` | 22 |
 | Tests | Go `testing` + testify; Vitest + jsdom | testify v1.12.1; vitest ^5.0.3 |
-| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 |
+| Lint/format | gofmt, go vet, golangci-lint (+gosec), ESLint, Prettier, actionlint | golangci-lint v2.14.0, actionlint v1.7.12 (both via `go run`, pinned in `Makefile`) |
+| Build | GNU Make (bash, `-eu -o pipefail`) | — |
 | CI/CD | GitHub Actions | `.github/workflows/ci.yml`, `release.yml` |
+| Merge gating | GitHub repository ruleset on `main` | ruleset `24580280` |
+
+## GitHub Actions (pinned by full SHA)
+
+| Action | Version | SHA |
+|---|---|---|
+| actions/checkout | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| actions/setup-go | v7.0.0 | `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e` |
+| actions/setup-node | v7.0.0 | `820762786026740c76f36085b0efc47a31fe5020` |
+| actions/upload-artifact | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| actions/download-artifact | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
+| actions/attest-build-provenance (release only) | v4.2.2 | `4d101475d8b20a2381f78447822ac1eab6504dd8` |
 
 ## Runtime Environment (observed, self-hosted)
 
