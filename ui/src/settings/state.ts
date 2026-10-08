@@ -140,6 +140,8 @@ interface ActionFailure {
   retryAfterSeconds?: number;
   /** U4: the open pull request of a create conflict (AC5.3.4). */
   pullRequestNumber?: number;
+  /** service_inactive: the workspace's active source control service (FR1.4). */
+  activeService?: string;
 }
 
 /** Reads the host ApiError shape: { status, body: { error: { code, field, retryAfterSeconds } } }. */
@@ -154,6 +156,7 @@ export function readFailure(error: unknown): ActionFailure {
     field: typeof e.field === "string" ? e.field : undefined,
     retryAfterSeconds: typeof e.retryAfterSeconds === "number" ? e.retryAfterSeconds : undefined,
     pullRequestNumber: typeof e.pullRequestNumber === "number" ? e.pullRequestNumber : undefined,
+    activeService: typeof e.activeService === "string" ? e.activeService : undefined,
   };
 }
 

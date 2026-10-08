@@ -2,13 +2,14 @@
 
 ## Kandev Host Contract (`manifest.yaml`)
 
-- `version: "0.5.2"`, `api_version: 2`, `runtime.type: binary`, 4 executables (`linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`), `min_kandev_version: "0.96.0"`.
-- Capabilities: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`, `events: [task.deleted]`. No capability governs starting processes.
+- `version: "0.5.3"`, `api_version: 2`, `runtime.type: binary`, 4 executables (`linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`), `min_kandev_version: "0.96.0"`.
+- Capabilities: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`, `events: [task.deleted]`.
 - `repository_providers: [nulab-backlog]`, one `reference_sources` entry, `config_schema` (OAuth client, public base URL), `ui.bundle`.
+- The frozen snapshot `internal/plugin/testdata/v030/manifest.yaml` must stay unchanged.
 
 ## Plugin Actions
 
-78 action keys (counted from `manifest.yaml` at v0.5.2):
+79 action keys (counted from `manifest.yaml` at v0.5.3):
 
 | Prefix | Count |
 |---|---|
@@ -16,31 +17,41 @@
 | `repositories.*` | 2 |
 | `git.*` | 19 |
 | `issues.*` | 25 |
-| `scm.*` | 23 |
+| `scm.*` | 24 |
 
-Each declares `scope` (workspace/task), `access` (authenticated/admin) and `max_body_bytes`. Keys must match `^[a-z0-9][a-z0-9._-]*$`, and every manifest key must have a runtime handler and vice versa (`internal/plugin/manifest_test.go`).
+Each declares `scope` (workspace/task), `access` (authenticated/admin) and `max_body_bytes`. Keys must match `^[a-z0-9][a-z0-9._-]*$`; every manifest key must have a runtime handler and vice versa (`internal/plugin/manifest_test.go`, `TestSCM_Manifest_Actions`). Admin-only is enforced by the manifest `access: admin`.
 
-### SCM provider actions (intent area)
+### SCM actions used by the Source Control settings page (intent area)
 
 All `scope: workspace`, `max_body_bytes: 16384`, handlers in `internal/plugin/scm_actions.go`.
 
 | Key | Access | Body | Service call | Returns |
 |---|---|---|---|---|
-| `scm.providers.list` | authenticated | — | `Providers` | `{providers: ProviderView[]}` |
+| `scm.providers.list` | authenticated (allowed by `guarded()` while Backlog is off) | — | `Providers` | `{providers: ProviderView[]}`, always all three |
 | `scm.providers.set_token` | admin | `{provider, token, username?}` | `SetToken` | `ProviderView` |
-| `scm.providers.use_cli` | admin | `{provider}` (github or gitlab) | `UseCLI` | `ProviderView` |
+| `scm.providers.use_cli` | admin | `{provider, login?}` (github or gitlab) | `UseCLI` | `ProviderView` |
+| `scm.providers.cli_accounts` | admin | — | gh account list | `{accounts: CliAccount[]}` |
 | `scm.providers.test` | admin | `{provider}` | `Test` (refusal recorded as `lastError`) | `ProviderView` |
-| `scm.providers.remove` | admin | `{provider}` | `RemoveToken` | `ProviderView` |
+| `scm.providers.remove` | admin | `{provider}` | `RemoveToken` (data kept, disabled) | `ProviderView` |
+| `scm.repos.search` | admin | `{provider, query}` | `SearchRepos` | `{repos: {fullName, url}[]}` |
+| `scm.mappings.set` | admin | `{provider, projectKey, repos[]}` | `SetMapping` (max 20; each repo checked; empty list removes) | `ProviderView` |
 
-Other `scm.*`: `repos.search`, `mappings.set`, `prs.*`, `links.list`, `task_prs.list`, `queries.*` (5), `watches.*` (6).
+Other `scm.*` (`prs.list`, `prs.link`/`unlink`, `links.list`, `task_prs.list`, `queries.*`, `watches.*`) are used by the PR list, watch forms and task/issue panels; each item carries its own `provider`. Every `scm.*` except `providers.list` is refused while Backlog is off (`TestSCM_Actions_GuardRefusesAllButProvidersList`).
 
-`ProviderView`: `provider`, `state` (`not_configured` / `connected` / `error`), `method?` (`token` / `cli`), `account?`, `lastError?` (`invalid_token`, `missing_scope`, `rate_limited`, `unreachable`, `cli_unavailable`), `mappings`. Never contains a token; readable by every member, so any new field (for example a chosen login) must stay non-secret. TS mirror: `ui/src/git/git-state.ts`.
+There is no action that sets or reads an "active" provider. A new one (e.g. `scm.providers.set_active`) touches `manifest.yaml`, `scmHandlers`, `TestSCM_Manifest_Actions` and likely the `guarded()` allow-list.
 
-SCM error mapping (`classifySCM`): 401/403 -> `reconnect_required`; 404 -> `not_found`; 429 -> `rate_limited` with `retryAfterSeconds`; host refused / other HTTP -> `unreachable`; `ErrConflict` -> `conflict`; `ErrNoToken` -> `validation` (field `token`); `ErrCLIUnavailable` -> its own `cli_unavailable` outcome.
+`ProviderView`: `provider`, `state` (`not_configured` / `connected` / `error`), `method?` (`token` / `cli`), `account?`, `lastError?` (`invalid_token`, `missing_scope`, `rate_limited`, `unreachable`, `cli_unavailable`), `mappings`. Never contains a token; readable by every member, so any new field must stay non-secret. TS mirror: `ui/src/git/git-state.ts`.
+
+SCM error mapping (`classifySCM`): 401/403 -> `reconnect_required`; 404 -> `not_found`; 429 -> `rate_limited` with `retryAfterSeconds`; host refused / other HTTP -> `unreachable`; `ErrConflict` -> `conflict`; `ErrNoToken` -> `validation` (field `token`); `ErrCLIUnavailable` -> `cli_unavailable`.
+
+## Host State and Secrets Used by SCM
+
+- Workspace state keys: `scm.settings`, `scm.links`, `scm.dismissed`, `scm.queries`, `scm.watches`, `scm.ledger`; instance key `scm.index`. Each document is `{schemaVersion: 1, items}`.
+- Secret key: `backlog.scm.<provider>.<workspace>`.
 
 ## Plugin gRPC Services
 
-- Git credential: `ResolveGitCredential`, `GetGitCredentialBinding` (`internal/plugin/credential.go`) — only for `nulab-backlog` repositories. It does not serve GitHub repositories, so it cannot steer `gh` in a GitHub worktree.
+- Git credential: `ResolveGitCredential`, `GetGitCredentialBinding` (`internal/plugin/credential.go`) — only for `nulab-backlog` repositories.
 
 ## Webhooks
 
@@ -49,24 +60,21 @@ SCM error mapping (`classifySCM`): 401/403 -> `reconnect_required`; 404 -> `not_
 ## Kandev Host API Used (pluginsdk v0.96.0)
 
 - `Tasks().Create/List/Get`, `Repositories().List`, secrets (`GetSecret`, `SetSecret`, `DeleteSecret`), state, config, events.
-- `CreateTaskInput`: workspace, workflow, step, title, description, priority, metadata, `Repositories`, `Launch{AgentProfileID, ExecutorProfileID, Prompt, PlanMode}`. **No environment field.** The plugin passes neither `Repositories` nor `Launch` today (`host_port.go:120-130`, `scm_actions.go:268-275`).
-- `ExecutorProfiles()`: read-only.
-- No method exposes Kandev's own GitHub credential or runs a process.
+- `CreateTaskInput` has no environment field; `ExecutorProfiles()` is read-only (from the previous run, not re-verified).
 
 ## UI Host API Used
 
-`host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`, `openTaskLinkDialog`, registry calls (`registerIntegrationSettings`, `registerNavItem`, `registerRoute`, `registerComponent`, `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider`).
+`host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`, `openTaskLinkDialog`, host UI kit (`SettingsSection`, `Badge`, `Button`, `Input`, `Label`, `Select*`, `Alert`), registry calls (`registerIntegrationSettings`, `registerNavItem`, `registerRoute`, `registerComponent`, `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider`).
 
 ## Outbound APIs
 
 - Backlog REST v2 (`internal/backlog`): users, projects, statuses, issues, comments, attachments, git repositories, pull requests, `oauth2/token`.
-- GitHub REST (`https://api.github.com`, `Authorization: Bearer`, read-only): `GET /user`, `/user/repos`, `/repos/{o}/{r}`, `/repos/{o}/{r}/pulls[/{n}]`. Any token GitHub accepts works, including a per-account `gh auth token --user <login>`.
-- GitLab / Bitbucket REST (read-only).
+- GitHub (`https://api.github.com`), GitLab (`https://gitlab.com/api/v4`), Bitbucket (`https://api.bitbucket.org/2.0`), read-only, 5 methods each: `CurrentUser`, `SearchRepos`, `GetRepo`, `ListPRs`, `GetPR`.
 
 ## Local CLI Contract (server host)
 
 | Command | Used by | Notes |
 |---|---|---|
-| `gh auth token --hostname github.com` | `cliCommand` (GitHub) | active account only; `--user <login>` is supported by gh 2.97.0 on the scan host; older gh may lack it (detect via `gh auth token --help`) |
-| `glab config get token --host gitlab.com` | `cliCommand` (GitLab) | single stored login |
-| `gh auth status --json hosts` | not used yet | lists logins per host with an active flag (Kandev `ListGHAccounts` reference) |
+| `gh auth token --hostname github.com --user <login>` | GitHub CLI method | falls back to the active account on gh without `--user` (< 2.40) |
+| `gh auth status --json hosts` | `scm.providers.cli_accounts` | gh >= 2.81.0 |
+| `glab config get token --host gitlab.com` | GitLab CLI method | single stored login |

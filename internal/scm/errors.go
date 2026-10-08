@@ -42,3 +42,17 @@ func (e *HTTPError) Error() string {
 	}
 	return fmt.Sprintf("%s: HTTP %d", e.Provider, e.Status)
 }
+
+// serviceNames are the services' display names, for error texts.
+var serviceNames = map[Provider]string{BacklogGit: "Backlog Git", GitHub: "GitHub", GitLab: "GitLab", Bitbucket: "Bitbucket"}
+
+// InactiveError refuses an action of a service that is not the workspace's
+// active source control service (FR1.4). Active is the active one.
+type InactiveError struct {
+	Active Provider
+}
+
+func (e *InactiveError) Error() string {
+	return fmt.Sprintf("this workspace uses %s for source control; change the service under Source control in the Backlog settings first",
+		serviceNames[e.Active])
+}

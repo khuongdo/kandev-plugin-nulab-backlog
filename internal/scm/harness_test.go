@@ -275,15 +275,25 @@ func newHarness(t *testing.T) *harness {
 	return h
 }
 
-// connect stores a token for p (Bitbucket with a user name).
+// connect stores a token for p (Bitbucket with a user name). It makes p
+// active for the call, then clears the stored service, so the active one is
+// derived: p alone, or pending (all usable) when several are connected.
 func (h *harness) connect(t *testing.T, p Provider) {
 	t.Helper()
 	in := TokenInput{Provider: p, Token: h.tokens[p]}
 	if p == Bitbucket {
 		in.Username = "lan@example.com"
 	}
+	h.use(t, p)
 	_, err := h.svc.SetToken(h.ctx, ws, in)
 	require.NoError(t, err)
+	require.NoError(t, h.svc.store.SetActive(h.ctx, ws, ""))
+}
+
+// use stores p as the active service.
+func (h *harness) use(t *testing.T, p Provider) {
+	t.Helper()
+	require.NoError(t, h.svc.SetActive(h.ctx, ws, p))
 }
 
 // mapRepo connects p and maps repos to project.

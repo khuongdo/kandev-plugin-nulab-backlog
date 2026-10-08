@@ -50,6 +50,9 @@ const (
 	// actionSCMCLIAccounts lists gh's github.com logins (intent
 	// 261008-gh-cli-profile, FR1.1).
 	actionSCMCLIAccounts = "scm.providers.cli_accounts"
+	// actionSCMActiveSet makes one service the workspace's source control
+	// service (intent 261008-source-control-settings, FR2.1).
+	actionSCMActiveSet = "scm.active.set"
 )
 
 const (
@@ -57,6 +60,9 @@ const (
 	codeCLIUnavailable = "cli_unavailable"
 	// codeCLIAccountMissing: gh has no login for the workspace's chosen account (FR5.1).
 	codeCLIAccountMissing = "cli_account_missing"
+	// codeServiceInactive: the action's service is not the workspace's active
+	// one; the error names the active service (FR1.4).
+	codeServiceInactive = "service_inactive"
 )
 
 func init() { maps.Copy(handlers, scmHandlers) }
@@ -102,9 +108,16 @@ func withBody[T any](fn func(r *Runtime, ctx context.Context, ws string, in T) (
 
 var scmHandlers = map[string]handler{
 	actionSCMProviders: func(r *Runtime, ctx context.Context, ws string, _ []byte) (any, error) {
-		v, err := r.scm.Providers(ctx, ws)
-		return map[string]any{"providers": v}, err
+		return r.scmSettings(ctx, ws)
 	},
+	actionSCMActiveSet: withBody(func(r *Runtime, ctx context.Context, ws string, in struct {
+		Service scm.Provider `json:"service"`
+	}) (any, error) {
+		if err := r.scm.SetActive(ctx, ws, in.Service); err != nil {
+			return nil, err
+		}
+		return r.scmSettings(ctx, ws)
+	}),
 	actionSCMSetToken: withBody(func(r *Runtime, ctx context.Context, ws string, in scm.TokenInput) (any, error) {
 		return r.scm.SetToken(ctx, ws, in)
 	}),
@@ -193,13 +206,27 @@ var scmHandlers = map[string]handler{
 	}),
 }
 
+// scmSettings is the Source control section: the providers and the active
+// service ("" while an upgraded workspace waits for a pick, FR3.3).
+func (r *Runtime) scmSettings(ctx context.Context, ws string) (any, error) {
+	v, err := r.scm.Providers(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	a, err := r.scm.Active(ctx, ws)
+	return map[string]any{"providers": v, "active": a}, err
+}
+
 // classifySCM maps the scm errors to action codes (NFR5): 401 and 403 are
 // reconnect_required, 404 not_found, 429 rate_limited with its wait, and
 // anything else from a provider unreachable. ok is false for other errors.
 func classifySCM(err error) (out outcome, ok bool) {
 	var he *scm.HTTPError
+	var inactive *scm.InactiveError
 	code := func(c string) (outcome, bool) { return outcome{Outcome: connection.Outcome{Code: c}}, true }
 	switch {
+	case errors.As(err, &inactive):
+		return outcome{Outcome: connection.Outcome{Code: codeServiceInactive}, ActiveService: string(inactive.Active)}, true
 	case errors.As(err, &he) && (he.Status == 401 || he.Status == 403):
 		return code(connection.CodeReconnectRequired)
 	case errors.As(err, &he) && he.Status == 404, errors.Is(err, scm.ErrNotFound):
@@ -238,9 +265,14 @@ type taskPR struct {
 }
 
 // taskPRs returns the GitHub and GitLab pull requests Kandev itself attached
-// to every task linked to the same Backlog issue as taskID (FR5.4). It uses
-// Kandev's data only, never a plugin token. A deleted task is skipped.
+// to every task linked to the same Backlog issue as taskID (FR5.4), of the
+// active service only (FR1.5). It uses Kandev's data only, never a plugin
+// token. A deleted task is skipped.
 func (r *Runtime) taskPRs(ctx context.Context, ws, taskID string) ([]taskPR, error) {
+	active, err := r.scm.Active(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
 	links, err := r.issues.Links(ctx, ws)
 	if err != nil {
 		return nil, err
@@ -266,7 +298,7 @@ func (r *Runtime) taskPRs(ctx context.Context, ws, taskID string) ([]taskPR, err
 			return nil, err
 		}
 		for _, p := range prs {
-			if p.Provider == "github" || p.Provider == "gitlab" {
+			if (p.Provider == "github" || p.Provider == "gitlab") && (active == "" || string(active) == p.Provider) {
 				out = append(out, taskPR{TaskID: id, Number: p.Number, URL: p.URL, Title: p.Title, State: p.State,
 					IsDraft: p.IsDraft, Provider: p.Provider, HeadBranch: p.HeadBranch, BaseBranch: p.BaseBranch})
 			}

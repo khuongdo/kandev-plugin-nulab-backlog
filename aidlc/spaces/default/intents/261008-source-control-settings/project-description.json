@@ -1,0 +1,1 @@
+"Refactor source control settings page\n- Phân định rạch ròi giữa các source control service, hiện tại chúng đang nằm sát nhau khó thấy quá\n- phần scope repo/ phải ghi rõ là repo của service nào. hiện tại đang ghi chung chung khó hiểu -> đề xuất phương án\n- chỉ có thể dùng 1 source control service tại 1 thời điểm"

@@ -12,6 +12,7 @@ import (
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/connection"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/git"
 	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/redact"
+	"github.com/khuongdo/kandev-plugin-nulab-backlog/internal/scm"
 )
 
 var _ pluginsdk.GitCredentialHandler = (*Runtime)(nil)
@@ -24,7 +25,11 @@ func (r *Runtime) ResolveGitCredential(ctx context.Context, req *pluginsdk.Resol
 	ctx, log := r.rpcContext(ctx, req.WorkspaceID)
 	sc := git.Scope{ProviderID: req.ProviderID, WorkspaceID: req.WorkspaceID, TaskID: req.TaskID,
 		SessionID: req.SessionID, RepositoryID: req.RepositoryID, Host: req.Host, Path: req.Path}
-	if err := r.service.RequireEnabled(ctx, req.WorkspaceID); err != nil {
+	err := r.service.RequireEnabled(ctx, req.WorkspaceID)
+	if err == nil {
+		err = r.scm.Allow(ctx, req.WorkspaceID, scm.BacklogGit) // off while another service is active (FR1.6)
+	}
+	if err != nil {
 		return nil, refused(ctx, log, err)
 	}
 	lease, err := r.git.ResolveCredential(ctx, sc)
@@ -40,7 +45,10 @@ func (r *Runtime) ResolveGitCredential(ctx context.Context, req *pluginsdk.Resol
 func (r *Runtime) GetGitCredentialBinding(ctx context.Context, req *pluginsdk.GitCredentialBindingRequest) (*pluginsdk.GitCredentialBindingResponse, error) {
 	ctx, log := r.rpcContext(ctx, req.WorkspaceID)
 	err := r.service.RequireEnabled(ctx, req.WorkspaceID)
-	if errors.Is(err, connection.ErrIntegrationDisabled) {
+	if err == nil {
+		err = r.scm.Allow(ctx, req.WorkspaceID, scm.BacklogGit)
+	}
+	if errors.Is(err, connection.ErrIntegrationDisabled) || errors.As(err, new(*scm.InactiveError)) {
 		return &pluginsdk.GitCredentialBindingResponse{}, nil
 	}
 	if err != nil {
@@ -69,6 +77,8 @@ func refused(ctx context.Context, log *slog.Logger, err error) error {
 		reason = re.Reason
 	case errors.Is(err, connection.ErrNoGitCredential):
 		reason = "no_git_credential"
+	case errors.As(err, new(*scm.InactiveError)):
+		reason = codeServiceInactive
 	}
 	log.WarnContext(ctx, "git credential refused", "event", "git_credential_refused", "reason", reason)
 	if errors.Is(err, connection.ErrNoGitCredential) {

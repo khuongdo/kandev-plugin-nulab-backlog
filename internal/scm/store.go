@@ -151,6 +151,25 @@ func (s *Store) Index(ctx context.Context) ([]string, error) {
 	return load[string](ctx, s, "instance", "", keyIndex)
 }
 
+// Active returns the stored active source control service; empty when none
+// was stored (FR1.3). Service.Active derives the effective one.
+func (s *Store) Active(ctx context.Context, ws string) (Provider, error) {
+	d, err := loadDoc[Settings](ctx, s, "workspace", ws, keySettings)
+	return d.Active, err
+}
+
+// SetActive stores the active service in the settings document, keeping its
+// items; empty removes the stored value.
+func (s *Store) SetActive(ctx context.Context, ws string, a Provider) error {
+	defer s.lock("workspace/" + ws)()
+	d, err := loadDoc[Settings](ctx, s, "workspace", ws, keySettings)
+	if err != nil {
+		return err
+	}
+	d.SchemaVersion, d.Active = schemaVersion, a
+	return s.put(ctx, "workspace", ws, keySettings, d)
+}
+
 // UpdateSettings replaces the settings with fn's result.
 func (s *Store) UpdateSettings(ctx context.Context, ws string, fn func([]Settings) ([]Settings, error)) error {
 	return update(ctx, s, ws, keySettings, 0, false, fn)
@@ -195,12 +214,20 @@ func (s *Store) lock(name string) func() {
 	return l.Unlock
 }
 
+// doc is one stored document. Active is set on scm.settings only: the
+// workspace's chosen source control service (FR1.3); adding it kept schema 1.
 type doc[T any] struct {
-	SchemaVersion int `json:"schemaVersion"`
-	Items         []T `json:"items"`
+	SchemaVersion int      `json:"schemaVersion"`
+	Items         []T      `json:"items"`
+	Active        Provider `json:"active,omitempty"`
 }
 
 func load[T any](ctx context.Context, s *Store, scope, scopeID, key string) ([]T, error) {
+	d, err := loadDoc[T](ctx, s, scope, scopeID, key)
+	return d.Items, err
+}
+
+func loadDoc[T any](ctx context.Context, s *Store, scope, scopeID, key string) (doc[T], error) {
 	var (
 		value map[string]any
 		found bool
@@ -210,33 +237,33 @@ func load[T any](ctx context.Context, s *Store, scope, scopeID, key string) ([]T
 		value, found, err = s.state.GetState(c, scope, scopeID, key)
 		return err
 	})
+	var d doc[T]
 	if err != nil {
-		return nil, storeErr(ctx, "read "+key, err)
+		return d, storeErr(ctx, "read "+key, err)
 	}
 	if !found {
-		return nil, nil
+		return d, nil
 	}
-	var d doc[T]
 	b, err := json.Marshal(value)
 	if err == nil {
 		err = json.Unmarshal(b, &d)
 	}
 	if err != nil || d.SchemaVersion != schemaVersion {
 		// An unknown or broken document is never overwritten.
-		return nil, fmt.Errorf("read %s: unsupported schema: %w", key, connection.ErrStore)
+		return doc[T]{}, fmt.Errorf("read %s: unsupported schema: %w", key, connection.ErrStore)
 	}
-	return d.Items, nil
+	return d, nil
 }
 
 // update runs one read-modify-write under the workspace mutex. limit 0 means
 // no cap; indexed adds the workspace to the instance index when items exist.
 func update[T any](ctx context.Context, s *Store, ws, key string, limit int, indexed bool, fn func([]T) ([]T, error)) error {
 	defer s.lock("workspace/" + ws)()
-	items, err := load[T](ctx, s, "workspace", ws, key)
+	d, err := loadDoc[T](ctx, s, "workspace", ws, key)
 	if err != nil {
 		return err
 	}
-	next, err := fn(items)
+	next, err := fn(d.Items)
 	if errors.Is(err, errUnchanged) {
 		return nil
 	}
@@ -246,7 +273,7 @@ func update[T any](ctx context.Context, s *Store, ws, key string, limit int, ind
 	if limit > 0 && len(next) > limit {
 		return &connection.FieldError{Field: FieldLimit, Err: errLimit}
 	}
-	if err := s.put(ctx, "workspace", ws, key, next); err != nil {
+	if err := s.put(ctx, "workspace", ws, key, doc[T]{SchemaVersion: schemaVersion, Items: next, Active: d.Active}); err != nil {
 		return err
 	}
 	if indexed && len(next) > 0 {
@@ -261,11 +288,12 @@ func (s *Store) addIndex(ctx context.Context, ws string) error {
 	if err != nil || slices.Contains(idx, ws) {
 		return err
 	}
-	return s.put(ctx, "instance", "", keyIndex, append(idx, ws))
+	return s.put(ctx, "instance", "", keyIndex, doc[string]{SchemaVersion: schemaVersion, Items: append(idx, ws)})
 }
 
-func (s *Store) put(ctx context.Context, scope, scopeID, key string, items any) error {
-	b, err := json.Marshal(map[string]any{"schemaVersion": schemaVersion, "items": items})
+// put writes one document d (a doc[T]).
+func (s *Store) put(ctx context.Context, scope, scopeID, key string, d any) error {
+	b, err := json.Marshal(d)
 	var m map[string]any
 	if err == nil {
 		err = json.Unmarshal(b, &m)

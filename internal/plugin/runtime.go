@@ -219,6 +219,8 @@ func newRuntime(gateway gateway, logOut io.Writer, level string) *Runtime {
 	r.syncer = issues.NewSyncer(r.issues, r.log)
 	r.issueWatcher = issues.NewWatcher(r.issues, r.log)
 	r.wireSCM(scmClients())
+	// Backlog Git's watcher runs only while it is the active service (FR1.6).
+	r.git.Active = func(ctx context.Context, ws string) bool { return r.scm.Allow(ctx, ws, scm.BacklogGit) == nil }
 	r.log.Info("plugin started", "event", "plugin_started", "version", Version,
 		"platform", runtime.GOOS+"-"+runtime.GOARCH, "sdkRef", SDKRef)
 	return r
@@ -257,6 +259,13 @@ func (r *Runtime) HandleAction(ctx context.Context, req *pluginsdk.PluginActionR
 	if actErr == nil && guarded(req.ActionKey) {
 		// The one guard: read the switch before anything else; fail closed (NFR3.9).
 		actErr = r.service.RequireEnabled(ctx, req.Context.WorkspaceID)
+	}
+	if _, isGit := gitHandlers[req.ActionKey]; actErr == nil && isGit {
+		// Backlog Git is off while another source control service is active (FR1.6).
+		actErr = r.scm.Allow(ctx, req.Context.WorkspaceID, scm.BacklogGit)
+		if reply, ok := gitOffReplies[req.ActionKey]; ok && errors.As(actErr, new(*scm.InactiveError)) {
+			return jsonResponse(200, reply, nil), nil
+		}
 	}
 	var reply any
 	if actErr == nil {
@@ -304,7 +313,7 @@ func statusFor(code string) int {
 		return 401
 	case codeNotFound:
 		return 404
-	case connection.CodeConflict, connection.CodeIntegrationDisabled, codeCLIAccountMissing:
+	case connection.CodeConflict, connection.CodeIntegrationDisabled, codeCLIAccountMissing, codeServiceInactive:
 		return 409
 	case connection.CodeRateLimited:
 		return 429
@@ -320,13 +329,16 @@ type actionError struct {
 	RetryAfterSeconds int    `json:"retryAfterSeconds,omitempty"`
 	Field             string `json:"field,omitempty"`
 	PullRequestNumber int    `json:"pullRequestNumber,omitempty"` // U4: the open PR of a create conflict
+	ActiveService     string `json:"activeService,omitempty"`     // service_inactive: the active service
 	RequestID         string `json:"requestId"`
 }
 
-// outcome is an action error: the connection outcome plus U4's open PR number.
+// outcome is an action error: the connection outcome plus U4's open PR
+// number and, for service_inactive, the active service.
 type outcome struct {
 	connection.Outcome
 	PullRequestNumber int
+	ActiveService     string
 }
 
 // classify maps an action error to its code: U4's Git and U3's issue
@@ -358,7 +370,7 @@ func errorResponse(out outcome, requestID string) *pluginsdk.PluginActionRespons
 	}
 	body := map[string]actionError{"error": {
 		Code: out.Code, RetryAfterSeconds: out.RetryAfterSeconds, Field: out.Field,
-		PullRequestNumber: out.PullRequestNumber, RequestID: requestID,
+		PullRequestNumber: out.PullRequestNumber, ActiveService: out.ActiveService, RequestID: requestID,
 	}}
 	return jsonResponse(statusFor(out.Code), body, headers)
 }

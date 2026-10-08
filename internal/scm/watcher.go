@@ -23,14 +23,14 @@ var errTaken = errors.New("already reserved")
 // RunWatch runs an active, mapped watch once now (FR4.3) and returns the
 // number of tasks it created: at most one.
 func (s *Service) RunWatch(ctx context.Context, ws, id string) (int, error) {
-	list, err := s.ListWatches(ctx, ws)
+	list, active, err := s.allWatches(ctx, ws)
 	if err != nil {
 		return 0, err
 	}
-	i := slices.IndexFunc(list, func(w Watch) bool { return w.ID == id })
+	i, err := find(list, id, active, watchInputOf)
 	switch {
-	case i < 0:
-		return 0, ErrNotFound
+	case err != nil:
+		return 0, err
 	case list[i].State != WatchActive || list[i].Unmapped:
 		return 0, ErrConflict
 	}
@@ -124,18 +124,24 @@ func (s *Service) createOne(ctx context.Context, ws string, w Watch, pr PullRequ
 		State: pr.State, URL: PRURL(pr.PRRef)})
 }
 
-// RefreshLinks reads every linked pull request once and stores its state and
-// title (FR4.4). A 429 stops only that provider for this cycle (NFR3); every
-// failure is logged, never returned.
+// RefreshLinks reads every linked pull request of the active service once
+// and stores its state and title (FR4.4, FR1.5). A 429 stops only that
+// provider for this cycle (NFR3); every failure is logged, never returned.
 func (s *Service) RefreshLinks(ctx context.Context, ws string) {
-	links, err := s.store.Links(ctx, ws)
+	active, err := s.Active(ctx, ws)
+	var links []Link
+	if err == nil {
+		links, err = s.store.Links(ctx, ws)
+	}
 	if err != nil {
 		s.logRefresh(ctx, ws, "", err)
 		return
 	}
 	fresh := map[string]PullRequest{}
 	for _, p := range Providers {
-		s.refreshProvider(ctx, ws, p, links, fresh)
+		if allowed(active, p) == nil {
+			s.refreshProvider(ctx, ws, p, links, fresh)
+		}
 	}
 	if len(fresh) == 0 {
 		return

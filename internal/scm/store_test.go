@@ -158,3 +158,47 @@ func TestSettings_CLISourceShowsMethodCLI(t *testing.T) {
 	require.NotContains(t, strings.ToLower(string(b)), "token\"")
 	require.Contains(t, string(b), `"method":"cli"`)
 }
+
+// FR1.3: the stored active service survives every later settings write.
+func TestStore_ActiveSurvivesSettingsWrites(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeState()
+	s := NewStore(st)
+	a, err := s.Active(ctx, "ws")
+	require.NoError(t, err)
+	require.Empty(t, a, "nothing stored yet")
+	require.NoError(t, s.SetActive(ctx, "ws", GitLab))
+	require.NoError(t, s.UpdateSettings(ctx, "ws", func([]Settings) ([]Settings, error) {
+		return []Settings{{Provider: GitLab, HasToken: true}}, nil
+	}))
+	a, err = s.Active(ctx, "ws")
+	require.NoError(t, err)
+	require.Equal(t, GitLab, a)
+	v, _ := st.get("workspace/ws/scm.settings")
+	require.EqualValues(t, 1, v["schemaVersion"], "the schema version stays 1 (NFR2)")
+	require.Equal(t, "gitlab", v["active"])
+	settings, err := s.Settings(ctx, "ws")
+	require.NoError(t, err)
+	require.Len(t, settings, 1, "setting the service keeps the items")
+	require.NoError(t, s.SetActive(ctx, "ws", ""))
+	v, _ = st.get("workspace/ws/scm.settings")
+	require.NotContains(t, v, "active", "an empty value is not written")
+}
+
+// NFR2: a v0.5.x settings document (no active field) loads with no data loss.
+func TestStore_OldSettingsDocumentLoads(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeState()
+	st.set("workspace/ws/scm.settings", map[string]any{"schemaVersion": 1, "items": []any{
+		map[string]any{"provider": "github", "hasToken": true, "account": "Lan",
+			"mappings": []any{map[string]any{"projectKey": "PROJ", "repos": []any{"acme/web"}}}},
+	}})
+	s := NewStore(st)
+	settings, err := s.Settings(ctx, "ws")
+	require.NoError(t, err)
+	require.Equal(t, []Settings{{Provider: GitHub, HasToken: true, Account: "Lan",
+		Mappings: []Mapping{{ProjectKey: "PROJ", Repos: []string{"acme/web"}}}}}, settings)
+	a, err := s.Active(ctx, "ws")
+	require.NoError(t, err)
+	require.Empty(t, a)
+}
