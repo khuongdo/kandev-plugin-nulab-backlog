@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -186,6 +187,22 @@ func TestMyselfReturnsCancellationUnchanged(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { <-entered; cancel() }()
+	_, err := c.Myself(ctx, creds(testutil.APIKey(t)))
+	require.Equal(t, context.Canceled, err)
+}
+
+// cancelThenOK cancels the caller and still answers 200 with an empty body:
+// the transport race CI hit, where the response wins over the cancellation.
+type cancelThenOK struct{ cancel context.CancelFunc }
+
+func (t cancelThenOK) RoundTrip(*http.Request) (*http.Response, error) {
+	t.cancel()
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{}}, nil
+}
+
+func TestMyselfReturnsCancellationWhenResponseRacesIt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := newClient(cancelThenOK{cancel: cancel})
 	_, err := c.Myself(ctx, creds(testutil.APIKey(t)))
 	require.Equal(t, context.Canceled, err)
 }
