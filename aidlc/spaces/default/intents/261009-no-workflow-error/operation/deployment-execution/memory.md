@@ -5,6 +5,7 @@
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations
+- 2026-10-09T11:45:00Z — After the release, `ci` on `main` failed on a pre-existing flaky cancellation test in internal/backlog; fixed the race in attempt() via PR #29 (merged, no new release, user's choice) instead of re-running the job.
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 
 ## Tradeoffs
