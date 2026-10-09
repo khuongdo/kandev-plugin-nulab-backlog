@@ -416,6 +416,11 @@ func (c *Client) attempt(ctx context.Context, r request, u *url.URL) ([]byte, er
 	defer cancel()
 	start := time.Now()
 	body, status, err := c.do(callCtx, r, u)
+	// A response can win the race against the caller's cancellation; the
+	// caller still gets its cancellation back unchanged.
+	if err == nil && errors.Is(ctx.Err(), context.Canceled) {
+		body, err = nil, context.Canceled
+	}
 	if err != nil {
 		err = c.mapTransportError(ctx, err)
 	}
