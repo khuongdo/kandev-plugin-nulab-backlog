@@ -1,5 +1,6 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { noticeText, providerName, scmNotice, stateText } from "../git/git-state";
 import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, ROW, STACK } from "../layout";
@@ -51,6 +52,7 @@ export function createIssuePullRequests(
   const h = host.jsx;
   const { useEffect, useState } = host.React;
   const { Badge, Button, Input, Label } = hostUi(host);
+  const ErrorAlert = createErrorAlert(host);
   const t = (n: Notice) => noticeText(n, messages);
   const line = (provider: string, number: number, state: string) =>
     format(messages.prLine, {
@@ -64,7 +66,6 @@ export function createIssuePullRequests(
     const [kandev, setKandev] = useState<KandevPR[] | undefined>(undefined);
     const [error, setError] = useState<Notice | undefined>(undefined);
     const [url, setUrl] = useState("");
-    const [notice, setNotice] = useState<Notice | undefined>(undefined);
     const [busy, setBusy] = useState(false);
     const [adding, setAdding] = useState(false);
 
@@ -86,7 +87,6 @@ export function createIssuePullRequests(
     }, [workspaceId, taskId, issueKey]);
 
     const remove = async (l: ScmLink) => {
-      setNotice(undefined);
       try {
         await host.api.invokeAction("scm.prs.unlink", {
           workspaceId,
@@ -97,13 +97,12 @@ export function createIssuePullRequests(
           list?.filter((x) => !(keyOf(x) === keyOf(l) && Boolean(x.auto) === Boolean(l.auto))),
         );
       } catch (e) {
-        setNotice(scmNotice(e));
+        host.toast.error(t(scmNotice(e))); // a click error (intent 261009, FR2.1)
       }
     };
     const link = async () => {
       if (busy || !url.trim()) return;
       setBusy(true);
-      setNotice(undefined);
       try {
         const l = await host.api.invokeAction<ScmLink>("scm.prs.link", {
           workspaceId,
@@ -114,7 +113,9 @@ export function createIssuePullRequests(
         setUrl("");
       } catch (e) {
         const f = readFailure(e);
-        setNotice(f.code === "validation" && f.field === "url" ? { key: "errorPrUrl" } : scmNotice(e));
+        host.toast.error(
+          t(f.code === "validation" && f.field === "url" ? { key: "errorPrUrl" } : scmNotice(e)),
+        );
       }
       setBusy(false);
     };
@@ -123,11 +124,10 @@ export function createIssuePullRequests(
     return (
       <section className={STACK} aria-labelledby="backlog-issue-prs-title" data-testid="backlog-issue-prs">
         <h3 id="backlog-issue-prs-title">{messages.scopePRs}</h3>
-        {error ? (
-          <p role="alert" data-testid="backlog-issue-prs-error">
-            {messages.prsLoadFailed} {t(error)}
-          </p>
-        ) : null}
+        <ErrorAlert
+          message={error ? `${messages.prsLoadFailed} ${t(error)}` : ""}
+          testId="backlog-issue-prs-error"
+        />
         {none ? <p data-testid="backlog-issue-prs-empty">{messages.noPullRequests}</p> : null}
         <ul className={STACK}>
           {(links ?? []).map((l) => {
@@ -219,11 +219,6 @@ export function createIssuePullRequests(
             </Button>
           </div>
         )}
-        {notice ? (
-          <p role="status" data-testid="backlog-issue-pr-notice">
-            {t(notice)}
-          </p>
-        ) : null}
       </section>
     );
   };

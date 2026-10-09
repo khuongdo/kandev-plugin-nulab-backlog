@@ -1,0 +1,33 @@
+{
+  "stage": "code-generation",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "manifest.yaml" },
+    { "path": "internal/plugin/host_port.go" },
+    { "path": "internal/plugin/workflow_actions.go" },
+    { "path": "internal/plugin/workflow_actions_test.go" },
+    { "path": "internal/plugin/actions_u4_test.go" },
+    { "path": "internal/plugin/manifest_test.go" },
+    { "path": "ui/src/error-alert.tsx" },
+    { "path": "ui/src/error-alert.test.tsx" },
+    { "path": "ui/src/page/start-task.tsx" },
+    { "path": "ui/src/page/start-task.test.tsx" },
+    { "path": "ui/src/page/BacklogPage.tsx" },
+    { "path": "ui/src/page/backlog-page.test.tsx" },
+    { "path": "ui/src/page/backlog-lists.test.tsx" },
+    { "path": "ui/src/issues/issues-page.tsx" },
+    { "path": "ui/src/issues/issues-page.test.tsx" },
+    { "path": "ui/src/issues/issue-panel.tsx" },
+    { "path": "ui/src/issues/issue-panel.test.tsx" },
+    { "path": "ui/src/issues/issue-prs.tsx" },
+    { "path": "ui/src/issues/link-task-dialog.tsx" },
+    { "path": "ui/src/issues/link-task-dialog.test.tsx" },
+    { "path": "ui/src/git/pr-list.tsx" },
+    { "path": "ui/src/git/pr-list.test.tsx" },
+    { "path": "ui/src/git/scm-pr-list.tsx" },
+    { "path": "ui/src/git/save-query-dialog.tsx" },
+    { "path": "ui/src/git/save-query-dialog.test.tsx" },
+    { "path": "ui/src/testing/harness.ts" }
+  ]
+}

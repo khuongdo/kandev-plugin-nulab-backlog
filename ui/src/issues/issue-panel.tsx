@@ -1,5 +1,6 @@
 import type { PluginHostApi, PluginTaskPanelProps, TaskPanelRegistration } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { noticeText } from "../git/git-state";
 import { hostUi } from "../host-ui";
 import { BUTTON, ROW, STACK } from "../layout";
@@ -77,6 +78,7 @@ export function createIssuePanel(
   const h = host.jsx;
   const { useCallback, useEffect, useState } = host.React;
   const { Button } = hostUi(host);
+  const ErrorAlert = createErrorAlert(host);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
   const PullRequests = createIssuePullRequests(host, messages);
@@ -131,19 +133,21 @@ export function createIssuePanel(
         {open ? (
           <div id="backlog-issue-comments" className={STACK}>
             {error ? (
-              <div data-testid="backlog-issue-comments-error" className={ROW}>
-                <p>{messages.commentsFailed}</p>
-                <p>{t(error)}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={BUTTON}
-                  data-testid="backlog-issue-comments-retry"
-                  onClick={() => void load()}
-                >
-                  {messages.retry}
-                </Button>
-              </div>
+              <ErrorAlert
+                message={`${messages.commentsFailed} ${t(error)}`}
+                testId="backlog-issue-comments-error"
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={BUTTON}
+                    data-testid="backlog-issue-comments-retry"
+                    onClick={() => void load()}
+                  >
+                    {messages.retry}
+                  </Button>
+                }
+              />
             ) : null}
             {items && items.length === 0 ? <p>{messages.noComments}</p> : null}
             {items && items.length > 0 ? (
@@ -199,7 +203,10 @@ export function createIssuePanel(
         {open ? (
           <div id="backlog-issue-attachments" className={STACK}>
             {detail.attachmentsError ? (
-              <p>{t(issueNotice({ body: { error: { code: detail.attachmentsError } } }))}</p>
+              <ErrorAlert
+                message={t(issueNotice({ body: { error: { code: detail.attachmentsError } } }))}
+                testId="backlog-issue-attachments-error"
+              />
             ) : null}
             {!detail.attachmentsError && list.length === 0 ? <p>{messages.noAttachments}</p> : null}
             <ul className={STACK}>
@@ -267,19 +274,21 @@ export function createIssuePanel(
     if (load.kind === "failed") {
       return (
         <div data-testid="backlog-issue-panel" className={STACK}>
-          <p>{messages.issueLoadFailed}</p>
-          <p>{t(load.notice)}</p>
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              className={BUTTON}
-              data-testid="backlog-issue-retry"
-              onClick={() => void reload()}
-            >
-              {messages.retry}
-            </Button>
-          </div>
+          <ErrorAlert
+            message={`${messages.issueLoadFailed} ${t(load.notice)}`}
+            testId="backlog-issue-error"
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                className={BUTTON}
+                data-testid="backlog-issue-retry"
+                onClick={() => void reload()}
+              >
+                {messages.retry}
+              </Button>
+            }
+          />
         </div>
       );
     }

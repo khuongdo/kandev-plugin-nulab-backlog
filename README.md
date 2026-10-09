@@ -33,6 +33,19 @@ A [Kandev](https://github.com/kdlbs/kandev) plugin that connects a Kandev worksp
 
 ## Upgrade notes
 
+### 0.6.1: "+ Task" works when the Backlog page is opened directly
+
+- **New permission:** the plugin now reads the workspace's workflows (`api_read: workflows`), only
+  to check whether the workspace has at least one. Kandev may ask an admin to approve the plugin's
+  permissions again after the upgrade.
+- Fixed: "+ Task" on issue and pull request rows said "Kandev has no workflow for this workspace
+  yet." although the workspace had one, when the Backlog page was opened directly (reload, bookmark,
+  phone). Kandev's task dialog now opens and picks the workflow itself; the error appears only when
+  the workspace really has no workflow.
+- Error display on the Backlog page: errors from a click (no workflow, task not linked, refresh,
+  saved query delete, PR link) are now Kandev toasts. Load failures and dialog errors are one
+  full-width red alert that wraps on narrow screens and keeps its Retry or Open settings control.
+
 ### 0.6.0: one source control service per workspace
 
 - Settings > Source control now has a **Source control service** selector (Backlog Git, GitHub,

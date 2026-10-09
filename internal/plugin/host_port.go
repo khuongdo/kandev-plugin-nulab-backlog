@@ -14,7 +14,7 @@ import (
 )
 
 // hostPort adapts the injected Host's data API to git.HostPort (C2). It
-// needs api_read: [tasks, repositories] and api_write: [tasks].
+// needs api_read: [tasks, repositories, workflows] and api_write: [tasks].
 type hostPort struct {
 	host  func() pluginsdk.Host
 	ready <-chan struct{} // see waitHost
@@ -105,6 +105,20 @@ func (p hostPort) taskPullRequests(ctx context.Context, id string) ([]pluginsdk.
 		return nil, fmt.Errorf("get task: %w", err)
 	}
 	return t.PullRequests, nil
+}
+
+// HasWorkflow reports whether the workspace has at least one workflow, with
+// one page-size-1 host call (api_read: [workflows]; intent 261009, FR3.2).
+func (p hostPort) HasWorkflow(ctx context.Context, ws string) (bool, error) {
+	h, err := p.get(ctx)
+	if err != nil {
+		return false, err
+	}
+	wfs, _, err := h.Workflows().List(ctx, ws, pluginsdk.Page{Limit: 1})
+	if err != nil {
+		return false, fmt.Errorf("list workflows: %w", err)
+	}
+	return len(wfs) > 0, nil
 }
 
 // optional is nil for an empty string: Kandev then uses the default.

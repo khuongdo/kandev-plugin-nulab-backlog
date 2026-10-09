@@ -3,13 +3,14 @@ import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 import { gitNotice, noticeText } from "../git/git-state";
 import { createPrList } from "../git/pr-list";
 import type { Query } from "../git/save-query-dialog";
+import { createErrorAlert } from "../error-alert";
 import { hostUi } from "../host-ui";
 import { createIssuesPage } from "../issues/issues-page";
 import type { IssueQuery } from "../issues/issues-state";
 import type { LinksStore } from "../issues/links-store";
 import { BUTTON, STACK } from "../layout";
 import { en, type MessageKey, type Messages } from "../messages/en";
-import type { ConnectionView, Notice } from "../settings/state";
+import type { ConnectionView } from "../settings/state";
 import { PLUGIN_ID } from "../switch/enabled-events";
 import { loadQuickActions, NO_ACTIONS, type QuickActions } from "./quick-actions";
 
@@ -97,7 +98,8 @@ export function createBacklogPage(
 ): Component {
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
-  const { Alert, AlertDescription, AlertTitle, Button, IntegrationScopeBar } = hostUi(host);
+  const { Button, IntegrationScopeBar } = hostUi(host);
+  const ErrorAlert = createErrorAlert(host);
   const IssuesPage = createIssuesPage(host, messages, store);
   const PrList = createPrList(host, messages);
   const presets: Record<Scope, { value: string; label: string; group: "inbox" }[]> = {
@@ -121,7 +123,6 @@ export function createBacklogPage(
     const [picks, setPicks] = useState<Record<Scope, Pick> | undefined>(undefined);
     const [saveRequest, setSaveRequest] = useState<Record<Scope, number>>({ issues: 0, prs: 0 });
     const [pending, setPending] = useState<string | null>(null);
-    const [notice, setNotice] = useState<Notice | undefined>(undefined);
 
     // Only the latest load may render: a late reply for an earlier load, or for
     // the previous workspace, is dropped (like the switch's live check).
@@ -211,7 +212,6 @@ export function createBacklogPage(
       );
       if (!q || !connectedWs) return;
       setPending(id);
-      setNotice(undefined);
       try {
         const r = await host.api.invokeAction<{ queries?: unknown[] }>(
           `${SAVED_ACTIONS[scope]}.set_default`,
@@ -222,14 +222,13 @@ export function createBacklogPage(
         );
         setSaved((s) => (s ? { ...s, [scope]: r?.queries ?? s[scope] } : s));
       } catch (e) {
-        setNotice(gitNotice(e));
+        host.toast.error(noticeText(gitNotice(e), messages)); // a click error (intent 261009, FR2.1)
       }
       setPending(null);
     };
 
     const deleteSaved = async (id: string) => {
       if (!connectedWs) return;
-      setNotice(undefined);
       try {
         await host.api.invokeAction(`${SAVED_ACTIONS[scope]}.delete`, {
           workspaceId: connectedWs,
@@ -240,7 +239,7 @@ export function createBacklogPage(
         );
         if (picks?.[scope].source === "saved" && picks[scope].id === id) pick(scope, "preset", PRESET[scope]);
       } catch (e) {
-        setNotice(gitNotice(e));
+        host.toast.error(noticeText(gitNotice(e), messages));
       }
     };
 
@@ -281,34 +280,36 @@ export function createBacklogPage(
         case "loading":
           return <p data-testid="backlog-page-status">{messages.pageLoading}</p>;
         case "failed":
-          return [
-            <p key="s" data-testid="backlog-page-status">
-              {messages.pageLoadFailed}
-            </p>,
-            <div key="r">
-              <Button
-                type="button"
-                variant="outline"
-                className={BUTTON}
-                data-testid="backlog-page-retry"
-                onClick={() => void reload()}
-              >
-                {messages.retry}
-              </Button>
-            </div>,
-          ];
+          return (
+            <ErrorAlert
+              message={messages.pageLoadFailed}
+              testId="backlog-page-error"
+              messageTestId="backlog-page-status"
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={BUTTON}
+                  data-testid="backlog-page-retry"
+                  onClick={() => void reload()}
+                >
+                  {messages.retry}
+                </Button>
+              }
+            />
+          );
         case "connected":
           if (!saved || !picks) return <p data-testid="backlog-page-status">{messages.pageLoading}</p>;
           return null;
         default: {
           const href = settingsHref(state.workspaceId);
           return (
-            <Alert data-testid="backlog-page-alert">
-              <AlertTitle>{messages.pageAlertTitle}</AlertTitle>
-              <AlertDescription data-testid="backlog-page-status">
-                {messages[STATUS_KEY[state.kind]]}
-              </AlertDescription>
-              <div>
+            <ErrorAlert
+              title={messages.pageAlertTitle}
+              message={messages[STATUS_KEY[state.kind]]}
+              testId="backlog-page-alert"
+              messageTestId="backlog-page-status"
+              action={
                 <Button
                   type="button"
                   variant="link"
@@ -318,8 +319,8 @@ export function createBacklogPage(
                 >
                   {messages.openSettings}
                 </Button>
-              </div>
-            </Alert>
+              }
+            />
           );
         }
       }
@@ -353,11 +354,6 @@ export function createBacklogPage(
           onToggleSavedDefault={(id: string) => void toggleDefault(id)}
           defaultMutationPendingId={pending}
         />
-        {notice ? (
-          <p role="alert" className="px-4 sm:px-6" data-testid="backlog-scope-notice">
-            {noticeText(notice, messages)}
-          </p>
-        ) : null}
         <div hidden={scope !== "issues"} data-testid="backlog-scope-issues-panel">
           {opened.issues ? (
             <IssuesPage

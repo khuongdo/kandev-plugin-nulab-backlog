@@ -1,5 +1,6 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, STACK } from "../layout";
 import type { IssueQuery } from "../issues/issues-state";
@@ -89,6 +90,7 @@ export function createSaveQueryDialog(
     Label,
   } = hostUi(host);
   const ID = "backlog-save-query";
+  const ErrorAlert = createErrorAlert(host);
 
   return function SaveQueryDialog({
     workspaceId,
@@ -159,7 +161,7 @@ export function createSaveQueryDialog(
                 </p>
               ) : null}
             </div>
-            {notice ? <p data-testid={`${ID}-notice`}>{noticeText(notice, messages)}</p> : null}
+            <ErrorAlert message={notice ? noticeText(notice, messages) : ""} testId={`${ID}-notice`} />
           </div>
           <DialogFooter>
             <Button

@@ -2,6 +2,7 @@ import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
 import { noticeText } from "../git/git-state";
 import { createSaveQueryDialog } from "../git/save-query-dialog";
+import { createErrorAlert } from "../error-alert";
 import { hostUi } from "../host-ui";
 import { icon } from "../icons";
 import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
@@ -117,6 +118,7 @@ export function createIssuesPage(
   const { RowMenu } = createSectionParts(host, messages);
   const LinkTaskDialog = createLinkTaskDialog(host, messages, store);
   const StartTask = createStartTask(host, messages);
+  const ErrorAlert = createErrorAlert(host);
   const SaveQueryDialog = createSaveQueryDialog(host, messages);
   const relative = (v: string) => host.utils?.formatRelativeTime?.(v) ?? v;
   const t = (n: Notice) => noticeText(n, messages);
@@ -144,7 +146,6 @@ export function createIssuesPage(
     const [countdown, setCountdown] = useState<number | undefined>(undefined);
     const [linkDialog, setLinkDialog] = useState<IssueItem | undefined>(undefined);
     const [refreshing, setRefreshing] = useState(false);
-    const [notice, setNotice] = useState<Notice | undefined>(undefined);
     const latest = useRef(0);
     const focusList = useRef(false);
     const results = useRef<HTMLDivElement | null>(null);
@@ -290,11 +291,10 @@ export function createIssuesPage(
 
     const refresh = async () => {
       setRefreshing(true);
-      setNotice(undefined);
       try {
         await host.api.invokeAction("issues.refresh", { workspaceId });
       } catch (e) {
-        setNotice(issueNotice(e));
+        host.toast.error(t(issueNotice(e))); // a click error (intent 261009, FR2.1)
       }
       setRefreshing(false);
       reload();
@@ -456,19 +456,22 @@ export function createIssuesPage(
             sign_in_again: messages.issuesSignInAgain,
           }[load.kind];
           return (
-            <div className={STACK}>
-              <p>{text}</p>
-              <a
-                href={href}
-                data-testid="backlog-issues-settings-link"
-                onClick={(e: { preventDefault(): void }) => {
-                  e.preventDefault();
-                  host.navigate(href);
-                }}
-              >
-                {messages.openSettings}
-              </a>
-            </div>
+            <ErrorAlert
+              message={text}
+              testId="backlog-issues-state"
+              action={
+                <a
+                  href={href}
+                  data-testid="backlog-issues-settings-link"
+                  onClick={(e: { preventDefault(): void }) => {
+                    e.preventDefault();
+                    host.navigate(href);
+                  }}
+                >
+                  {messages.openSettings}
+                </a>
+              }
+            />
           );
         }
         case "rate_limited":
@@ -479,10 +482,10 @@ export function createIssuesPage(
           );
         case "error":
           return (
-            <div data-testid="backlog-issues-error" className={STACK}>
-              <p>{messages.issuesLoadFailed}</p>
-              <p>{t(load.notice)}</p>
-              <div>
+            <ErrorAlert
+              message={`${messages.issuesLoadFailed} ${t(load.notice)}`}
+              testId="backlog-issues-error"
+              action={
                 <Button
                   type="button"
                   variant="outline"
@@ -492,8 +495,8 @@ export function createIssuesPage(
                 >
                   {messages.retry}
                 </Button>
-              </div>
-            </div>
+              }
+            />
           );
       }
       const items = load.page.items;
@@ -579,11 +582,6 @@ export function createIssuesPage(
         />
         <div className={RESULTS} data-testid="backlog-issues-results" ref={results} tabIndex={-1}>
           {body}
-          {notice ? (
-            <p role="alert" data-testid="backlog-issues-notice">
-              {t(notice)}
-            </p>
-          ) : null}
         </div>
         <div role="status" aria-live="polite" className="sr-only" data-testid="backlog-issues-announcer">
           {announcement}

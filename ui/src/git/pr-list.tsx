@@ -1,5 +1,6 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { hostUi } from "../host-ui";
 import { prTaskRowLinks, showingText } from "../issues/issues-state";
 import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
@@ -97,7 +98,8 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
-  const { Alert, AlertDescription, Button, ChangeRequestList, ChangeRequestRow, Empty, EmptyHeader } = ui;
+  const { Button, ChangeRequestList, ChangeRequestRow, Empty, EmptyHeader } = ui;
+  const ErrorAlert = createErrorAlert(host);
   const { EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, Pagination, PaginationContent } = ui;
   const { PaginationItem, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ui;
   const { TaskRowIndicator } = ui;
@@ -348,21 +350,22 @@ export function createPrList(host: PluginHostApi, messages: Messages = en): Comp
       if (!filters.repo) return empty(messages.prsChooseRepository);
       if (load.kind === "failed") {
         return (
-          <Alert data-testid="backlog-prs-error" variant="destructive">
-            <AlertDescription>
-              {messages.prsLoadFailed} {noticeText(load.notice, messages)}
-            </AlertDescription>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={BUTTON}
-              data-testid="backlog-prs-retry"
-              onClick={reload}
-            >
-              {messages.retry}
-            </Button>
-          </Alert>
+          <ErrorAlert
+            message={`${messages.prsLoadFailed} ${noticeText(load.notice, messages)}`}
+            testId="backlog-prs-error"
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={BUTTON}
+                data-testid="backlog-prs-retry"
+                onClick={reload}
+              >
+                {messages.retry}
+              </Button>
+            }
+          />
         );
       }
       if (load.kind !== "ready") {
