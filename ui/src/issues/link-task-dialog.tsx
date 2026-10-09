@@ -1,5 +1,6 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { noticeText } from "../git/git-state";
 import { hostUi } from "../host-ui";
 import { BUTTON, FIELD, STACK } from "../layout";
@@ -43,6 +44,7 @@ export function createLinkTaskDialog(
   const ui = hostUi(host);
   const { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } = ui;
   const { Input, Label } = ui;
+  const ErrorAlert = createErrorAlert(host);
 
   return function LinkTaskDialog({ workspaceId, issueKey, onLinked, onClose }: LinkTaskDialogProps) {
     const [query, setQuery] = useState("");
@@ -149,11 +151,7 @@ export function createLinkTaskDialog(
                 })}
               </ul>
             ) : null}
-            {error ? (
-              <p role="alert" className="text-xs text-destructive" data-testid="backlog-link-task-error">
-                {noticeText(error, messages)}
-              </p>
-            ) : null}
+            <ErrorAlert message={error ? noticeText(error, messages) : ""} testId="backlog-link-task-error" />
             <DialogFooter>
               <Button
                 type="button"

@@ -7,6 +7,7 @@ import {
   axeViolations,
   byTestId,
   choose,
+  expectErrorAlert,
   expectTestIds,
   fakeHost,
   mount,
@@ -238,9 +239,9 @@ describe("Pull requests of every provider (FR4.1, FR1.3)", () => {
     });
     const c = await render(host);
     await pickGitHub(c);
-    expect(byTestId(c, "backlog-scm-prs-error")!.textContent).toContain(
-      "The provider is limiting requests. Try again in 9 s",
-    );
+    const alert = expectErrorAlert(byTestId(c, "backlog-scm-prs-error")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain("The provider is limiting requests. Try again in 9 s");
+    expect(alert.contains(byTestId(c, "backlog-scm-prs-retry"))).toBe(true);
     fail = false;
     await act(async () => byTestId(c, "backlog-scm-prs-retry")!.click());
     expect(byTestId(c, "backlog-scm-prs-empty")).not.toBeNull();
@@ -341,8 +342,8 @@ describe("Only the active source control service (intent 261008-source-control-s
       },
     });
     const c = await render(host);
-    expect(byTestId(c, "backlog-prs-error")!.textContent).toContain(
-      format(en.scmServiceInactive, { service: "GitHub" }),
-    );
+    const alert = expectErrorAlert(byTestId(c, "backlog-prs-error")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain(format(en.scmServiceInactive, { service: "GitHub" }));
+    expect(alert.contains(byTestId(c, "backlog-prs-retry"))).toBe(true);
   });
 });

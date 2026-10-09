@@ -8,6 +8,7 @@ import {
   axeViolations,
   byTestId,
   connected,
+  expectErrorAlert,
   expectTestIds,
   fakeHost,
   mount,
@@ -111,9 +112,10 @@ describe("/backlog alert (BR2.3, FR2.7)", () => {
   ])("shows an alert with the settings link and no lists when %s", async (_, view, message) => {
     const host = setup(view as View);
     const c = await render(host);
-    const alert = byTestId(c, "backlog-page-alert")!;
-    expect(alert.getAttribute("data-host")).toBe("Alert");
+    const alert = expectErrorAlert(byTestId(c, "backlog-page-alert")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain(en.pageAlertTitle);
     expect(alert.textContent).toContain(message);
+    expect(alert.contains(byTestId(c, "backlog-page-settings-link"))).toBe(true);
     expect(byTestId(c, "backlog-scope-bar")).toBeNull();
     const link = byTestId(c, "backlog-page-settings-link")!;
     expect(link.getAttribute("data-variant")).toBe("link");
@@ -496,6 +498,22 @@ describe("Default queries and scope bar (FR3, FR4, FR5.1, NFR4)", () => {
     expect(calls(host, "issues.list").at(-1)![1]).toMatchObject({
       body: { assignee: "me", statusIds: [1, 2, 3] },
     });
+  });
+
+  it("toasts a failed delete or default change instead of an inline notice (intent 261009, FR2.1)", async () => {
+    const host = defaults(
+      { issueQueries: [ISSUE_QUERY] },
+      {
+        "issues.queries.delete": async () => {
+          throw actionError(503, { code: "unreachable" });
+        },
+      },
+    );
+    const c = await render(host);
+    await act(async () => byTestId(c, "backlog-saved-menu-delete-iq1")!.click());
+    expect(host.toast.error).toHaveBeenCalledWith(expect.stringContaining(en.unreachable));
+    expect(byTestId(c, "backlog-scope-notice")).toBeNull();
+    expect(byTestId(c, "backlog-saved-menu-item-iq1")).not.toBeNull();
   });
 });
 

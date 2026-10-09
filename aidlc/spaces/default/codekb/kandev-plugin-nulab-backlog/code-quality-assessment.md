@@ -5,7 +5,9 @@
 - Go tests co-located in every `internal/*` package; `httptest` fakes with `testdata/` fixtures; SCM tests use `newHarness` with fake `Client`, secrets, state, clock and `CLIRunner` (no real `gh` runs).
 - UI tests: Vitest + jsdom + axe-core under `ui/src/**/*.test.ts(x)` with the shared harness `ui/src/testing/harness` (`fakeHost`, `mount`, `byTestId`, `axeViolations`, `expectOnlyCatalogueText`, `expectTestIds`, `pseudoCatalogue`, `rawControls`).
 - `make coverage`: 80% line floor over `./internal/... ./server/...`.
-- **Baseline (this run, 2026-10-08, commit `3d6a080`)**: `go test -race -count=1 ./internal/scm/... ./internal/github/... ./internal/gitlab/... ./internal/bitbucket/... ./internal/plugin/...` -> all 5 packages `ok`; `npx vitest run src/settings` -> 8 files, 121 tests passed. Full `make coverage` and the contract test were not run.
+- **Baseline (this run, 2026-10-09, commit `3803248`)**: `go test -race ./internal/issues/... ./internal/plugin/...` (Go 1.26.8) -> both `ok`, no coverage profile written; `npx vitest run src/page src/issues` -> 14 files, 166 tests passed. Full `make coverage` and the contract test were not run.
+- `ui/src/page/start-task.test.tsx:132-147` ("explains a missing workflow instead of opening the dialog") pins today's null-context behaviour and will change with the fix. The harness stub (`ui/src/testing/harness.ts:872`) always returns a context and fakes `TaskCreateDialog`, so "workflow exists but steps not hydrated" and the real host dialog are not exercised.
+- Previous baseline (2026-10-08, commit `3d6a080`): `go test -race -count=1 ./internal/scm/... ./internal/github/... ./internal/gitlab/... ./internal/bitbucket/... ./internal/plugin/...` -> all 5 packages `ok`; `npx vitest run src/settings` -> 8 files, 121 tests passed. Full `make coverage` and the contract test were not run.
 - Previous full baseline (commit `ca8146c`): `go test ./...` 13 packages, 1383 results passing, 0 failures.
 
 ## Linting
@@ -20,7 +22,27 @@ gofmt, go vet, golangci-lint with gosec (`.golangci.yml`), `tsc --noEmit` strict
 
 README present; `doc.go` per package; Go and TS doc comments cite FR/NFR/AC ids; `ui/src/messages/en.ts` is the only source of UI text (tests enforce it).
 
+## Intent Findings: 261009-no-workflow-error
+
+Request: "+ Task" on `/backlog` shows "Kandev has no workflow for this workspace yet." although a workflow exists; retouch the error display for mobile and desktop. Flow and host mechanics: [architecture.md](architecture.md#task-creation-context-host-derived-kandev-v0960).
+
+| # | Area | Evidence | Change shape |
+|---|---|---|---|
+| 1 | Root cause | `start-task.tsx:54-56` treats a `null` `getTaskCreationContext` as "no workflow"; the host returns `null` also when steps are not in the web store, and the plugin route never loads them (`plugin-context-api.ts:14-25`, `spa-routes.tsx:369-380`) | Open `TaskCreateDialog` with `workflowId: null`, `defaultStepId: null`, `steps: []` and let the host resolve and fetch (`task-create-dialog-computed.ts:62-93`, `-effects.ts:32-57`); verify on the real host |
+| 2 | Hidden-workflow fallback | Host picks the first workspace workflow when `activeId` is elsewhere; list includes hidden workflows (`plugin-context-api.ts:7-11`, `use-workflows.ts`) | Covered by finding 1 (the dialog resolves its own workflow) |
+| 3 | Sibling callers | Same read and `errorWorkflow` notice in `settings/issue-watch-dialog.tsx:118-121`, `git/watch-form.tsx:168-171`, `git/scm-watch-form.tsx:119-122`; they must persist a real `workflowId` + `workflowStepId` | Decide in Requirements: in scope or not; `subscribeTaskCreationContext` and/or a notice with a next step |
+| 4 | Real "zero workflows" case | After finding 1 the plugin no longer detects it; the host dialog must show it clearly | Verify host behaviour; keep `errorWorkflow` (`en.ts:157`) only where still reachable |
+| 5 | Notice placement | Inline `<span role="alert" className="text-xs text-destructive">` beside the trigger (`start-task.tsx:79-92`) inside the row action slot (`issues-page.tsx:393-418`, `ROW` = `flex flex-wrap items-center gap-2`), which the host wraps in `div.shrink-0` (`change-request-list.tsx:84`): a sentence squeezes the `min-w-0 flex-1` title on mobile and shifts trigger and menu per row on desktop. Same in `git/pr-list.tsx:334`, `git/scm-pr-list.tsx:283` | Use `host.toast.error` (already used in `issues/task-menu.ts:34`) or a wrapping notice outside the action slot |
+| 6 | Notice lifecycle | Cleared only by the next click; no dismiss; no next step (e.g. link to the board or workflow settings) | Toast auto-dismisses; add a next-step hint if a notice remains |
+| 7 | Inconsistent notice styles | Unstyled `<p role="alert">` in `issues-page.tsx:582-586` and `BacklogPage.tsx:357`; `text-xs text-destructive` in `link-task-dialog.tsx:152-156` | One notice style across the plugin |
+
+Not the cause: the workspace id (`BacklogPage.tsx:109,130` uses `getActiveWorkspaceId` / `subscribeActiveWorkspace`) and the Go backend (the notice is raised client-side; `issues.create_task` requires `workflowId`, `service.go:369-429`).
+
+Constraints to preserve: catalogue-only text and axe checks, `backlog-` test ids (`${testId}-start`, `-start-item`, `-start-notice`), `min_kandev_version` 0.96.0, the `issues.link` / `git.prs.link` / `scm.prs.link` follow-up after task creation.
+
 ## Intent Findings: 261008-source-control-settings
+
+Pre-0.6.0 analysis, kept for history; v0.6.0 implemented the one-service rule.
 
 Request: clear separation between source control services on the settings page, repo-scope labels that name the service, and only one source control service usable at a time.
 
@@ -55,4 +77,5 @@ Constraints to preserve:
 - `internal/plugin/host_port.go:139` — `workflowRefused` matches gRPC error text (`ponytail:`, previous run).
 - `internal/github/client.go` — `SearchRepos` reads only the 100 most recent repos (`ponytail:`, previous run).
 - Platform list declared in four places (see [code-structure.md](code-structure.md#build-and-packaging)).
-- Dev environment: `../kandev` missing in fresh worktrees.
+- Dev environment: `../kandev` missing in fresh worktrees (required by `go.mod` and the `ui/tsconfig.json` alias `@kandev/plugin-sdk`).
+- `subscribeTaskCreationContext` is available but unused; every caller reads the context once at click/open time.

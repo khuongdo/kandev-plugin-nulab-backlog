@@ -14,7 +14,7 @@ export interface StartTaskProps {
   /** The issue to link (kind "issue"). */
   issueKey?: string;
   actions: QuickAction[];
-  /** Prefix of the trigger, item and notice test ids. */
+  /** Prefix of the trigger and item test ids. */
   testId: string;
   /** The task is linked; taskKey comes from the link reply when Kandev gave one. */
   onLinked?: (taskId: string, taskKey?: string) => void;
@@ -26,10 +26,15 @@ export interface StartTaskProps {
  * The row's "+ Task" menu (FR1): a quick action opens Kandev's own
  * TaskCreateDialog prefilled from its prompt template; once Kandev creates
  * the task it is linked to the issue or PR. A failed link keeps the task.
+ *
+ * Kandev's browser context is null unless its store already holds the
+ * workflow's steps (e.g. /backlog opened directly), so the plugin then asks
+ * its backend whether the workspace has a workflow and lets the dialog pick
+ * it (intent 261009, FR1.2). A failed check still opens the dialog (FR1.4).
  */
 export function createStartTask(host: PluginHostApi, messages: Messages = en): Component<StartTaskProps> {
   const h = host.jsx;
-  const { useState } = host.React;
+  const { useState, useRef } = host.React;
   const { IntegrationStartTaskMenu, TaskCreateDialog } = hostUi(host);
 
   return function StartTask({
@@ -43,17 +48,36 @@ export function createStartTask(host: PluginHostApi, messages: Messages = en): C
     onLinked,
     linkAction,
   }: StartTaskProps) {
-    const [open, setOpen] = useState<{ action: QuickAction; ctx: TaskCreationContext } | undefined>(
+    const [open, setOpen] = useState<{ action: QuickAction; ctx: TaskCreationContext | null } | undefined>(
       undefined,
     );
-    const [notice, setNotice] = useState("");
+    const checking = useRef(false);
 
-    const select = (preset: { id: string }) => {
+    const hasWorkflow = async () => {
+      try {
+        const reply = await host.api.invokeAction<{ hasWorkflow?: boolean }>("workflows.status", {
+          workspaceId,
+        });
+        return reply?.hasWorkflow !== false;
+      } catch {
+        return true; // FR1.4: a failed check must not bring the original bug back
+      }
+    };
+
+    const select = async (preset: { id: string }) => {
       const action = actions.find((a) => a.id === preset.id);
-      if (!action) return;
-      const ctx = host.context.getTaskCreationContext?.(workspaceId);
-      setNotice(ctx ? "" : messages.errorWorkflow);
-      if (ctx) setOpen({ action, ctx });
+      if (!action || checking.current) return;
+      const ctx = host.context.getTaskCreationContext?.(workspaceId) ?? null;
+      if (!ctx) {
+        checking.current = true;
+        const ok = await hasWorkflow();
+        checking.current = false;
+        if (!ok) {
+          host.toast.error(messages.errorWorkflow);
+          return;
+        }
+      }
+      setOpen({ action, ctx });
     };
 
     const link = async (taskId: string) => {
@@ -71,7 +95,7 @@ export function createStartTask(host: PluginHostApi, messages: Messages = en): C
         });
         onLinked?.(taskId, reply?.taskKey);
       } catch {
-        setNotice(messages.taskNotLinked);
+        host.toast.error(messages.taskNotLinked);
       }
     };
 
@@ -79,25 +103,20 @@ export function createStartTask(host: PluginHostApi, messages: Messages = en): C
       <span className="flex items-center gap-2">
         <IntegrationStartTaskMenu
           presets={actions.map((a) => ({ id: a.id, label: a.label, hint: a.hint, iconName: a.icon }))}
-          onSelect={select}
+          onSelect={(preset: { id: string }) => void select(preset)}
           triggerLabel={messages.startTask}
           triggerAriaLabel={format(messages.startTaskLabel, { name: issueKey ?? title })}
           triggerTestId={`${testId}-start`}
           itemTestId={`${testId}-start-item`}
         />
-        {notice ? (
-          <span role="alert" className="text-xs text-destructive" data-testid={`${testId}-start-notice`}>
-            {notice}
-          </span>
-        ) : null}
         {open ? (
           <TaskCreateDialog
             open
             onOpenChange={(o: boolean) => !o && setOpen(undefined)}
             workspaceId={workspaceId}
-            workflowId={open.ctx.workflowId}
-            defaultStepId={open.ctx.defaultStepId}
-            steps={open.ctx.steps}
+            workflowId={open.ctx?.workflowId ?? null}
+            defaultStepId={open.ctx?.defaultStepId ?? null}
+            steps={open.ctx?.steps ?? []}
             initialValues={{
               title: taskTitle(open.action.label, title),
               description: interpolate(open.action.promptTemplate, { url, title }),

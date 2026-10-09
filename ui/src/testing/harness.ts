@@ -2,7 +2,7 @@
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import type { PluginHostApi } from "@kandev/plugin-sdk";
 
 declare global {
@@ -47,6 +47,19 @@ export const incomplete: View = {
   spaceHost: HOST,
   hasApiKey: false,
 };
+
+/**
+ * Intent 261009 (FR2.2-FR2.4): el is the shared inline error alert, the
+ * host's destructive Alert at full width with wrapping text.
+ */
+export function expectErrorAlert(el: Element | null): HTMLElement {
+  expect(el, "error alert").not.toBeNull();
+  expect(el!.getAttribute("data-host")).toBe("Alert");
+  expect(el!.getAttribute("role")).toBe("alert");
+  expect(el!.getAttribute("variant")).toBe("destructive");
+  expect(el!.className.split(" ")).toEqual(expect.arrayContaining(["w-full", "min-w-0", "break-words"]));
+  return el as HTMLElement;
+}
 
 /** An error shaped like the host's ApiError for a non-2xx action response. */
 export function actionError(status: number, error: Record<string, unknown>): Error {
@@ -608,6 +621,7 @@ function TaskCreateDialog({
   initialValues,
   workflowId,
   defaultStepId,
+  steps,
 }: Props) {
   if (!open) return null;
   const values = (initialValues as { title: string; description?: string }) ?? { title: "" };
@@ -620,6 +634,8 @@ function TaskCreateDialog({
       "data-host": "TaskCreateDialog",
       "data-testid": "fake-task-create-dialog",
       "data-workflow": `${workflowId as string}/${defaultStepId as string}`,
+      // Intent 261009: how many steps the plugin passed ("none" when omitted).
+      "data-steps": Array.isArray(steps) ? String(steps.length) : "none",
     },
     React.createElement("p", { "data-testid": "fake-task-create-title" }, values.title),
     React.createElement("p", { "data-testid": "fake-task-create-description" }, values.description ?? ""),

@@ -1,6 +1,6 @@
 id: "nulab-backlog"
 api_version: 2
-version: "0.6.0"
+version: "0.6.1"
 display_name: "Nulab Backlog"
 description: "Connect a Kandev workspace to a Nulab Backlog space."
 author: "khuongdo"
@@ -21,7 +21,8 @@ capabilities:
   state: true
   secrets: true
   # U4: watch tasks, the task-metadata lookup and the task's repository.
-  api_read: ["tasks", "repositories"]
+  # Intent 261009: workflows, so "+ Task" can tell whether the workspace has one.
+  api_read: ["tasks", "repositories", "workflows"]
   api_write: ["tasks"]
   # U3: links of a deleted task are removed (R-05); every sync cycle also checks.
   events: ["task.deleted"]
@@ -70,6 +71,11 @@ actions:
   - key: "connection.set_projects"
     scope: "workspace"
     access: admin
+    max_body_bytes: 8192
+  # Intent 261009: does the workspace have a workflow? (read-only, for "+ Task").
+  - key: "workflows.status"
+    scope: "workspace"
+    access: authenticated
     max_body_bytes: 8192
   # U4 (C5): Git credentials, the repository provider, PR links, watches and queries.
   - key: "connection.set_git_credential"

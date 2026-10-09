@@ -1,0 +1,31 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": ["FR1", "FR1.1", "FR1.2", "FR1.3", "FR1.4", "FR1.5", "FR1.6", "FR2", "FR2.1", "FR2.2", "FR2.3", "FR2.4", "FR2.5", "FR2.6", "FR3", "FR3.1", "FR3.2", "FR3.3", "FR3.4", "NFR1", "NFR2", "NFR3", "NFR4", "NFR5", "NFR6"],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "ui/src/page/start-task.tsx" },
+    { "id": "FR1.1", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "FR1.2", "status": "OK", "target": "ui/src/page/start-task.tsx" },
+    { "id": "FR1.3", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "FR1.4", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "FR1.5", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "FR1.6", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "FR2", "status": "OK", "target": "ui/src/error-alert.tsx" },
+    { "id": "FR2.1", "status": "OK", "target": "ui/src/page/start-task.tsx" },
+    { "id": "FR2.2", "status": "OK", "target": "ui/src/page/BacklogPage.tsx" },
+    { "id": "FR2.3", "status": "OK", "target": "ui/src/issues/link-task-dialog.tsx" },
+    { "id": "FR2.4", "status": "OK", "target": "ui/src/error-alert.tsx" },
+    { "id": "FR2.5", "status": "OK", "target": "ui/src/issues/issues-page.tsx" },
+    { "id": "FR2.6", "status": "OK", "target": "ui/src/error-alert.test.tsx" },
+    { "id": "FR3", "status": "OK", "target": "internal/plugin/workflow_actions.go" },
+    { "id": "FR3.1", "status": "OK", "target": "manifest.yaml" },
+    { "id": "FR3.2", "status": "OK", "target": "internal/plugin/host_port.go" },
+    { "id": "FR3.3", "status": "OK", "target": "internal/plugin/workflow_actions_test.go" },
+    { "id": "FR3.4", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "NFR1", "status": "Deferred", "target": "ui/src/error-alert.tsx implements wrapping full-width alerts; viewport check at 320/360/768/1280 px is done in Build and Test" },
+    { "id": "NFR2", "status": "Deferred", "target": "single Limit-1 host call in internal/plugin/host_port.go; latency measured on real Kandev in Build and Test" },
+    { "id": "NFR3", "status": "OK", "target": "ui/src/error-alert.test.tsx" },
+    { "id": "NFR4", "status": "OK", "target": "internal/plugin/workflow_actions_test.go" },
+    { "id": "NFR5", "status": "OK", "target": "ui/src/page/start-task.test.tsx" },
+    { "id": "NFR6", "status": "Deferred", "target": "packaged-host contract test x10 on Kandev v0.96.0 runs in Build and Test (1 run passed in Code Generation)" }
+  ]
+}

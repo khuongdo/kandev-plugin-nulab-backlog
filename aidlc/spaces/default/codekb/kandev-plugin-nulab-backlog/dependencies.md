@@ -34,7 +34,20 @@ cmd/ci -> ci
 
 Acyclic; only `plugin` and `server` import `pluginsdk`. Provider clients import `scm` (they implement `scm.Client`); `plugin` builds them and passes them to `scm.NewService`.
 
-## Internal (UI, intent area)
+## Internal (UI, intent area: start task and notices)
+
+```
+page/BacklogPage -> issues/issues-page -> page/start-task (row action, with RowMenu)
+git/pr-list, git/scm-pr-list -> page/start-task
+page/start-task -> host.context.getTaskCreationContext, host IntegrationStartTaskMenu, host TaskCreateDialog,
+                   issues.link | git.prs.link | scm.prs.link, messages/en (errorWorkflow, taskNotLinked)
+settings/issue-watch-dialog, git/watch-form, git/scm-watch-form -> host.context.getTaskCreationContext, messages/en (errorWorkflow)
+issues/task-menu -> host.toast
+```
+
+Host-side (Kandev v0.96.0, read-only): `getTaskCreationContext` depends on the web store's `workflows` (loaded by the layout) and `kanban` / `kanbanMulti` steps (loaded only by the board, task page and first-party integration pages). See [architecture.md](architecture.md#task-creation-context-host-derived-kandev-v0960).
+
+## Internal (UI, settings area, pre-0.6.0)
 
 ```
 settings/SettingsScreen -> settings/source-control-section (passes the Backlog Git form)

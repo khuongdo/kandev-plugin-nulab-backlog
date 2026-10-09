@@ -7,6 +7,7 @@ import {
   axeViolations,
   byTestId,
   deferred,
+  expectErrorAlert,
   expectOnlyCatalogueText,
   expectTestIds,
   fakeHost,
@@ -145,17 +146,17 @@ describe("Link to task dialog (M3, US3.3)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a failed link as an inline red alert and keeps Save enabled (FR4.3)", async () => {
+  it("shows a failed link as the shared alert above the actions and keeps Save enabled (FR4.3, intent 261009 FR2.3)", async () => {
     const host = setup(TASKS, async () => {
       throw actionError(409, { code: "conflict" });
     });
     const { c, onClose, store } = await open(host);
     await act(async () => byTestId(c, "backlog-link-task-option-task-17")!.click());
     await act(async () => byTestId(c, "backlog-link-task-submit")!.click());
-    const error = byTestId(c, "backlog-link-task-error")!;
-    expect(error.getAttribute("role")).toBe("alert");
-    expect(error.className).toBe("text-xs text-destructive");
+    const error = expectErrorAlert(byTestId(c, "backlog-link-task-error"));
     expect(error.textContent).toBe(en.gitConflict);
+    const cancel = byTestId(c, "backlog-link-task-cancel")!;
+    expect(error.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const submit = byTestId(c, "backlog-link-task-submit") as HTMLButtonElement;
     expect(submit.textContent).toBe(en.save);
     expect(submit.disabled).toBe(false);

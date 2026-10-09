@@ -126,6 +126,15 @@ type hostData struct {
 	// like a crash between Tasks().Create and storing the task id.
 	crashAfterCreate bool
 	crashed          bool
+	// Intent 261009: Workflows().List returns these, or fails with workflowsErr.
+	workflows     []pluginsdk.Workflow
+	workflowsErr  error
+	workflowCalls []workflowCall
+}
+
+type workflowCall struct {
+	ws   string
+	page pluginsdk.Page
 }
 
 // SetState fails ledger writes after a crash.
@@ -190,6 +199,25 @@ func (f fakeTasks) List(_ context.Context, filter pluginsdk.TaskFilter, page plu
 	end := min(start+2, len(f.d.tasks))
 	info := &pluginsdk.PageInfo{HasMore: end < len(f.d.tasks), NextCursor: fmt.Sprint(end)}
 	return slices.Clone(f.d.tasks[start:end]), info, nil
+}
+
+func (h *u4Host) Workflows() pluginsdk.WorkflowReader { return fakeWorkflows{d: h.data} }
+
+type fakeWorkflows struct {
+	pluginsdk.WorkflowReader
+	d *hostData
+}
+
+// List returns at most page.Limit workflows.
+func (f fakeWorkflows) List(_ context.Context, ws string, page pluginsdk.Page) ([]pluginsdk.Workflow, *pluginsdk.PageInfo, error) {
+	f.d.mu.Lock()
+	defer f.d.mu.Unlock()
+	f.d.workflowCalls = append(f.d.workflowCalls, workflowCall{ws: ws, page: page})
+	if f.d.workflowsErr != nil {
+		return nil, nil, f.d.workflowsErr
+	}
+	end := min(int(page.Limit), len(f.d.workflows))
+	return slices.Clone(f.d.workflows[:end]), &pluginsdk.PageInfo{HasMore: end < len(f.d.workflows)}, nil
 }
 
 type fakeRepos struct{ d *hostData }

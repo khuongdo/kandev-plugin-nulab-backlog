@@ -7,6 +7,7 @@ import {
   axeViolations,
   byTestId,
   deferred,
+  expectErrorAlert,
   expectOnlyCatalogueText,
   expectTestIds,
   fakeHost,
@@ -16,7 +17,6 @@ import {
   press,
   rawControls,
   setValue,
-  text,
   unmount,
 } from "../testing/harness";
 import { createIssuesPage } from "./issues-page";
@@ -251,7 +251,10 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     expect(byTestId(c, "backlog-issues-empty")!.textContent).toContain(en.issuesEmpty);
     mode = "error";
     await act(async () => byTestId(c, "backlog-issues-reset")!.click());
-    expect(byTestId(c, "backlog-issues-error")!.textContent).toContain(en.unreachable);
+    const alert = expectErrorAlert(byTestId(c, "backlog-issues-error")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain(en.issuesLoadFailed);
+    expect(alert.textContent).toContain(en.unreachable);
+    expect(alert.contains(byTestId(c, "backlog-issues-retry"))).toBe(true);
     mode = "ok";
     await act(async () => byTestId(c, "backlog-issues-retry")!.click());
     expect(byTestId(c, "backlog-issue-row-PROJ-1")).not.toBeNull();
@@ -268,8 +271,10 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
         },
       });
       const c = await render(host);
-      expect(text(c)).toContain(en[key]);
+      const alert = expectErrorAlert(byTestId(c, "backlog-issues-state")); // intent 261009, FR2.2
+      expect(alert.textContent).toContain(en[key]);
       const link = byTestId(c, "backlog-issues-settings-link")!;
+      expect(alert.contains(link)).toBe(true);
       expect(link.getAttribute("href")).toBe("/settings/workspaces/ws-1/integrations/nulab-backlog");
       await act(async () => link.click());
       expect(host.navigate).toHaveBeenCalled();
@@ -350,6 +355,18 @@ describe("Issues page (M2, US2.1, US2.2)", () => {
     await act(async () => pending.resolve({ updatedCount: 2, refreshedAt: "2026-10-06T00:05:00Z" }));
     expect(calls(host, "issues.list")).toHaveLength(before + 1);
     expect(button.disabled).toBe(false);
+  });
+
+  it("toasts a failed refresh instead of an inline notice (intent 261009, FR2.1)", async () => {
+    const host = setup({
+      "issues.refresh": async () => {
+        throw actionError(503, { code: "unreachable" });
+      },
+    });
+    const c = await render(host);
+    await act(async () => byTestId(c, "backlog-issues-refresh")!.click());
+    expect(host.toast.error).toHaveBeenCalledWith(en.unreachable);
+    expect(byTestId(c, "backlog-issues-notice")).toBeNull();
   });
 
   it("shows every filter at full width on phones, with no Filters (n) toggle (M2m, FR4.6, BR4.8)", async () => {

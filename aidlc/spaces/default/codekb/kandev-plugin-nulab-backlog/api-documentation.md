@@ -2,7 +2,7 @@
 
 ## Kandev Host Contract (`manifest.yaml`)
 
-- `version: "0.5.3"`, `api_version: 2`, `runtime.type: binary`, 4 executables (`linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`), `min_kandev_version: "0.96.0"`.
+- `version: "0.6.0"` (action counts and SCM tables below were taken at v0.5.3 and not recounted), `api_version: 2`, `runtime.type: binary`, 4 executables (`linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`), `min_kandev_version: "0.96.0"`.
 - Capabilities: `state`, `secrets`, `api_read: [tasks, repositories]`, `api_write: [tasks]`, `events: [task.deleted]`.
 - `repository_providers: [nulab-backlog]`, one `reference_sources` entry, `config_schema` (OAuth client, public base URL), `ui.bundle`.
 - The frozen snapshot `internal/plugin/testdata/v030/manifest.yaml` must stay unchanged.
@@ -64,7 +64,17 @@ SCM error mapping (`classifySCM`): 401/403 -> `reconnect_required`; 404 -> `not_
 
 ## UI Host API Used
 
-`host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`, `openTaskLinkDialog`, host UI kit (`SettingsSection`, `Badge`, `Button`, `Input`, `Label`, `Select*`, `Alert`), registry calls (`registerIntegrationSettings`, `registerNavItem`, `registerRoute`, `registerComponent`, `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider`).
+`host.api.invokeAction`, `TaskCreateDialog`, `IntegrationStartTaskMenu`, `ChangeRequestRow`, `openTaskLinkDialog`, `host.toast.success/error`, host UI kit (`SettingsSection`, `Badge`, `Button`, `Input`, `Label`, `Select*`, `Alert`), registry calls (`registerIntegrationSettings`, `registerNavItem`, `registerRoute`, `registerComponent`, `registerTaskAction`, `registerTaskMenuAction`, `registerTaskPanel`, `registerRepositoryProvider`, `registerReviewProvider`).
+
+### Host context API (`host.context`, SDK `PluginContextApi`, `plugin-sdk/src/index.ts:166-180`)
+
+| Method | Returns | Used by |
+|---|---|---|
+| `getActiveWorkspaceId()` / `subscribeActiveWorkspace(listener)` | workspace id | `BacklogPage.tsx:109,130` |
+| `getTaskCreationContext(workspaceId)` | `{workspaceId, workflowId, defaultStepId, steps[], repositories[]}` or `null` (no workflow **or** steps not loaded in the web store) | `start-task.tsx:54`, three watch dialogs |
+| `subscribeTaskCreationContext(workspaceId, listener)` | unsubscribe | unused |
+
+There is no host API to list workflows or steps. `TaskCreateDialog` props: `workspaceId`, `workflowId: string | null`, `defaultStepId: string | null`, `steps`, `initialValues`, `onSuccess`, `onOpenChange`; with `workflowId: null` the host resolves the workflow and fetches steps itself. Details: [architecture.md](architecture.md#task-creation-context-host-derived-kandev-v0960).
 
 ## Outbound APIs
 

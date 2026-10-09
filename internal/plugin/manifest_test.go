@@ -114,6 +114,8 @@ func TestManifestActionsAndAccess(t *testing.T) {
 		keyDisconnect:   "admin",
 		keyListProjects: "authenticated",
 		keySetProjects:  "admin",
+		// Intent 261009 (FR3.2): read-only workflow check for "+ Task".
+		actionWorkflowsStatus: "authenticated",
 	}, access) // NFR3.5, BR2.1, BR7.2
 }
 
@@ -160,7 +162,7 @@ func TestU4_Manifest_ActionsAndProvider(t *testing.T) {
 	}
 	require.Equal(t, want, got)
 	require.Equal(t, []string{"nulab-backlog"}, m.RepositoryProviders)
-	require.Equal(t, []any{"tasks", "repositories"}, m.Capabilities["api_read"])
+	require.Equal(t, []any{"tasks", "repositories", "workflows"}, m.Capabilities["api_read"]) // + workflows: intent 261009
 	require.Equal(t, []any{"tasks"}, m.Capabilities["api_write"])
 }
 

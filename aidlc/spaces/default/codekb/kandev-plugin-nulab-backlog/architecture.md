@@ -56,7 +56,7 @@ Text fallback: browser -> Kandev web -> UI Bundle -> Kandev backend -> RPC -> Se
 
 ## SCM Provider Model (multi-provider today)
 
-As of v0.5.3 (analyzed deeply in this run):
+As of v0.5.3 (analyzed deeply by intent `261008-source-control-settings`; **superseded by v0.6.0**, which adds a per-workspace active source control service — README "0.6.0" notes; not re-read since, so this section and the next are shallow):
 
 - **One settings entry per provider.** `scm.Store` keeps one `Settings` per provider in the workspace state document `scm.settings` (`internal/scm/store.go:38-50`, `{schemaVersion: 1, items}`): `Provider`, `Source` (`""`/`token` or `cli`), `HasToken`, `Account`, `AccountID`, `LastError`, `Mappings` (`{projectKey, repos[]}`). There is **no workspace-level field naming an active provider.**
 - **All three always listed.** `Service.Providers` (`internal/scm/service.go:165-175`) returns GitHub, GitLab and Bitbucket every time, `not_configured` when nothing is stored. `TestProviders_ListsAllThreeNotConfigured` pins this.
@@ -90,11 +90,24 @@ How a task tied to a Backlog issue comes to exist, and who controls `gh` in its 
 
 | Path | Code | Repositories / Launch passed |
 |---|---|---|
-| Start task from an issue (UI) | `ui/src/page/start-task.tsx:100-115` renders Kandev's own `TaskCreateDialog`; on success the plugin only calls `issues.link` | Decided by the user in Kandev's dialog |
-| Issue watch creates a task | `issueHost.CreateTask` (`internal/plugin/host_port.go:120-130`) | none |
+| Start task from an issue or PR row (UI) | `ui/src/page/start-task.tsx:51-57` reads the host task-creation context, `:93-110` renders Kandev's own `TaskCreateDialog`; on success the plugin only calls `issues.link` / `git.prs.link` / `scm.prs.link` | Decided by the user in Kandev's dialog |
+| Issue watch creates a task | `issueHost.CreateTask` (`internal/plugin/host_port.go:120-130`) with the watch's stored `workflowId` / `workflowStepId` (`internal/issues/watch.go:109`) | none |
 | PR watch creates a task | `scmHost.CreateTask` (`internal/plugin/scm_actions.go`) | none (adds metadata) |
 
 The worktree's `GH_TOKEN` is set by Kandev's executor from Kandev's own GitHub connection or the executor profile env. pluginsdk v0.96.0 gives the plugin no way to inject environment (not re-verified in this run).
+
+## Task Creation Context (host-derived, Kandev v0.96.0)
+
+The plugin cannot list workflows or steps itself; its only source is the host context API (`PluginContextApi`, `plugin-sdk/src/index.ts:166-180`): `getTaskCreationContext(workspaceId)` and `subscribeTaskCreationContext(workspaceId, listener)`. The plugin uses only the synchronous getter, at click time (`start-task.tsx:54`), and never subscribes.
+
+The host computes the context from its web-app store, not from the backend (`web/lib/plugins/plugin-context-api.ts:6-36`):
+
+1. Workflow: the active workflow if it belongs to the workspace, else the **first** workflow of the workspace (workflows are loaded with `includeHidden: true`, so this can be a hidden one). None -> `null`.
+2. Steps: `state.kanban.steps` when the board's workflow matches, else `state.kanbanMulti.snapshots[workflow.id].steps`. No steps -> `null`.
+
+Workflows are loaded globally by the layout (`useEnsureWorkspaceWorkflows`), but steps are loaded only by the Kanban board, the task page and first-party integration pages (GitHub/GitLab). The plugin route renderer (`PluginRoute`, `web/src/spa-routes.tsx:369-380`) hydrates nothing. So on `/backlog` opened directly (reload, bookmark, mobile) the context is `null` although the workspace has a workflow, and it "works" only after the board was visited in the same SPA session. The plugin backend is not involved: the error is raised client-side before any action call.
+
+Host fallback available: `TaskCreateDialog` accepts `workflowId: null`, `defaultStepId: null`, `steps: []` (`task-create-dialog-types.ts:60-74`), resolves its own workflow (manual -> last used per workspace -> context -> workspace workflows, `task-create-dialog-computed.ts:62-93`) and fetches steps itself when the effective workflow differs from the prop (`task-create-dialog-effects.ts:32-57`). The three watch dialogs cannot use this fallback: they persist a concrete `workflowId` + `workflowStepId` (`internal/issues/watch.go:109`; `watch.go:74-75` notes "the plugin cannot read workflows").
 
 ## Data Flow
 
@@ -104,6 +117,39 @@ The worktree's `GH_TOKEN` is set by Kandev's executor from Kandev's own GitHub c
 - Host events in: `task.deleted`; webhook in: `oauth-callback`.
 
 ## Interaction Diagrams
+
+### Start a task from an issue row (current; where "no workflow" arises)
+
+```mermaid
+sequenceDiagram
+  participant U as Member (issue row on /backlog)
+  participant ST as StartTask (start-task.tsx)
+  participant CX as Host context API (plugin-context-api.ts)
+  participant HS as Kandev web store
+  participant D as TaskCreateDialog (host)
+  participant K as Kandev backend
+  participant A as KandevAdapter
+  U->>ST: click "+ Task", pick a quick action
+  ST->>CX: getTaskCreationContext(workspaceId)
+  CX->>HS: read workflows.items, kanban.steps, kanbanMulti.snapshots
+  alt no workflow for workspace, or its steps not loaded (plugin route never loads them)
+    CX-->>ST: null
+    ST->>ST: setNotice(errorWorkflow) inline next to the trigger, dialog not opened
+    ST-->>U: "Kandev has no workflow for this workspace yet."
+  else workflow and steps in the store
+    CX-->>ST: {workflowId, defaultStepId, steps, repositories}
+    ST->>D: open with workflowId, defaultStepId, steps, initialValues
+    U->>D: submit
+    D->>K: create task
+    K-->>D: task {id}
+    D-->>ST: onSuccess(task)
+    ST->>K: invokeAction issues.link {issueKey}
+    K->>A: HandleAction
+    A-->>ST: {taskKey} or error (taskNotLinked notice)
+  end
+```
+
+Text fallback: the click reads the host's store-derived context once; when the workflow or its steps are missing from the web-app store (the normal case on a directly opened `/backlog`), the plugin shows the `errorWorkflow` notice inline in the row's action slot and never opens the dialog. Otherwise the host dialog creates the task and the plugin links it with `issues.link`. Background: [Task Creation Context](#task-creation-context-host-derived-kandev-v0960).
 
 ### Load the Source Control section (current)
 
@@ -117,7 +163,7 @@ sequenceDiagram
   participant ST as Kandev state
   U->>SC: open Settings
   SC->>K: scm.providers.list
-  K->>A: HandleAction (authenticated; allowed even while Backlog is off)
+  K->>A: HandleAction (authenticated, allowed even while Backlog is off)
   A->>S: Providers(ctx, ws)
   S->>ST: load scm.settings
   S-->>SC: {providers: [github, gitlab, bitbucket]} (always three)
@@ -163,7 +209,7 @@ sequenceDiagram
   S->>C: SearchRepos(credential)
   C-->>U: {repos: [{fullName, url}]}
   U->>A: scm.mappings.set {provider, projectKey, repos[]}
-  A->>S: SetMapping (max 20, each repo checked with the provider; empty list removes)
+  A->>S: SetMapping (max 20, each repo checked with the provider, empty list removes)
   S-->>U: ProviderView{mappings}
 ```
 
@@ -200,6 +246,9 @@ Text fallback: UI -> host -> adapter -> service -> gateway -> Backlog, and back.
 - Disconnecting a provider keeps its data disabled rather than deleting it (FR2.2).
 
 ## Improvement Opportunities
+
+- Start-task: do not treat a `null` context as "no workflow"; open `TaskCreateDialog` with `workflowId: null` and let the host resolve the workflow and steps (to be confirmed against the real host). Watch dialogs need a different answer (subscribe, or a notice with a next step). See [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261009-no-workflow-error).
+- Move error notices out of the row's non-shrinking action slot (e.g. `host.toast.error`) and use one notice style across the plugin.
 
 - Frame each service as its own card with a clear heading, and name the service in the repo-mapping labels (UI + `en.ts` only).
 - Express "one service at a time" either as a UI rule or as a backend invariant (e.g. an additive `activeProvider` in `scm.settings`); see the open decisions in [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261008-source-control-settings).

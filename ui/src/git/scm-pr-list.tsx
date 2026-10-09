@@ -1,5 +1,6 @@
 import type { Component, PluginHostApi } from "@kandev/plugin-sdk";
 
+import { createErrorAlert } from "../error-alert";
 import { hostUi } from "../host-ui";
 import { prTaskRowLinks } from "../issues/issues-state";
 import { BUTTON, FILTER_POPOVER, FILTER_TRIGGER, FILTERS, RESULTS, ROW, STACK } from "../layout";
@@ -77,7 +78,8 @@ export function createScmPrList(host: PluginHostApi, messages: Messages = en): C
   const h = host.jsx;
   const { useCallback, useEffect, useRef, useState } = host.React;
   const ui = hostUi(host);
-  const { Alert, AlertDescription, Button, ChangeRequestList, ChangeRequestRow } = ui;
+  const { Button, ChangeRequestList, ChangeRequestRow } = ui;
+  const ErrorAlert = createErrorAlert(host);
   const { Empty, EmptyHeader, EmptyTitle, IntegrationIcon, IntegrationRepositoryFilter, TaskRowIndicator } =
     ui;
   const PrToolbar = createPrToolbar(host, messages);
@@ -298,21 +300,22 @@ export function createScmPrList(host: PluginHostApi, messages: Messages = en): C
       if (filters && repos.length === 0) return empty(messages.scmNoRepositories);
       if (load.kind === "failed") {
         return (
-          <Alert data-testid={`${ID}-error`} variant="destructive">
-            <AlertDescription>
-              {messages.prsLoadFailed} {noticeText(load.notice, messages)}
-            </AlertDescription>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={BUTTON}
-              data-testid={`${ID}-retry`}
-              onClick={reload}
-            >
-              {messages.retry}
-            </Button>
-          </Alert>
+          <ErrorAlert
+            message={`${messages.prsLoadFailed} ${noticeText(load.notice, messages)}`}
+            testId={`${ID}-error`}
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={BUTTON}
+                data-testid={`${ID}-retry`}
+                onClick={reload}
+              >
+                {messages.retry}
+              </Button>
+            }
+          />
         );
       }
       if (load.kind !== "ready") {

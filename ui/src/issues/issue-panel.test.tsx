@@ -6,6 +6,7 @@ import {
   actionError,
   axeViolations,
   byTestId,
+  expectErrorAlert,
   expectOnlyCatalogueText,
   expectTestIds,
   fakeHost,
@@ -147,8 +148,10 @@ describe("Backlog issue panel in the task (M8, US3.2, US3.5)", () => {
       throw actionError(503, { code: "unreachable" });
     };
     c = await render(host);
-    expect(text(c)).toContain(en.unreachable);
-    expect(byTestId(c, "backlog-issue-retry")).not.toBeNull();
+    const alert = expectErrorAlert(byTestId(c, "backlog-issue-error")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain(en.issueLoadFailed);
+    expect(alert.textContent).toContain(en.unreachable);
+    expect(alert.contains(byTestId(c, "backlog-issue-retry"))).toBe(true);
   });
 
   it("shows 150 comments newest first with Load more (AC3.5.1)", async () => {
@@ -184,11 +187,21 @@ describe("Backlog issue panel in the task (M8, US3.2, US3.5)", () => {
       },
     });
     const c = await render(host);
-    expect(byTestId(c, "backlog-issue-comments-error")!.textContent).toContain("Try again in 5 s");
+    const alert = expectErrorAlert(byTestId(c, "backlog-issue-comments-error")); // intent 261009, FR2.2
+    expect(alert.textContent).toContain("Try again in 5 s");
+    expect(alert.contains(byTestId(c, "backlog-issue-comments-retry"))).toBe(true);
     expect(byTestId(c, "backlog-issue-attachment-0")).not.toBeNull();
     fail = false;
     await act(async () => byTestId(c, "backlog-issue-comments-retry")!.click());
     expect(byTestId(c, "backlog-issue-comments-list")!.textContent).toContain("Hi");
+  });
+
+  it("shows a failed attachment read as an alert in its section (intent 261009, FR2.2)", async () => {
+    const host = setup({ "issues.get": async () => ({ ...DETAIL, attachmentsError: "unreachable" }) });
+    const c = await render(host);
+    const alert = expectErrorAlert(byTestId(c, "backlog-issue-attachments-error"));
+    expect(alert.textContent).toBe(en.unreachable);
+    expect(c.querySelector("#backlog-issue-attachments")!.contains(alert)).toBe(true);
   });
 
   it("toggles sections with aria-expanded and remembers the choice", async () => {
@@ -327,7 +340,8 @@ describe("Pull requests on the issue panel (FR5)", () => {
     await act(async () => byTestId(c, "backlog-issue-pr-add")!.click());
     await act(async () => setValue(byTestId(c, "backlog-issue-pr-url") as HTMLInputElement, "https://x"));
     await act(async () => byTestId(c, "backlog-issue-pr-link")!.click());
-    expect(byTestId(c, "backlog-issue-pr-notice")!.textContent).toBe(en.errorPrUrl);
+    expect(host.toast.error).toHaveBeenCalledWith(en.errorPrUrl); // intent 261009, FR2.1
+    expect(byTestId(c, "backlog-issue-pr-notice")).toBeNull();
     fail = false;
     await act(async () => byTestId(c, "backlog-issue-pr-link")!.click());
     expect(prCalls(host, "scm.prs.link").at(-1)![1]).toEqual({
@@ -348,7 +362,7 @@ describe("Pull requests on the issue panel (FR5)", () => {
     });
     const c = await render(host);
     expect(byTestId(c, "backlog-issue-prs-empty")!.textContent).toBe(en.noPullRequests);
-    expect(byTestId(c, "backlog-issue-prs-error")).not.toBeNull();
+    expectErrorAlert(byTestId(c, "backlog-issue-prs-error")); // intent 261009, FR2.2
     expect(byTestId(c, "backlog-issue-open")).not.toBeNull();
   });
 

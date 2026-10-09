@@ -15,7 +15,7 @@
 | `Makefile`, `.golangci.yml`, `.github/workflows/` | build / CI | every CI step is a Make target |
 | `aidlc/`, `.claude/`, `docs/` | records / framework / docs | non-app |
 
-## SCM Package (`internal/scm/`) — intent area
+## SCM Package (`internal/scm/`) — pre-0.6.0, not re-read
 
 | File | Holds |
 |---|---|
@@ -30,9 +30,23 @@
 
 ## Issues Package (`internal/issues/`)
 
-`types.go` (records incl. `Link`, `ParseIssueKey`), `service.go` (issue list/detail, task creation via `HostPort.CreateTask`, `SearchTasks`, `Link`/`Unlink`, `Links`), plus sync, watches, quick actions, queries (not re-read in this run).
+`types.go` (records incl. `Link`, `ParseIssueKey`), `service.go` (issue list/detail, `issues.create_task` via `HostPort.CreateTask` requiring `workflowId` `:369-429`, `SearchTasks`, `Link`/`Unlink`, `Links`), `watch.go` (issue watches; persist `workflowId` / `workflowStepId`, validated at `:109`; `:74-75` notes the plugin cannot read workflows), `watcher.go` (runs watches, maps host errors), plus sync, quick actions, queries. `internal/plugin/host_port.go` (`issueHost.CreateTask` `:120-130`, `workflowRefused` `:139`) and `issue_actions.go` (`issues.*` action keys) adapt it to the host.
 
-## UI Source (`ui/src/`) — intent area
+## UI Page and Issues (`ui/src/page/`, `ui/src/issues/`) — intent area
+
+| Path | Role |
+|---|---|
+| `page/start-task.tsx` | `StartTask`: host `IntegrationStartTaskMenu` trigger; on select reads `getTaskCreationContext` (`:54`), sets the `errorWorkflow` notice on `null` (`:55`), renders the notice inline (`:88-92`) and `TaskCreateDialog` (`:93-110`), then links the task (`issues.link` / `git.prs.link` / `scm.prs.link`) |
+| `page/start-task.test.tsx` | pins the null-context notice (`:132-147`) |
+| `page/BacklogPage.tsx` | `/backlog` route; workspace id from `getActiveWorkspaceId` / `subscribeActiveWorkspace` (`:109,130`); page-level `<p role="alert">` (`:357`) |
+| `issues/issues-page.tsx` | issue rows on host `ChangeRequestRow`; `actionsOf` puts `StartTask` + `RowMenu` in a `ROW` span as the row `action` (`:393-418`); list notice `<p role="alert">` (`:582-586`) |
+| `issues/link-task-dialog.tsx` | "Link to task" dialog; inline error `text-xs text-destructive` (`:152-156`) |
+| `issues/task-menu.ts` | task menu action; uses `host.toast.error` (`:34`) |
+| `messages/en.ts` | `errorWorkflow` (`:157`), `taskNotLinked`, `startTask*` keys |
+
+Same `StartTask` is used by `git/pr-list.tsx:334` and `git/scm-pr-list.tsx:283`; same context read in the watch dialogs (see [code-quality-assessment.md](code-quality-assessment.md#intent-findings-261009-no-workflow-error), finding 3).
+
+## UI Source (`ui/src/`) — settings area, pre-0.6.0
 
 | Path | Role |
 |---|---|
@@ -42,7 +56,6 @@
 | `settings/source-control-section.test.tsx` | 25 tests; fixture always returns three providers |
 | `git/git-state.ts` | `ProviderView` TS mirror, `providerName`, `scmNotice`, `loadProviders`, `usableProviders`, `scmRepoOptions` (skimmed) |
 | `git/pr-list.tsx`, `git/watch-form.tsx`, `git/scm-*.tsx`, `issues/issue-prs.tsx` | consumers of the provider list (skimmed) |
-| `page/start-task.tsx` | issue "Start task" menu (Kandev `TaskCreateDialog`, then `issues.link`) |
 | `messages/en.ts` | message catalogue, the only source of UI text (`scm*` keys `:365-398`, `sourceControlDescription`) |
 | `testing/harness.ts` | fake host and assertions for Vitest |
 

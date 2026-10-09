@@ -9,6 +9,7 @@ import {
   byTestId,
   connected,
   deferred,
+  expectErrorAlert,
   expectOnlyCatalogueText,
   fakeHost,
   incomplete,
@@ -96,6 +97,8 @@ describe("Backlog page (/backlog)", () => {
       return connected;
     });
     expect(text(c)).toContain(en.pageLoadFailed);
+    const alert = expectErrorAlert(byTestId(c, "backlog-page-error")); // intent 261009, FR2.2
+    expect(alert.contains(byTestId(c, "backlog-page-retry"))).toBe(true);
     fail = false;
     await act(async () => byTestId(c, "backlog-page-retry")!.click());
     expect(byTestId(c, "backlog-scope-bar")).not.toBeNull();
